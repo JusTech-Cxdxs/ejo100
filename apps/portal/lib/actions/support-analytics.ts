@@ -39,10 +39,18 @@ export async function getSupportAnalytics(input: { days?: number; queueId?: stri
     organisationId ? prisma.supportQueue.findMany({ where: { organisationId }, select: { id: true, name: true } }) : [],
     prisma.user.findMany({ where: { id: { in: [...new Set(all.map((r) => r.assignedToId).filter((x): x is string => Boolean(x)))] } }, select: { id: true, fullName: true } }),
   ]);
-  const byQueue = new Map<string, MeasureRow[]>();
-  for (const r of all) byQueue.set(r.queueId ?? '', [...(byQueue.get(r.queueId ?? '') ?? []), r]);
-  const byAgent = new Map<string, MeasureRow[]>();
-  for (const r of all) if (r.assignedToId) byAgent.set(r.assignedToId, [...(byAgent.get(r.assignedToId) ?? []), r]);
+  const group = (key: (r: MeasureRow) => string | null) => {
+    const m = new Map<string, MeasureRow[]>();
+    for (const r of all) {
+      const k = key(r);
+      if (k === null) continue;
+      const list = m.get(k);
+      if (list) list.push(r); else m.set(k, [r]);
+    }
+    return m;
+  };
+  const byQueue = group((r) => r.queueId ?? '');
+  const byAgent = group((r) => r.assignedToId);
   const name = new Map(users.map((u) => [u.id, u.fullName]));
   const trendMap = new Map<string, { opened: number; resolved: number }>();
   for (let i = Math.min(days, 90) - 1; i >= 0; i -= 1) trendMap.set(lagosParts(new Date(Date.now() - i * 86_400_000)).day, { opened: 0, resolved: 0 });

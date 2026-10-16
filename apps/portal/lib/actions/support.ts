@@ -284,7 +284,7 @@ export async function replyToSupportTicket(ticketId: string, body: string, then:
   const status: SupportStatus = isSupportStatus(then) && then !== 'CLOSED' ? then : 'WAITING_ON_CUSTOMER';
   const seen = opts.seenAt ? new Date(opts.seenAt) : null;
   if (seen && !Number.isNaN(seen.getTime()) && !opts.confirmNew) {
-    const since = await prisma.supportReply.count({ where: { ticketId: t.id, createdAt: { gt: seen }, kind: { in: ['CUSTOMER', 'AGENT', 'AI'] }, NOT: { authorUserId: me.id } } });
+    const since = await prisma.supportReply.count({ where: { ticketId: t.id, createdAt: { gt: seen }, kind: { in: ['CUSTOMER', 'AGENT', 'AI'] }, OR: [{ authorUserId: null }, { authorUserId: { not: me.id } }] } });
     if (since) throw new SupportError(`New message${since === 1 ? '' : 's'} arrived on this ticket after you opened it. Read ${since === 1 ? 'it' : 'them'} first, then send again.`);
   }
   const now = new Date();

@@ -51,12 +51,16 @@ logged call ────────┘   team · priority ·   ├─ Enyo read
   ticket opens a follow-up.
 * **Exactly once:** each email has an intake key (mailbox + Message-ID); a
   mailbox is read by one run at a time.
-* **Enyo answers by itself only when:** the team allows it, the question is
-  general (needs nobody's records), nothing sensitive is said (law, money
+* **Enyo answers by itself only when:** the team allows it, the sender's
+  address is proven (DMARC, or SPF and DKIM — a forged sender never gets an AI
+  reply), the question is general (needs nobody's records), nothing sensitive is said (law, money
   disputes, safety, complaints, “a person please”), the mood is not negative,
   an approved source was found, it is at least as sure as the organisation
   set (default 75%), and the customer has not already come back. Anything
-  else becomes a draft and the reasons are shown on the ticket.
+  else becomes a draft and the reasons are shown on the ticket. A reply that
+  names a link, phone number or email that is not in the organisation's own
+  details is never sent by itself. The answer is claimed before it is sent, so
+  a colleague who replied a moment earlier is never contradicted.
 * **Identity:** “verified” only when the customer is signed in, a colleague
   picked their file, or their email passed DMARC and matches their file.
   Colleagues are told to check before discussing records or money.
@@ -86,7 +90,10 @@ uses it. Answers about one customer's records are never learned.
 ## Running it
 
 * Apply `scripts/v36-support-scheduler.sql` in Supabase (after the v25
-  scheduler) so `/api/cron/support` runs every 3 minutes.
+  scheduler): `/api/cron/support` every 3 minutes (mail in, targets,
+  reminders, closing, surveys) and `/api/cron/support?step=enyo` every 2
+  minutes (Enyo reads new requests; each is held by one run, and released
+  after 10 minutes if a run is stopped).
 * `MAILBOX_ENCRYPTION_KEY` must be set to connect addresses (chat hand-overs
   and logged calls work without it).
 * Enyo's parts need `ENYO_LLM_*` and “Customer assistant” switched on in

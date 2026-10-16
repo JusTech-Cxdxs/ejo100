@@ -105,14 +105,23 @@ async function readMailbox(client: ImapFlow, box: Mailbox, deadline: number): Pr
       const chunk = await fetchChunk(client, uids.slice(i, i + 5));
       for (const f of chunk.sort((a, b) => a.uid - b.uid)) {
         if (Date.now() > deadline - 4_000) break;
+        let parsed: ParsedMail | null = null;
         try {
-          const parsed = f.source ? await simpleParser(f.source, { skipImageLinks: true, skipTextToHtml: true, skipTextLinks: true, maxHtmlLengthToParse: 1_500_000 }) : null;
-          if (parsed) {
+          parsed = f.source ? await simpleParser(f.source, { skipImageLinks: true, skipTextToHtml: true, skipTextLinks: true, maxHtmlLengthToParse: 1_500_000 }) : null;
+        } catch (err) {
+          // An email the parser cannot read is skipped for good (never retried forever).
+          logFailure('Support email could not be read', err);
+        }
+        if (parsed) {
+          try {
             const r = await takeIn(box, parsed, own, f.internalDate);
             if (r === 'ticket') out.taken += 1; else if (r === 'reply') out.replies += 1; else out.dropped += 1;
+          } catch (err) {
+            // A passing problem (database, network): stop here and try this email again next run.
+            logFailure('Support email could not be taken in', err);
+            uids.length = 0;
+            break;
           }
-        } catch (err) {
-          logFailure('Support email could not be taken in', err);
         }
         lastUid = Math.max(lastUid, f.uid);
         await prisma.supportMailbox.update({ where: { id: box.id }, data: { lastUid, ...(validity ? { uidValidity: validity } : {}) } });
@@ -148,12 +157,19 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
   const subject = (p.subject ?? '').replace(/[\r\n\t]+/g, ' ').trim().slice(0, 300) || '(no subject)';
   const intakeKey = createHash('sha256').update(`${box.id}\n${messageId ?? `${fromAddress}\n${subject}\n${p.date?.toISOString() ?? internalDate?.toISOString() ?? ''}`}`).digest('hex');
   if (await prisma.supportReply.findUnique({ where: { intakeKey }, select: { id: true } })) return 'dropped';
+  // A run stopped between opening the ticket and saving the email: finish that, never a second ticket.
+  const half = messageId ? await prisma.supportTicket.findFirst({ where: { organisationId: box.organisationId, mailboxId: box.id, sourceMessageId: messageId }, select: { id: true } }) : null;
 
   const guard = loopGuard({ headers, from: fromAddress, ownAddresses });
   if (!guard.keep) return 'dropped';
   const recent = await prisma.supportReply.count({ where: { fromAddress, createdAt: { gte: new Date(Date.now() - 3_600_000) }, ticket: { organisationId: box.organisationId } } });
   const autoReply = guard.autoReply && recent < SENDER_HOURLY_MAX;
 
+  if (half) {
+    const rawHalf = p.text?.trim() ? p.text : typeof p.html === 'string' ? htmlToText(p.html.slice(0, 1_500_000)) : '';
+    await prisma.supportReply.create({ data: { ticketId: half.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body: newText(cleanBody(rawHalf)) || '(no text)', emailMessageId: messageId, fromAddress, intakeKey } });
+    return 'ticket';
+  }
   const rawText = p.text?.trim() ? p.text : typeof p.html === 'string' ? htmlToText(p.html.slice(0, 1_500_000).replace(/<(style|script|title)\b[\s\S]*?<\/\1>/gi, '')) : '';
   const body = newText(cleanBody(rawText)) || '(no text — see the attachments or the original email)';
   const attachments: AttachmentInfo[] = (p.attachments ?? []).filter((a) => !(a.related && a.contentDisposition === 'inline')).slice(0, 20).map((a) => ({ name: (a.filename || 'attachment').slice(0, 200), size: a.size ?? 0 }));
@@ -189,6 +205,8 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
         },
       }),
     ]);
+    // Someone changed the status in between: still bring it back to the team.
+    await prisma.supportTicket.updateMany({ where: { id: ticket.id, status: { in: ['WAITING_ON_CUSTOMER', 'RESOLVED'] }, lastCustomerAt: { lt: at } }, data: { status: 'OPEN', resolvedAt: null, lastCustomerAt: at, pendingSince: null } });
     await supportEvent({ organisationId: box.organisationId, ticketId: ticket.id, action: 'support.customer_replied', metadata: { actor: 'email', number: ticket.number, reopened } });
     return 'reply';
   }
@@ -204,10 +222,10 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
     organisationId: box.organisationId, channel: 'EMAIL', queue, mailboxId: box.id, branchId: followUp?.branchId ?? null,
     customerId: customer?.id ?? null, contactName: customer?.fullName ?? from?.name?.trim() ?? fromAddress.split('@')[0] ?? 'Customer', contactEmail: fromAddress || null, contactPhone: customer?.phone ?? null,
     subject: followUp ? `Follow-up to ${followUp.number}: ${cleanSubject}` : cleanSubject,
-    summary: body.replace(/\s+/g, ' ').slice(0, 400), priority, entities, verified: Boolean(customer && senderAuthenticated(headers)), sourceMessageId: messageId, openedAt: at,
+    summary: body.replace(/\s+/g, ' ').slice(0, 400), priority, entities, verified: Boolean(customer && senderAuthenticated(headers)), authenticatedSender: senderAuthenticated(headers), sourceMessageId: messageId, openedAt: at,
+    aiPending: queue.aiMode !== 'OFF' && autoReply, handoverReason: queue.aiMode === 'OFF' ? 'queue_off' : !autoReply ? 'automated_sender' : null,
   });
   await prisma.supportReply.create({ data: { ticketId: created.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body, emailMessageId: messageId, fromAddress, attachments: attachments.length ? attachments : undefined, intakeKey, createdAt: at } });
-  await prisma.supportTicket.update({ where: { id: created.id }, data: { aiPendingAt: queue.aiMode === 'OFF' || !autoReply ? null : new Date(), ...(queue.aiMode === 'OFF' ? { handoverReason: 'queue_off' } : !autoReply ? { handoverReason: 'automated_sender' } : {}) } });
   await supportEvent({ organisationId: box.organisationId, ticketId: created.id, action: 'support.ticket_opened', metadata: { actor: 'email', number: created.number, channel: 'EMAIL', queue: queue.name, priority, ...(followUp ? { followUpOf: followUp.number } : {}), ...(customer ? { customerId: customer.id } : {}), ...(created.assignedToId ? { assignedTo: created.assignedToId } : {}) } });
 
   // ── The acknowledgement: reference, team, when to expect an answer.
@@ -221,7 +239,7 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
           ...head, queueName: queue.name, number: created.number, subject: cleanSubject, customerName: customer?.fullName ?? from?.name ?? '',
           responseUrl: responseUrl(created.token), promise: promiseLabel(created.dueFirstResponseAt), open: isOpen(new Date(), settings.hours, settings.holidays),
         });
-        const sent = await sendFromSupport({ organisationId: box.organisationId, ticketId: created.id, mailboxId: box.id, to: fromAddress, subject: subjectFor(created.number, `Re: ${cleanSubject}`), html: m.html, inReplyTo: messageId, references: refs, automatic: true });
+        const sent = await sendFromSupport({ organisationId: box.organisationId, ticketId: created.id, mailboxId: box.id, to: fromAddress, subject: subjectFor(created.number, `Re: ${cleanSubject}`), html: m.html, inReplyTo: messageId, references: refs, automatic: true, timeoutMs: 12_000 });
         await prisma.supportReply.create({ data: { ticketId: created.id, kind: 'SYSTEM', visibility: 'PUBLIC', body: `Acknowledgement sent: reference ${created.number}, answer ${promiseLabel(created.dueFirstResponseAt)}.`, emailMessageId: sent.messageId } });
       } catch (err) {
         logFailure('Support acknowledgement failed', err);

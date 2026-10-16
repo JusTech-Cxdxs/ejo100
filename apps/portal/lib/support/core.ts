@@ -346,6 +346,8 @@ export type Triage = { topic: string; priority: Priority; sentiment: 'negative' 
  */
 export function aiDecision(o: {
   mode: AiMode; triage: Triage | null; text: string; threshold: number; answerConfidence: number | null; hasSources: boolean; repeatContact: boolean; autoReplyAllowed: boolean;
+  /** The sender's address is proven (DMARC) — or not an email at all. Default true. */
+  senderVerified?: boolean;
 }): { action: 'answer' | 'draft' | 'none'; reasons: string[] } {
   if (o.mode === 'OFF') return { action: 'none', reasons: [] };
   const reasons = sensitiveReasons(o.text);
@@ -359,6 +361,7 @@ export function aiDecision(o: {
   if (o.answerConfidence === null || o.answerConfidence < o.threshold) reasons.push('low_confidence');
   if (o.repeatContact) reasons.push('repeat_contact');
   if (!o.autoReplyAllowed) reasons.push('automated_sender');
+  if (o.senderVerified === false) reasons.push('unverified_sender');
   const unique = [...new Set(reasons)];
   if (o.mode === 'AUTO' && unique.length === 0) return { action: 'answer', reasons: [] };
   return { action: o.autoReplyAllowed ? 'draft' : 'none', reasons: unique };
@@ -377,6 +380,8 @@ export const HANDOVER_REASON_LABEL: Record<string, string> = {
   low_confidence: 'Enyo was not sure enough',
   repeat_contact: 'The customer came back on this request',
   automated_sender: 'Sent by a robot or a mailing list',
+  unverified_sender: 'The sender’s email address could not be proven',
+  unknown_contacts: 'Enyo’s reply named a link, phone or email not in our details',
   triage_failed: 'Enyo could not read it',
   queue_off: 'Enyo is off for this queue',
   chat_handover: 'Handed over from a chat with Enyo',
@@ -497,4 +502,29 @@ export function recipientMailbox(headers: HeaderBag, to: string[], cc: string[],
     if (hit) return hit;
   }
   return null;
+}
+
+/**
+ * Links, email addresses and phone numbers in a reply that are NOT in the
+ * organisation's own details: an AI reply that names any is never sent by
+ * itself (an injected email could otherwise make Enyo send a stranger's link
+ * or number in the organisation's letterhead).
+ */
+export function unknownContacts(reply: string, facts: string): string[] {
+  const known = facts.toLowerCase();
+  const allDigits = facts.replace(/\D/g, '');
+  const out: string[] = [];
+  // Email addresses first (their domains are then not checked again as links).
+  const emails = [...reply.matchAll(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi)].map((m) => m[0]);
+  for (const e of emails) if (!known.includes(e.toLowerCase())) out.push(e);
+  const withoutEmails = emails.reduce((t, e) => t.split(e).join(' '), reply);
+  for (const m of withoutEmails.matchAll(/\b(?:https?:\/\/|www\.)[^\s<>()"']+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.(?:com|ng|net|org|io|co|info|biz|xyz|app|link|ly)\b(?:\/[^\s<>()"']*)?/gi)) {
+    const host = m[0].toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').split(/[/?#]/)[0]!.replace(/\.+$/, '');
+    if (!known.includes(host)) out.push(m[0]);
+  }
+  for (const m of reply.matchAll(/\+?\d[\d\s()-]{6,}\d/g)) {
+    const core = m[0].replace(/\D/g, '').replace(/^234/, '0').replace(/^0/, '');
+    if (core.length >= 7 && !allDigits.includes(core)) out.push(m[0].trim());
+  }
+  return [...new Set(out)];
 }

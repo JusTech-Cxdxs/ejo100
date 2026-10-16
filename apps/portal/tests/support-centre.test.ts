@@ -187,8 +187,11 @@ test('wiring: intake, automations and the customer side keep the rules', () => {
   assert.match(intake, /getMailboxLock\(FOLDER, \{ readOnly: true \}\)/, 'support mailboxes are read-only');
   assert.match(intake, /intakeKey/);
   const auto = read('lib/support/automations.ts');
-  assert.match(auto, /updateMany\(\{ where: \{ id, aiPendingAt: \{ not: null \} \}, data: \{ aiPendingAt: null \} \}\)/, 'Enyo claims a ticket before answering');
-  assert.match(auto, /decision\.action === 'answer' && ai && !ai\.needsPerson/);
+  assert.match(auto, /updateMany\(\{ where: \{ id: row\.id, aiPendingAt: row\.aiPendingAt \}, data: \{ aiPendingAt: new Date\(Date\.now\(\) \+ LEASE_MS\) \} \}\)/, 'Enyo leases a ticket before reading it');
+  assert.match(auto, /decision\.action === 'answer' && ai && !ai\.needsPerson && !ai\.unknownContacts\.length/);
+  // The answer is claimed (compare-and-set) BEFORE the email is sent.
+  assert.ok(auto.indexOf("where: { id: t.id, status: 'OPEN', firstResponseAt: null }") < auto.indexOf('const sent = await sendFromSupport'), 'claim before send');
+  assert.match(auto, /senderVerified: t\.channel !== 'EMAIL' \|\| t\.authenticatedSender/, 'never an AI reply to a forged sender');
   // The customer never sees internal notes or Enyo's drafts.
   const data = read('../website/lib/customer-portal/data.ts');
   assert.match(data, /where: \{ visibility: 'PUBLIC', kind: \{ in: \['CUSTOMER', 'AGENT', 'AI'\] \} \}/);
@@ -201,4 +204,20 @@ test('wiring: intake, automations and the customer side keep the rules', () => {
   // Mailbox passwords are bound to the organisation and address.
   assert.match(read('lib/actions/support-admin.ts'), /encryptSecret\(s\.password, key, secretAad\(supportSecretOwner\(organisationId\), s\.address\)\)/);
   assert.match(read('lib/support/server.ts'), /userId: supportSecretOwner\(m\.organisationId\)/);
+});
+
+import { unknownContacts } from '../lib/support/core';
+test('an AI reply naming a link, phone or email not in our details is never sent by itself', () => {
+  const facts = 'Contact: phones 0803 555 0101; email care@kcg.ng; website https://kcg.ng';
+  assert.deepEqual(unknownContacts('Call us on +234 803 555 0101 or write to care@kcg.ng, or see kcg.ng/support.', facts), []);
+  assert.deepEqual(unknownContacts('Pay at evil-pay.com or call 0901 234 5678, email x@evil.io', facts).sort(), ['0901 234 5678', 'evil-pay.com', 'x@evil.io'].sort());
+  assert.deepEqual(unknownContacts('We open at 8.30 am on weekdays.', facts), []);
+});
+
+test('a sender whose address is not proven never gets an AI answer', () => {
+  const base = { mode: 'AUTO' as const, triage: triage(), text: 'What time do you open?', threshold: 0.75, answerConfidence: 0.95, hasSources: true, repeatContact: false, autoReplyAllowed: true };
+  assert.equal(aiDecision({ ...base, senderVerified: true }).action, 'answer');
+  const d = aiDecision({ ...base, senderVerified: false });
+  assert.equal(d.action, 'draft');
+  assert.ok(d.reasons.includes('unverified_sender'));
 });

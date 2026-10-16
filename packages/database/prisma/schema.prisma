@@ -3573,6 +3573,9 @@ model SupportTicket {
   // The sender proved to be the customer (signed in, or the email passed DMARC
   // and matches the customer's address). Only then may records be discussed.
   verified         Boolean   @default(false)
+  // The email's sender domain proved the address (DMARC, or SPF and DKIM).
+  // Enyo answers an email by itself only then (a forged sender never gets an AI reply).
+  authenticatedSender Boolean @default(false)
   // Unguessable; the customer's "solved / talk to a person / rate us" page.
   token            String?   @unique
   // Service targets, worked out in business hours when the ticket opens.

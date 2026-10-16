@@ -26,27 +26,31 @@ import { aiReply, letterheadFor, newToken, nextAssignee, queueById, responseUrl,
 
 export type AutomationResult = { normalised: number; read: number; aiAnswered: number; drafted: number; warned: number; breached: number; nudged: number; resolved: number; closed: number; surveyed: number; assumed: number };
 
-export async function runSupportAutomations(budgetMs: number): Promise<AutomationResult> {
+/** `only`: 'enyo' runs Enyo's reading alone (it needs most of a run); 'rest' everything else. */
+export async function runSupportAutomations(budgetMs: number, only: 'enyo' | 'rest' | 'all' = 'all'): Promise<AutomationResult> {
   const deadline = Date.now() + budgetMs;
   const r: AutomationResult = { normalised: 0, read: 0, aiAnswered: 0, drafted: 0, warned: 0, breached: 0, nudged: 0, resolved: 0, closed: 0, surveyed: 0, assumed: 0 };
   const step = async (name: string, fn: () => Promise<void>) => {
     if (Date.now() > deadline - 3_000) return;
     try { await fn(); } catch (err) { logFailure(`Support automation failed: ${name}`, err); }
   };
-  await step('normalise', async () => { r.normalised = await normaliseHandovers(); });
-  await step('targets', async () => { const t = await checkTargets(); r.warned = t.warned; r.breached = t.breached; });
-  await step('waiting', async () => { const w = await followUpWaiting(deadline); r.nudged = w.nudged; r.resolved = w.resolved; r.assumed = w.assumed; });
-  await step('close', async () => { r.closed = await closeResolved(); });
-  await step('survey', async () => { r.surveyed = await sendSurveys(deadline); });
-  // Enyo last: it is the slowest step and uses whatever time is left.
-  await step('enyo', async () => { const a = await enyoReads(deadline); r.read = a.read; r.aiAnswered = a.answered; r.drafted = a.drafted; });
+  if (only !== 'enyo') {
+    await step('normalise', async () => { r.normalised = await normaliseHandovers(); });
+    await step('targets', async () => { const t = await checkTargets(); r.warned = t.warned; r.breached = t.breached; });
+    await step('waiting', async () => { const w = await followUpWaiting(deadline); r.nudged = w.nudged; r.resolved = w.resolved; r.assumed = w.assumed; });
+    await step('close', async () => { r.closed = await closeResolved(); });
+    await step('survey', async () => { r.surveyed = await sendSurveys(deadline); });
+  }
+  // Enyo: the slowest step; it reads only as many tickets as fit in the time left.
+  if (only !== 'rest') await step('enyo', async () => { const a = await enyoReads(deadline); r.read = a.read; r.aiAnswered = a.answered; r.drafted = a.drafted; });
   return r;
 }
 
 // 1 ───────────────────────────────────────────────────────── chat hand-overs
 
 async function normaliseHandovers(): Promise<number> {
-  const rows = await prisma.supportTicket.findMany({ where: { queueId: null }, orderBy: { createdAt: 'asc' }, take: 50, select: { id: true, organisationId: true, createdAt: true, subject: true, summary: true, assignedToId: true, token: true, priority: true, status: true } });
+  // Only hand-overs opened since v36 (they carry the reason); older tickets keep their history as it was.
+  const rows = await prisma.supportTicket.findMany({ where: { queueId: null, handoverReason: 'chat_handover' }, orderBy: { createdAt: 'asc' }, take: 50, select: { id: true, organisationId: true, createdAt: true, subject: true, summary: true, assignedToId: true, token: true, priority: true, status: true } });
   let n = 0;
   for (const t of rows) {
     const queue = await queueById(t.organisationId, null);
@@ -66,22 +70,28 @@ async function normaliseHandovers(): Promise<number> {
 // 2 ───────────────────────────────────────────────────────── Enyo reads
 
 const ENYO_PER_RUN = 6;
+/** How long a run holds a ticket while Enyo reads it; a run that is stopped lets it go after this. */
+const LEASE_MS = 10 * 60_000;
+/** Worst case for one ticket: triage (12 s) + reply (20 s) + sending (15 s), plus a margin. */
+const PER_TICKET_MS = 50_000;
 
 async function enyoReads(deadline: number): Promise<{ read: number; answered: number; drafted: number }> {
   const out = { read: 0, answered: 0, drafted: 0 };
-  const rows = await prisma.supportTicket.findMany({ where: { aiPendingAt: { not: null } }, orderBy: { aiPendingAt: 'asc' }, take: ENYO_PER_RUN, select: { id: true } });
-  for (const { id } of rows) {
-    if (Date.now() > deadline - 30_000) break;
-    // Claim it so two runs never answer twice.
-    const claimed = await prisma.supportTicket.updateMany({ where: { id, aiPendingAt: { not: null } }, data: { aiPendingAt: null } });
+  const left = () => deadline - Date.now();
+  const rows = await prisma.supportTicket.findMany({ where: { aiPendingAt: { lte: new Date() } }, orderBy: { aiPendingAt: 'asc' }, take: ENYO_PER_RUN, select: { id: true, aiPendingAt: true } });
+  for (const row of rows) {
+    if (left() < PER_TICKET_MS) break;
+    // Lease it: two runs never read the same ticket; a run that is stopped lets it go after the lease.
+    const claimed = await prisma.supportTicket.updateMany({ where: { id: row.id, aiPendingAt: row.aiPendingAt }, data: { aiPendingAt: new Date(Date.now() + LEASE_MS) } });
     if (!claimed.count) continue;
-    const t = await prisma.supportTicket.findUnique({ where: { id }, include: { replies: { where: { fromCustomer: true }, orderBy: { createdAt: 'desc' }, take: 3 } } });
+    const t = await prisma.supportTicket.findUnique({ where: { id: row.id }, include: { replies: { where: { fromCustomer: true }, orderBy: { createdAt: 'desc' }, take: 3 } } });
     if (!t) continue;
     out.read += 1;
     const queue = await queueById(t.organisationId, t.queueId);
     const settings = await supportSettings(t.organisationId);
-    const text = `${t.subject}\n\n${t.replies[0]?.body ?? t.summary}`;
-    const triage = await triageEmail(t.organisationId, { queueName: queue.name, subject: t.subject, body: t.replies[0]?.body ?? t.summary });
+    const latest = t.replies[0]?.body ?? t.summary;
+    const text = `${t.subject}\n\n${latest}`;
+    const triage = await triageEmail(t.organisationId, { queueName: queue.name, subject: t.subject, body: latest, timeoutMs: 12_000 });
     const priority = priorityFromText(text, triage?.priority ?? t.priority);
     const due = !t.firstResponseAt && priority !== t.priority ? dueDates(t.createdAt, priority, queue.targets, settings.hours, settings.holidays) : null;
     await prisma.supportTicket.update({
@@ -92,39 +102,46 @@ async function enyoReads(deadline: number): Promise<{ read: number; answered: nu
       },
     });
     const repeatContact = t.reopenCount > 0 || t.replies.length > 1;
-    const pre = aiDecision({ mode: queue.aiMode, triage, text, threshold: settings.aiThreshold, answerConfidence: 1, hasSources: true, repeatContact, autoReplyAllowed: true });
+    const rules = { mode: queue.aiMode, triage, text, threshold: settings.aiThreshold, repeatContact, autoReplyAllowed: true, senderVerified: t.channel !== 'EMAIL' || t.authenticatedSender };
+    const pre = aiDecision({ ...rules, answerConfidence: 1, hasSources: true });
     const mayAnswer = queue.aiMode === 'AUTO' && pre.action === 'answer';
-    const ai = queue.aiMode === 'OFF' ? null : await aiReply(t.organisationId, { customerName: t.contactName, subject: t.subject, body: t.replies[0]?.body ?? t.summary, topic: triage?.topic ?? null, mode: mayAnswer ? 'answer' : 'draft' });
-    const decision = aiDecision({ mode: queue.aiMode, triage, text, threshold: settings.aiThreshold, answerConfidence: ai?.confidence ?? null, hasSources: ai?.hasSources ?? false, repeatContact, autoReplyAllowed: true });
-    const reasons = ai?.needsPerson ? [...new Set([...decision.reasons, 'low_confidence'])] : decision.reasons;
+    const ai = queue.aiMode === 'OFF' ? null : await aiReply(t.organisationId, { customerName: t.contactName, subject: t.subject, body: latest, topic: triage?.topic ?? null, mode: mayAnswer ? 'answer' : 'draft', timeoutMs: 20_000 });
+    const decision = aiDecision({ ...rules, answerConfidence: ai?.confidence ?? null, hasSources: ai?.hasSources ?? false });
+    const reasons = [...decision.reasons, ...(ai?.needsPerson ? ['low_confidence'] : []), ...(ai?.unknownContacts.length ? ['unknown_contacts'] : [])];
 
-    if (decision.action === 'answer' && ai && !ai.needsPerson && t.contactEmail && t.status === 'OPEN') {
-      try {
-        const head = await letterheadFor(t.organisationId, t.branchId);
-        const assistant = (await getEnyoSettings(t.organisationId)).displayName || PLATFORM.assistant;
-        const m = renderSupportReply({ ...head, queueName: queue.name, number: t.number, subject: t.subject, customerName: t.contactName, responseUrl: responseUrl(t.token), body: ai.reply, by: 'ai', assistantName: assistant, signature: null, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER.WAITING_ON_CUSTOMER });
-        const sent = await sendFromSupport({ organisationId: t.organisationId, ticketId: t.id, mailboxId: t.mailboxId, to: t.contactEmail, subject: subjectFor(t.number, `Re: ${t.subject}`), html: m.html, inReplyTo: t.replies[0]?.emailMessageId ?? t.sourceMessageId, automatic: true });
-        const now = new Date();
-        const moved = await prisma.supportTicket.updateMany({ where: { id: t.id, status: 'OPEN' }, data: { status: 'WAITING_ON_CUSTOMER', firstResponseAt: t.firstResponseAt ?? now, lastAgentAt: now, pendingSince: now, aiOutcome: 'ANSWERED', aiAnsweredAt: now, handoverReason: null } });
-        if (moved.count) {
-          await prisma.supportReply.create({ data: { ticketId: t.id, kind: 'AI', visibility: 'PUBLIC', aiDrafted: true, body: ai.reply, emailMessageId: sent.messageId } });
+    let answered = false;
+    if (decision.action === 'answer' && ai && !ai.needsPerson && !ai.unknownContacts.length && t.contactEmail && left() > 18_000) {
+      // Claim the answer BEFORE sending: if a colleague replied meanwhile, Enyo stays quiet.
+      const now = new Date();
+      const won = await prisma.supportTicket.updateMany({ where: { id: t.id, status: 'OPEN', firstResponseAt: null }, data: { status: 'WAITING_ON_CUSTOMER', firstResponseAt: now, lastAgentAt: now, pendingSince: now, aiOutcome: 'ANSWERED', aiAnsweredAt: now, handoverReason: null } });
+      if (won.count) {
+        const reply = await prisma.supportReply.create({ data: { ticketId: t.id, kind: 'AI', visibility: 'PUBLIC', aiDrafted: true, body: ai.reply }, select: { id: true } });
+        try {
+          const head = await letterheadFor(t.organisationId, t.branchId);
+          const assistant = (await getEnyoSettings(t.organisationId)).displayName || PLATFORM.assistant;
+          const m = renderSupportReply({ ...head, queueName: queue.name, number: t.number, subject: t.subject, customerName: t.contactName, responseUrl: responseUrl(t.token), body: ai.reply, by: 'ai', assistantName: assistant, signature: null, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER.WAITING_ON_CUSTOMER });
+          const sent = await sendFromSupport({ organisationId: t.organisationId, ticketId: t.id, mailboxId: t.mailboxId, to: t.contactEmail, subject: subjectFor(t.number, `Re: ${t.subject}`), html: m.html, inReplyTo: t.replies[0]?.emailMessageId ?? t.sourceMessageId, automatic: true, timeoutMs: 15_000 });
+          await prisma.supportReply.update({ where: { id: reply.id }, data: { emailMessageId: sent.messageId } });
           await supportEvent({ organisationId: t.organisationId, ticketId: t.id, action: 'support.ai_answered', metadata: { number: t.number, confidence: Math.round(ai.confidence * 100) / 100, used: ai.used.length, model: ai.model } });
           out.answered += 1;
-          continue;
+          answered = true;
+        } catch (err) {
+          // Not sent: undo the claim and leave it to a person, with Enyo's text as a draft.
+          logFailure('Support AI answer could not be sent', err);
+          await prisma.supportReply.update({ where: { id: reply.id }, data: { kind: 'AI_DRAFT', visibility: 'INTERNAL' } }).catch(() => undefined);
+          await prisma.supportTicket.updateMany({ where: { id: t.id, aiOutcome: 'ANSWERED', aiAnsweredAt: now }, data: { status: 'OPEN', firstResponseAt: null, lastAgentAt: null, pendingSince: null, aiOutcome: null, aiAnsweredAt: null } });
+          reasons.push('low_confidence');
+          out.drafted += 1;
         }
-      } catch (err) {
-        logFailure('Support AI answer could not be sent', err);
-        reasons.push('low_confidence');
       }
-    }
-    if (ai && decision.action !== 'none') {
+    } else if (ai && decision.action !== 'none') {
       await prisma.supportReply.create({ data: { ticketId: t.id, kind: 'AI_DRAFT', visibility: 'INTERNAL', aiDrafted: true, body: ai.reply } });
       out.drafted += 1;
     }
-    const why = [...new Set([...(t.handoverReason ? t.handoverReason.split(',') : []), ...reasons, ...(triage ? [] : ['triage_failed'])])].filter(Boolean);
-    await prisma.supportTicket.update({ where: { id: t.id }, data: { handoverReason: why.join(',') || null } });
-    // Anything sensitive in an urgent queue is worth a ping now, not at the target.
-    if (sensitiveReasons(text).includes('safety')) await supportEvent({ organisationId: t.organisationId, ticketId: t.id, action: 'support.urgent', metadata: { number: t.number, reasons: why } });
+    const why = answered ? [] : [...new Set([...(t.handoverReason ? t.handoverReason.split(',') : []), ...reasons, ...(triage ? [] : ['triage_failed'])])].filter(Boolean);
+    // Done: release the lease (and record why a person is needed).
+    await prisma.supportTicket.update({ where: { id: t.id }, data: { aiPendingAt: null, ...(answered ? {} : { handoverReason: why.join(',') || null }) } });
+    if (!answered && sensitiveReasons(text).includes('safety')) await supportEvent({ organisationId: t.organisationId, ticketId: t.id, action: 'support.urgent', metadata: { number: t.number, reasons: why } });
   }
   return out;
 }
@@ -163,7 +180,8 @@ async function followUpWaiting(deadline: number): Promise<{ nudged: number; reso
   const assumed = await prisma.supportTicket.updateMany({ where: { aiOutcome: 'ANSWERED', aiAnsweredAt: { lte: new Date(now - 72 * 3_600_000) } }, data: { aiOutcome: 'ASSUMED' } });
   out.assumed = assumed.count;
   const waiting = await prisma.supportTicket.findMany({
-    where: { status: 'WAITING_ON_CUSTOMER', pendingSince: { not: null } },
+    // Reminded twice already: only interesting again once it may be resolved (at least 2 days).
+    where: { status: 'WAITING_ON_CUSTOMER', pendingSince: { not: null }, OR: [{ nudgeCount: { lt: 2 } }, { pendingSince: { lte: new Date(now - 2 * 86_400_000) } }] },
     orderBy: { pendingSince: 'asc' },
     take: 60,
     select: { id: true, organisationId: true, number: true, subject: true, contactName: true, contactEmail: true, token: true, pendingSince: true, nudgeCount: true, queueId: true, branchId: true, mailboxId: true, aiOutcome: true, sourceMessageId: true },
@@ -203,7 +221,7 @@ async function followUpWaiting(deadline: number): Promise<{ nudged: number; reso
 // 5 ───────────────────────────────────────────────────────── close and survey
 
 async function closeResolved(): Promise<number> {
-  const rows = await prisma.supportTicket.findMany({ where: { status: 'RESOLVED', resolvedAt: { not: null } }, take: 200, select: { id: true, organisationId: true, resolvedAt: true } });
+  const rows = await prisma.supportTicket.findMany({ where: { status: 'RESOLVED', resolvedAt: { lte: new Date(Date.now() - 86_400_000) } }, orderBy: { resolvedAt: 'asc' }, take: 200, select: { id: true, organisationId: true, resolvedAt: true } });
   let n = 0;
   const cache = new Map<string, number>();
   for (const t of rows) {
@@ -220,7 +238,7 @@ const SURVEY_AFTER_H = 4;
 
 async function sendSurveys(deadline: number): Promise<number> {
   const rows = await prisma.supportTicket.findMany({
-    where: { status: { in: ['RESOLVED', 'CLOSED'] }, csatRequestedAt: null, csatScore: null, contactEmail: { not: null }, resolvedAt: { lte: new Date(Date.now() - SURVEY_AFTER_H * 3_600_000), gte: new Date(Date.now() - 14 * 86_400_000) } },
+    where: { status: { in: ['RESOLVED', 'CLOSED'] }, csatRequestedAt: null, csatScore: null, contactEmail: { not: null }, AND: [{ OR: [{ handoverReason: null }, { NOT: { handoverReason: { contains: 'automated_sender' } } }] }], resolvedAt: { lte: new Date(Date.now() - SURVEY_AFTER_H * 3_600_000), gte: new Date(Date.now() - 14 * 86_400_000) } },
     orderBy: { resolvedAt: 'asc' },
     take: 25,
     select: { id: true, organisationId: true, number: true, subject: true, contactName: true, contactEmail: true, token: true, queueId: true, branchId: true, mailboxId: true, sourceMessageId: true },

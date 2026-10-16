@@ -110,7 +110,7 @@ export const supportTools: StaffTool[] = [
       const name = typeof args.branch === 'string' ? args.branch.trim().slice(0, 80) : '';
       const reach = await reachWhere('analytics.inventory.view');
       const branch = name
-        ? await prisma.branch.findFirst({ where: { name: { contains: name, mode: 'insensitive' }, ...(reach.branchId ? { id: reach.branchId as never } : {}) }, select: { id: true, name: true } })
+        ? await prisma.branch.findFirst({ where: { name: { contains: name, mode: 'insensitive' }, ...(p.organisationId ? { businessUnit: { organisationId: p.organisationId } } : {}), ...(reach.branchId ? { id: reach.branchId as never } : {}) }, select: { id: true, name: true } })
         : p.branchId ? await prisma.branch.findUnique({ where: { id: p.branchId }, select: { id: true, name: true } }) : null;
       if (!branch) return nothing(name ? 'No branch by that name is within this person\'s reach. Ask which branch.' : 'This person has no home branch: ask which branch to look at.');
       const a = await getInventoryAnalytics(branch.id);

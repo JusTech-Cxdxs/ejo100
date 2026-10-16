@@ -11,21 +11,29 @@ export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 /**
- * The Support centre's run (every 2–5 minutes, Supabase scheduler; protected
- * by CRON_SECRET): new mail to the support addresses, then the automations
- * (Enyo's reading and answers, targets, reminders, closing, surveys) — each
- * within what is left of the time limit. Safe to call more often: every step
- * is idempotent and a mailbox is read by one run at a time.
+ * The Support centre's scheduled runs (Supabase scheduler, CRON_SECRET):
+ *  - default: new mail to the support addresses, then targets, reminders,
+ *    resolving, closing and surveys;
+ *  - `?step=enyo`: Enyo reads new requests (triage, then an answer or a
+ *    draft) with the whole run to itself, as many as fit.
+ * Safe to call more often: every step is idempotent, a mailbox is read by one
+ * run at a time, and a ticket is held by one run while Enyo reads it.
  */
 export async function GET(request: NextRequest) {
   if (!isCronRequest(request.headers.get('authorization'))) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  setAuditActor(null, 'cron:support');
+  const enyo = request.nextUrl.searchParams.get('step') === 'enyo';
+  setAuditActor(null, enyo ? 'cron:support-enyo' : 'cron:support');
   const started = Date.now();
+  if (enyo) {
+    const auto = await runSupportAutomations(55_000, 'enyo').catch((err) => { logFailure('Support Enyo run failed', err); return null; });
+    await recordJobRun('support-enyo', { ...(auto ? { read: auto.read, aiAnswered: auto.aiAnswered, drafted: auto.drafted } : { failed: true }) });
+    return NextResponse.json({ ok: true, automations: auto });
+  }
   const intake = mailKey()
-    ? await pollSupportMailboxes(20_000).catch((err) => { logFailure('Support intake failed', err); return null; })
+    ? await pollSupportMailboxes(25_000).catch((err) => { logFailure('Support intake failed', err); return null; })
     : null;
-  const left = 52_000 - (Date.now() - started);
-  const auto = left > 5_000 ? await runSupportAutomations(left).catch((err) => { logFailure('Support automations failed', err); return null; }) : null;
-  await recordJobRun('support', { ...(intake ?? {}), ...(auto ?? {}) });
+  const left = 54_000 - (Date.now() - started);
+  const auto = left > 5_000 ? await runSupportAutomations(left, 'rest').catch((err) => { logFailure('Support automations failed', err); return null; }) : null;
+  await recordJobRun('support', { ...(intake ?? {}), ...(auto ? { normalised: auto.normalised, warned: auto.warned, breached: auto.breached, nudged: auto.nudged, resolved: auto.resolved, closed: auto.closed, surveyed: auto.surveyed, assumed: auto.assumed } : {}) });
   return NextResponse.json({ ok: true, intake, automations: auto });
 }

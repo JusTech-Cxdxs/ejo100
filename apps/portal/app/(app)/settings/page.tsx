@@ -59,7 +59,7 @@ export default async function SettingsPage() {
   await guardPage('admin.settings.manage', '/settings');
   const [{ jobs, emails7d }, p] = await Promise.all([jobStatuses(), getPrincipal()]);
   const groups = GROUPS.map((g) => ({ ...g, areas: g.areas.filter((a) => decide(p, a.needs).allowed) })).filter((g) => g.areas.length);
-  const late = jobs.filter((j) => !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' || j.key === 'support' ? 3_600_000 : 3 * 86_400_000));
+  const late = jobs.filter((j) => !j.lastRun || Date.now() - j.lastRun.getTime() > (j.key === 'appointment-reminders' || j.key.startsWith('support') ? 3_600_000 : 3 * 86_400_000));
 
   return (
     <div className="w-full max-w-6xl p-4 sm:p-8">

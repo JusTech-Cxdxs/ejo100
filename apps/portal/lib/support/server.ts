@@ -22,7 +22,7 @@ import { PLATFORM } from '@/lib/brand';
 import { findLearned } from '@/lib/enyo/learned';
 import { EXAMPLE_MIN } from '@/lib/enyo/learned-core';
 import {
-  asAiMode, autoReplyHeaders, DEFAULT_HOURS, dueDates, newMessageId, pickAssignee, readHours, readTargets, taggedSubject,
+  asAiMode, autoReplyHeaders, DEFAULT_HOURS, dueDates, newMessageId, pickAssignee, readHours, readTargets, taggedSubject, unknownContacts,
   type AiMode, type Hours, type Priority, type Triage,
 } from './core';
 import { answerMessages, hoursSentence, parseAnswer, parseTriage, summaryMessages, triageMessages, type AiAnswer, type Knowledge } from './ai-core';
@@ -97,7 +97,9 @@ export function responseUrl(token: string | null | undefined): string | null {
 export type NewTicket = {
   organisationId: string; channel: 'EMAIL' | 'STAFF' | 'CUSTOMER_PORTAL' | 'WEBSITE'; queue: QueueRow; mailboxId?: string | null; branchId?: string | null;
   customerId?: string | null; contactName: string; contactEmail?: string | null; contactPhone?: string | null; subject: string; summary: string;
-  priority: Priority; triage?: Triage | null; entities?: unknown; verified?: boolean; sourceMessageId?: string | null; openedAt?: Date;
+  priority: Priority; triage?: Triage | null; entities?: unknown; verified?: boolean; authenticatedSender?: boolean; sourceMessageId?: string | null; openedAt?: Date;
+  /** Enyo should read it on the next run (email tickets). */
+  aiPending?: boolean; handoverReason?: string | null;
 };
 
 /** Creates the ticket with its targets and owner (load-balanced in the queue). */
@@ -113,7 +115,8 @@ export async function openTicket(t: NewTicket, tx: Prisma.TransactionClient = pr
       customerId: t.customerId ?? null, contactName: t.contactName.slice(0, 120) || 'Customer', contactEmail: t.contactEmail ?? null, contactPhone: t.contactPhone ?? null,
       subject: t.subject.slice(0, 200) || 'Your request', summary: t.summary.slice(0, 1200), queueId: t.queue.id, mailboxId: t.mailboxId ?? null,
       priority: t.priority, topic: t.triage?.topic ?? null, sentiment: t.triage?.sentiment ?? null, language: t.triage?.language ?? null,
-      entities: (t.entities ?? undefined) as Prisma.InputJsonValue | undefined, verified: Boolean(t.verified), token,
+      entities: (t.entities ?? undefined) as Prisma.InputJsonValue | undefined, verified: Boolean(t.verified), authenticatedSender: Boolean(t.authenticatedSender), token,
+      aiPendingAt: t.aiPending ? new Date() : null, handoverReason: t.handoverReason ?? null,
       dueFirstResponseAt: due.first, dueResolutionAt: due.resolve, lastCustomerAt: opened, assignedToId: assignee, sourceMessageId: t.sourceMessageId ?? null,
       createdAt: opened,
     },
@@ -137,11 +140,11 @@ export async function nextAssignee(organisationId: string, queueId: string): Pro
 // ─────────────────────────────────────────────────────────── Enyo
 
 /** Enyo's reading of an email (fast model). Null when Enyo is off or the model did not answer usefully. */
-export async function triageEmail(organisationId: string, o: { queueName: string; subject: string; body: string }): Promise<Triage | null> {
+export async function triageEmail(organisationId: string, o: { queueName: string; subject: string; body: string; timeoutMs?: number }): Promise<Triage | null> {
   const ready = await enyoReady(organisationId, 'customerAssistant');
   if (!ready.ready) return null;
   try {
-    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, 15_000) }, { model: ready.config.fastModel, messages: triageMessages(o, asData), temperature: 0, maxTokens: 300 });
+    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, o.timeoutMs ?? 15_000) }, { model: ready.config.fastModel, messages: triageMessages(o, asData), temperature: 0, maxTokens: 300 });
     return parseTriage(res.content);
   } catch (err) {
     logFailure('Support triage failed', err);
@@ -173,13 +176,13 @@ export async function supportKnowledge(organisationId: string, question: string)
 const FACT_TOPICS = new Set(['opening_hours', 'location_contact']);
 
 /** Enyo's reply (to send by itself, or as a draft for a colleague). */
-export async function aiReply(organisationId: string, o: { customerName: string; subject: string; body: string; topic: string | null; mode: 'answer' | 'draft' }): Promise<(AiAnswer & { hasSources: boolean; model: string }) | null> {
+export async function aiReply(organisationId: string, o: { customerName: string; subject: string; body: string; topic: string | null; mode: 'answer' | 'draft'; timeoutMs?: number }): Promise<(AiAnswer & { hasSources: boolean; model: string; unknownContacts: string[] }) | null> {
   const ready = await enyoReady(organisationId, 'customerAssistant');
   if (!ready.ready) return null;
   const { knowledge, bestScore } = await supportKnowledge(organisationId, `${o.subject}\n${o.body}`.slice(0, 2000));
   const hasSources = knowledge.answers.length > 0 || FACT_TOPICS.has(o.topic ?? '');
   try {
-    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, 25_000) }, {
+    const res = await complete({ ...ready.config, timeoutMs: Math.min(ready.config.timeoutMs, o.timeoutMs ?? 25_000) }, {
       model: ready.config.model,
       messages: answerMessages({ assistant: ready.settings.displayName || PLATFORM.assistant, customerName: o.customerName, subject: o.subject, body: o.body, knowledge, mode: o.mode }, asData),
       temperature: 0.2,
@@ -189,7 +192,9 @@ export async function aiReply(organisationId: string, o: { customerName: string;
     if (!a) return null;
     // Sure of itself only as far as the sources go: an approved answer that barely matches caps the confidence.
     const confidence = knowledge.answers.length ? Math.min(a.confidence, 0.5 + bestScore / 2) : FACT_TOPICS.has(o.topic ?? '') ? a.confidence : Math.min(a.confidence, 0.5);
-    return { ...a, confidence: a.needsPerson ? 0 : confidence, hasSources, model: res.model };
+    // Links, phones and emails must come from our own details or approved answers.
+    const strangers = unknownContacts(a.reply, JSON.stringify(knowledge));
+    return { ...a, confidence: a.needsPerson || strangers.length ? 0 : confidence, hasSources, model: res.model, unknownContacts: strangers };
   } catch (err) {
     logFailure('Support AI reply failed', err);
     return null;
@@ -223,7 +228,7 @@ export function supportConnection(m: { organisationId: string; id: string; addre
   return connectionSettings(stored);
 }
 
-export type Outgoing = { organisationId: string; ticketId: string; mailboxId: string | null; to: string; subject: string; html: string; inReplyTo?: string | null; references?: string[]; automatic: boolean };
+export type Outgoing = { organisationId: string; ticketId: string; mailboxId: string | null; to: string; subject: string; html: string; inReplyTo?: string | null; references?: string[]; automatic: boolean; timeoutMs?: number };
 
 /**
  * Sends from the ticket's support mailbox (so replies come back to it), or —
@@ -249,7 +254,7 @@ export async function sendFromSupport(o: Outgoing): Promise<{ messageId: string;
         text: htmlToText(o.html),
         messageId,
         headers,
-      }), 25_000, 'smtp');
+      }), o.timeoutMs ?? 25_000, 'smtp');
     } finally {
       transport.close();
     }

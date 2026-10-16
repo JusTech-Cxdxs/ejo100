@@ -45,7 +45,8 @@ export async function respondToRequest(_prev: ResponseState, f: FormData): Promi
     const path = `/support/request/${token}`;
     if (what === 'solved') {
       if (t.status === 'RESOLVED' || t.status === 'CLOSED') return { ok: true, message: 'Thank you — this request is already marked as solved.' };
-      await prisma.supportTicket.updateMany({ where: { id: t.id, status: t.status }, data: { status: 'RESOLVED', resolvedAt: new Date(), pendingSince: null, ...(t.aiOutcome === 'ANSWERED' || t.aiOutcome === 'ASSUMED' ? { aiOutcome: 'CONFIRMED' } : {}) } });
+      const done = await prisma.supportTicket.updateMany({ where: { id: t.id, status: t.status }, data: { status: 'RESOLVED', resolvedAt: new Date(), pendingSince: null, ...(t.aiOutcome === 'ANSWERED' || t.aiOutcome === 'ASSUMED' ? { aiOutcome: 'CONFIRMED' } : {}) } });
+      if (!done.count) return { ok: false, message: 'This request changed just now. Please refresh the page and try again.' };
       await prisma.supportReply.create({ data: { ticketId: t.id, kind: 'SYSTEM', visibility: 'PUBLIC', body: 'The customer said this solved it.' } });
       await audit(t.organisationId, t.id, 'support.customer_confirmed', { number: t.number });
       revalidatePath(path);
@@ -54,7 +55,7 @@ export async function respondToRequest(_prev: ResponseState, f: FormData): Promi
     if (what === 'person') {
       if (t.status === 'CLOSED') return { ok: false, message: 'This request is closed. Please reply to the email or write to us again, and a colleague will pick it up as a new request.' };
       const reasons = [...new Set([...(t.handoverReason ? t.handoverReason.split(',') : []), 'customer_asked'])].join(',');
-      await prisma.supportTicket.updateMany({
+      const done = await prisma.supportTicket.updateMany({
         where: { id: t.id, status: t.status },
         data: {
           status: t.status === 'ON_HOLD' ? 'ON_HOLD' : 'OPEN', resolvedAt: null, pendingSince: null, lastCustomerAt: new Date(), handoverReason: reasons,
@@ -62,6 +63,7 @@ export async function respondToRequest(_prev: ResponseState, f: FormData): Promi
           ...(t.aiOutcome ? { aiOutcome: 'ESCALATED' } : {}),
         },
       });
+      if (!done.count) return { ok: false, message: 'This request changed just now. Please refresh the page and try again.' };
       await prisma.supportReply.create({ data: { ticketId: t.id, kind: 'SYSTEM', visibility: 'PUBLIC', body: 'The customer asked to talk to a person.' } });
       await audit(t.organisationId, t.id, 'support.customer_asked_person', { number: t.number });
       revalidatePath(path);
