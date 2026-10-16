@@ -216,26 +216,46 @@ export async function testEnyoConnection(): Promise<EnyoConnectionResult> {
 
 // ── What Enyo has learned (administrators) ────────────────────────────
 
-export type LearnedAnswerRow = { id: string; channel: string; question: string; answer: string; source: string; uses: number; createdAt: Date; lastUsedAt: Date | null };
+export type LearnedAnswerRow = { id: string; channel: string; question: string; answer: string; source: string; status: string; uses: number; createdAt: Date; lastUsedAt: Date | null; approvedAt: Date | null };
 
-/** The organisation's learned answers, newest first (the Enyo learning page). */
+/** The person's own organisation (never "all organisations", even for a super administrator). */
+async function learnedOrg(): Promise<string> {
+  const organisationId = await myOrganisationId();
+  if (!organisationId) throw new EnyoError('This account is not placed in an organisation yet.');
+  return organisationId;
+}
+
+/** The organisation's learned answers: waiting for approval first, then newest (the Enyo learning page). */
 export async function listLearnedAnswers(): Promise<LearnedAnswerRow[]> {
   await authorize('enyo.manage', undefined, 'listLearnedAnswers', 'Only administrators manage Enyo.');
+  const organisationId = await myOrganisationId();
+  if (!organisationId) return [];
   return prisma.enyoLearnedAnswer.findMany({
-    where: { ...(await myEnyoOrg()) },
-    orderBy: { createdAt: 'desc' },
+    where: { organisationId },
+    orderBy: [{ status: 'desc' }, { createdAt: 'desc' }],
     take: 100,
-    select: { id: true, channel: true, question: true, answer: true, source: true, uses: true, createdAt: true, lastUsedAt: true },
+    select: { id: true, channel: true, question: true, answer: true, source: true, status: true, uses: true, createdAt: true, lastUsedAt: true, approvedAt: true },
   });
 }
 
-/** Removes a learned answer (it is wrong, or out of date). */
+/** Approves a learned answer: from now on Enyo follows it and may reuse it for the same question. */
+export async function approveLearnedAnswer(id: string): Promise<void> {
+  const user = await requireUser();
+  await authorize('enyo.manage', undefined, 'approveLearnedAnswer', 'Only administrators manage Enyo.');
+  await refuseDuringAssist('enyo.learned.approve');
+  const organisationId = await learnedOrg();
+  const res = await prisma.enyoLearnedAnswer.updateMany({ where: { id: String(id ?? ''), organisationId, status: 'PENDING' }, data: { status: 'APPROVED', approvedById: user.id, approvedAt: new Date() } });
+  if (!res.count) throw new EnyoError('That learned answer is not waiting for approval.');
+  await writeAuditLog({ userId: user.id, action: 'enyo.learned_answer_approved', entityType: 'EnyoLearnedAnswer', entityId: String(id), organisationId });
+}
+
+/** Removes a learned answer (it is wrong, out of date, or carries someone's details). */
 export async function removeLearnedAnswer(id: string): Promise<void> {
   const user = await requireUser();
   await authorize('enyo.manage', undefined, 'removeLearnedAnswer', 'Only administrators manage Enyo.');
   await refuseDuringAssist('enyo.learned.remove');
-  const org = await myEnyoOrg();
-  const row = await prisma.enyoLearnedAnswer.findFirst({ where: { id: String(id ?? ''), ...org }, select: { id: true, organisationId: true } });
+  const organisationId = await learnedOrg();
+  const row = await prisma.enyoLearnedAnswer.findFirst({ where: { id: String(id ?? ''), organisationId }, select: { id: true, organisationId: true } });
   if (!row) throw new EnyoError('That learned answer is not available.');
   await prisma.enyoLearnedAnswer.delete({ where: { id: row.id } });
   await writeAuditLog({ userId: user.id, action: 'enyo.learned_answer_removed', entityType: 'EnyoLearnedAnswer', entityId: row.id, organisationId: row.organisationId });

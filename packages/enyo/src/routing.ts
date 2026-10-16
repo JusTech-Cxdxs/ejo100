@@ -12,7 +12,7 @@ export type Route = { model: string; tier: 'fast' | 'main'; reason: string };
 
 const SMALL_TALK = /^(hi+|hello+|hey+|hiya|good (morning|afternoon|evening|night)|morning|afternoon|evening|thanks?( you)?( so much)?|thank u|ok(ay)?|alright|cool|great|nice|bye|goodbye|see you|how are you( doing)?|how('?s| is) (it going|your day)|who are you|what('?s| is) your name|what can you do|are you there|lol|haha|wow)\b[\s!.,?🙂😊😀👍]*$/i;
 const GUIDE = /^(how (do|can|should) (i|we)|where (do|can) i|how to|what are the steps|walk me through|show me how|teach me|explain how)\b/i;
-const NEEDS_RECORDS = /\b(JC|SV|EPR|PRS|GRN|RF|WR|WC|VIS|EP|VX|RT|INC|DLV|CTR|APT|BC)-\d|\b(how much|total|revenue|takings|profit|margin|owe|balance|stock|price|cost|report|compare|analy[sz]e|forecast|summar(y|ise|ize)|waiting|pending|overdue|my (jobs|work|day|mail|email|reminders))\b/i;
+const NEEDS_RECORDS = /\b(JC|SV|EPR|PRS|GRN|RF|WR|WC|VIS|EP|VX|RT|INC|DLV|CTR|APT|BC)-\d|\b(how (much|many)|count|total|revenue|takings|profit|margin|owe[sd]?|balance|stock|price|cost|report|compare|analy[sz]e|forecast|summar(y|ise|ize)|waiting|pending|overdue|late|which (customer|client|job|vehicle|invoice|estimate|part|technician)s?|assigned|plate number|reg(istration)? number|this|that|it|my|mine|me|our)\b/i;
 
 export function routeModel(message: string, config: LlmConfig, env: Record<string, string | undefined> = process.env): Route {
   const main: Route = { model: config.model, tier: 'main', reason: 'default' };

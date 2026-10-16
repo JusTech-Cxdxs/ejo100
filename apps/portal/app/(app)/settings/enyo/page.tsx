@@ -13,7 +13,9 @@ export default async function EnyoSettingsPage() {
   await guardPage('enyo.manage', '/settings/enyo');
   const orgId = await myOrganisationId();
   const settings = await getEnyoSettings(orgId);
-  const learnedCount = orgId ? await prisma.enyoLearnedAnswer.count({ where: { organisationId: orgId } }).catch(() => 0) : 0;
+  const [learnedCount, learnedWaiting] = orgId
+    ? await Promise.all([prisma.enyoLearnedAnswer.count({ where: { organisationId: orgId, status: 'APPROVED' } }).catch(() => 0), prisma.enyoLearnedAnswer.count({ where: { organisationId: orgId, status: 'PENDING' } }).catch(() => 0)])
+    : [0, 0];
   const routing = (process.env.ENYO_LLM_ROUTING ?? '').trim().toLowerCase() !== 'off';
   const cfg = readLlmConfig();
   // Only the label and model name reach the page: never the address or the key.
@@ -31,10 +33,10 @@ export default async function EnyoSettingsPage() {
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Main model (records, figures, reasoning)</dt><dd className="mt-0.5 break-all font-mono text-xs text-[var(--ejo-text)]">{cfg?.model ?? '—'}</dd></div>
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Fast model (greetings, how-to, email briefs, Refine)</dt><dd className="mt-0.5 break-all font-mono text-xs text-[var(--ejo-text)]">{cfg?.fastModel ?? '—'}</dd></div>
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Choosing the cheaper model when it is enough</dt><dd className={`mt-0.5 font-medium ${routing && cfg && cfg.fastModel !== cfg.model ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-text-muted)]'}`}>{!cfg ? '—' : cfg.fastModel === cfg.model ? 'Off: set ENYO_LLM_FAST_MODEL to a smaller model' : routing ? 'On' : 'Off (ENYO_LLM_ROUTING=off)'}</dd></div>
-          <div><dt className="text-xs text-[var(--ejo-text-muted)]">Answers learned from people</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{learnedCount.toLocaleString('en-NG')} <a href="/enyo/learning#learned" className="ml-1 text-xs font-medium text-[var(--ejo-primary)] hover:underline">See them</a></dd></div>
+          <div><dt className="text-xs text-[var(--ejo-text-muted)]">Answers learned from people</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{learnedCount.toLocaleString('en-NG')} approved{learnedWaiting ? `, ${learnedWaiting.toLocaleString('en-NG')} waiting for approval` : ''} <a href="/enyo/learning#learned" className="ml-1 text-xs font-medium text-[var(--ejo-primary)] hover:underline">See them</a></dd></div>
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">General knowledge from the web (Wikipedia, free)</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{webLookupEnabled() ? 'On' : 'Off (ENYO_WEB_LOOKUP=off)'}</dd></div>
         </dl>
-        <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">A question colleagues already found answered well is answered again instantly from what Enyo learned, with no model cost. Everything that reads the organisation&apos;s records always goes to the main model.</p>
+        <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">A general question colleagues already found answered well (and an administrator approved) is answered again instantly from what Enyo learned, with no model cost. Everything that reads the organisation&apos;s records always goes to the main model.</p>
       </section>
 
       <section className={`${card} mt-6`} aria-labelledby="enyo-data">

@@ -7,7 +7,7 @@ import { staffTools } from '@/lib/enyo/tools';
 import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
 import { logError } from '@/lib/errors';
 import { findLearned, noteLearnedUse } from '@/lib/enyo/learned';
-import { canReuse } from '@/lib/enyo/learned-core';
+import { canReuse, reuseAllowed } from '@/lib/enyo/learned-core';
 import { tokenise } from '@/lib/enyo/predict/text';
 
 export const runtime = 'nodejs';
@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
     const memory = ctx.assisted ? [] : (await prisma.enyoMemory.findMany({ where: { userId, organisationId }, orderBy: { createdAt: 'asc' }, take: 50, select: { fact: true } })).map((m) => m.fact);
     // What colleagues found helpful for this kind of question (organisation's own).
     const learned = await findLearned(organisationId, ['STAFF', 'SUPPORT'], message, 2).catch(() => []);
-    const reuse = canReuse(learned[0], tokenise(message)) && history.length < 6 ? learned[0]! : null;
+    const reuse = canReuse(learned[0], tokenise(message)) && reuseAllowed({ question: message, historyLength: history.length, assisted: Boolean(ctx.assisted), page: ctx.page }) ? learned[0]! : null;
     const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName, examples: learned.map((l) => ({ question: l.question, answer: l.answer })) });
     const turns: ChatMessage[] = [...trimHistory(history, 12_000, 16), { role: 'user', content: message }];
     // Cost: small talk and short how-to go to the fast model; records and figures to the main one.

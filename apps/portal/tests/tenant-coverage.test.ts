@@ -78,6 +78,8 @@ const RECORD_CHECKS = [
   'requireAssignedVehicleServiceTechnician', 'requireVehicleServiceStepRole', 'requireServiceEstimateContributor', 'homeBranch',
   'canDecide', 'headApproversFor', 'checkPair', 'requireBookFor', 'assertRoomIsMine', 'onMyDesk', 'ownBroadcast', 'editableRole',
   'actorOrg', 'inMyOrganisation(',
+  // Enyo learned answers: where { id, organisationId: learnedOrg() } (the person's own organisation).
+  'learnedOrg(',
 ];
 /** authorize(key, { branchId … }) — a role check WITH the record's branch. */
 const AUTHORIZE_WITH_RECORD = /\bauthorize\([^,]+,\s*\{\s*branchId/;

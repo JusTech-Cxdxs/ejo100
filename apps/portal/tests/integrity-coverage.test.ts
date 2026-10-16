@@ -73,6 +73,8 @@ const ALLOWED_PLAIN_STATUS_WRITES: Record<string, string> = {
   'lib/actions/workshop.ts:estimate.upsert': 'creates the DRAFT estimate',
   // One-off repair of legacy rows, guarded by its own where (status not ESCALATED).
   'lib/vehicle-service-cycle.ts:vehicleService.update': 'legacy normalisation',
+  // Creates a PENDING learned answer; the update branch never touches status.
+  'lib/enyo/learned.ts:enyoLearnedAnswer.upsert': 'creates the PENDING candidate',
 };
 
 function body(fnName: string, src: string): string {

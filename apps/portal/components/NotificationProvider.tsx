@@ -123,6 +123,8 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
   const cacheKey = userId ? `ejo.notifications.v1.${userId}` : null;
   const router = useRouter();
   const [summary, setSummary] = useState<NotificationSummary>(EMPTY);
+  // The mail badge's own fresher count; null = use the summary's (see below).
+  const [mailUnread, setMailUnread] = useState<number | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [muted, setMuted] = useState(false);
   const pulse = useRef<string | null>(null);
@@ -186,6 +188,8 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
     if (mine && next.total > 0 && !mutedRef.current) chime(audio.current, next.actions.length > 0);
     sig.current = next.signature;
     setSummary(next);
+    // A fresh summary carries a fresh mail count: it wins until the next mail check.
+    setMailUnread(null);
     if (first) setMuted(next.muted);
     setLoaded(true);
     setState('ready');
@@ -238,7 +242,6 @@ export function NotificationProvider({ children, userId }: { children: ReactNode
 
   // The mail badge: its own small count, fresh every 90 s while the tab is in
   // view and straight away when Mail changes something ("ejo:mail-changed").
-  const [mailUnread, setMailUnread] = useState<number | null>(null);
   useEffect(() => {
     let alive = true;
     let last = 0;

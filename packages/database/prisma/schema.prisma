@@ -3743,11 +3743,10 @@ model EnyoModel {
   @@map("enyo_models")
 }
 
-// v35 — what Enyo has learned: answers people marked helpful, and replies
-// colleagues wrote when Enyo handed a question over. Only questions that did
-// not read anyone's records (how-to, general knowledge, the organisation's
-// public information), with personal details removed. Used as worked examples
-// (and, for near-identical questions, reused) so Enyo improves and costs less.
+// v35 — what Enyo has learned: answers people marked helpful (first question of
+// a chat, no records read), and replies colleagues wrote when Enyo handed a
+// question over. Personal details removed. An administrator approves each one
+// before Enyo uses it as an example or reuses it for the same question.
 // Additive only.
 model EnyoLearnedAnswer {
   id              String   @id @default(cuid())
@@ -3761,11 +3760,16 @@ model EnyoLearnedAnswer {
   // Where it came from: the rated answer, or the support reply.
   source          String
   sourceId        String   @unique
+  // PENDING until an administrator approves it on the Enyo learning page;
+  // only APPROVED answers are ever shown to the model or reused.
+  status          String   @default("PENDING")
+  approvedById    String?
+  approvedAt      DateTime?
   uses            Int      @default(0)
   lastUsedAt      DateTime?
   createdById     String?
   createdAt       DateTime @default(now())
 
-  @@index([organisationId, channel, createdAt])
+  @@index([organisationId, channel, status, createdAt])
   @@map("enyo_learned_answers")
 }

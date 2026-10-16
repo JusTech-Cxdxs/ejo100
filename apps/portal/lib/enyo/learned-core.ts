@@ -7,6 +7,7 @@
  *    and questions of at least three words).
  */
 import { buildIdf, cosine, tfidfVector } from './predict/text';
+import { scrubText } from './predict/dataset-core';
 
 export const EXAMPLE_MIN = 0.35;
 export const REUSE_MIN = 0.9;
@@ -30,3 +31,25 @@ export function canReuse(match: { score: number; createdAt: Date } | undefined, 
   if (!match || questionTokens.length < 3 || match.score < REUSE_MIN) return false;
   return now.getTime() - match.createdAt.getTime() <= REUSE_MAX_AGE_DAYS * 86_400_000;
 }
+
+/** Words that point at the person, the page or an earlier turn: the answer depends on context. */
+const CONTEXT_WORDS = /\b(this|that|these|those|here|there|it|its|my|mine|me|our|ours|we|us|above|below|again|same|current|today|now)\b/i;
+/** A path ending in an id (a record page): "how do I…" there is often about that record. */
+const RECORD_PAGE = /\/[a-z0-9]{20,}(?:\/|$)|\/\d+(?:\/|$)/i;
+
+/**
+ * May a learned answer be given verbatim here? Never in an assisted session,
+ * never once the chat has history, never on a record page and never when the
+ * question refers to its context ("this", "my", "here"…).
+ */
+export function reuseAllowed(o: { question: string; historyLength: number; assisted: boolean; page?: string }): boolean {
+  if (o.assisted || o.historyLength > 0) return false;
+  if (o.page && RECORD_PAGE.test(o.page)) return false;
+  return !CONTEXT_WORDS.test(o.question);
+}
+
+/** scrubText per line, so an answer keeps its paragraphs, lists and tables. */
+export function scrubKeepingLines(text: string, names: string[], max: number): string {
+  return String(text ?? '').replace(/\r\n?/g, '\n').split('\n').map((l) => (l.trim() ? scrubText(l, names) : '')).join('\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, max);
+}
+
