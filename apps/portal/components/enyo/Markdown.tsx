@@ -18,7 +18,14 @@ function inline(nodes: Inline[], onNavigate?: () => void): ReactNode {
       case 'code': return <code key={i} className="rounded bg-[color-mix(in_srgb,var(--ejo-text)_7%,transparent)] px-1 py-px text-[0.92em]">{n.v}</code>;
       case 'a': {
         // The portal's own address written in full still opens in place.
-        const local = !n.internal && typeof window !== 'undefined' && n.href.startsWith(`${window.location.origin}/`) ? n.href.slice(window.location.origin.length) : null;
+        let local: string | null = null;
+        if (!n.internal && typeof window !== 'undefined') {
+          try {
+            const u = new URL(n.href);
+            const path = `${u.pathname}${u.search}${u.hash}`;
+            if (u.origin === window.location.origin && path.startsWith('/') && !path.startsWith('//')) local = path;
+          } catch { /* not a URL: stays external */ }
+        }
         if (local) return <Link key={i} href={local} onClick={onNavigate} className="font-medium text-[var(--ejo-primary)] underline decoration-[color-mix(in_srgb,var(--ejo-primary)_40%,transparent)] underline-offset-2 hover:decoration-[var(--ejo-primary)]">{inline(n.c, onNavigate)}</Link>;
         return n.internal ? (
           <Link key={i} href={n.href} onClick={onNavigate} className="font-medium text-[var(--ejo-primary)] underline decoration-[color-mix(in_srgb,var(--ejo-primary)_40%,transparent)] underline-offset-2 hover:decoration-[var(--ejo-primary)]">{inline(n.c, onNavigate)}</Link>

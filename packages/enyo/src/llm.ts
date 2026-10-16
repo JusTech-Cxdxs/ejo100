@@ -144,6 +144,16 @@ export function isReasoningModel(model: string): boolean {
 
 const REASONING_ROOM = 1024;
 
+/** The request itself carries the reasoning settings (not merely a message mentioning them). */
+function hasReasoningSettings(payload: string): boolean {
+  try {
+    const p = JSON.parse(payload) as Record<string, unknown>;
+    return 'reasoning_effort' in p || 'include_reasoning' in p;
+  } catch {
+    return false;
+  }
+}
+
 function body(config: LlmConfig, req: CompletionRequest, stream: boolean): string {
   const model = req.model ?? config.model;
   const reasoning = isReasoningModel(model);
@@ -195,7 +205,7 @@ async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal
         continue;
       }
       // A server that does not know the reasoning settings: send it again without them.
-      if (kind === 'rejected' && /reasoning_effort|include_reasoning/.test(payload) && /reasoning/i.test(detail ?? '')) {
+      if (kind === 'rejected' && /reasoning/i.test(detail ?? '') && hasReasoningSettings(payload)) {
         const p = JSON.parse(payload) as Record<string, unknown>;
         delete p.reasoning_effort;
         delete p.include_reasoning;

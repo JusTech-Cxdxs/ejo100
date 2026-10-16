@@ -316,13 +316,17 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [cancelSpeech]);
 
+  const latestOpen = useRef<string | null>(null);
   const openConversation = useCallback(async (id: string) => {
     abortRef.current?.abort();
+    latestOpen.current = id;
     // Straight to the chat view with a loading state: never a frozen list.
     setView('chat');
     setTurns([]);
     setLoadingChat(true);
     const c = await loadConversation(id);
+    // Another chat was chosen meanwhile: that one wins.
+    if (latestOpen.current !== id) return;
     setLoadingChat(false);
     if (!c) { setView('chat'); setTurns([{ key: newKey(), role: 'assistant', text: '', state: 'error', sources: [], drafts: [], notices: [], refused: false, error: { message: 'That chat could not be opened. It may have been deleted.' } }]); return; }
     setConversationId(c.id);
@@ -437,16 +441,16 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                   <button type="button" className={iconBtn} aria-label="New chat" onClick={newChat}><EIcon name="plus" size={20} /></button>
                 </>
               ) : null}
-              <button type="button" data-enyo-menu-button="" className={iconBtn} aria-label={`${name} options`} aria-haspopup="menu" aria-expanded={menu} onClick={() => setMenu((m) => !m)}><EIcon name="more" size={20} /></button>
+              <button type="button" data-enyo-menu-button="" className={iconBtn} aria-label={`${name} options`} aria-expanded={menu} onClick={() => setMenu((m) => !m)}><EIcon name="more" size={20} /></button>
               <button type="button" className={iconBtn} aria-label={`Close ${name}`} onClick={closePanel}><EIcon name="close" size={19} /></button>
 
               {menu ? (
-                <div ref={menuRef} role="menu" aria-label={`${name} options`} className="ejo-pop absolute right-2 top-[calc(100%+6px)] z-10 w-[min(17rem,calc(100vw-1rem))] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1.5 shadow-xl">
+                <div ref={menuRef} role="group" aria-label={`${name} options`} className="ejo-pop absolute right-2 top-[calc(100%+6px)] z-10 w-[min(17rem,calc(100vw-1rem))] overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1.5 shadow-xl">
                   {voiceOut.supported && ready ? (
                     <MenuToggle label="Speak answers aloud" on={prefs.speak} onChange={(v) => { updatePrefs({ speak: v }); if (!v) cancelSpeech(); }} />
                   ) : null}
                   {voiceOut.supported && ready && voiceOut.voices.length ? (
-                    <div className="px-4 py-2" role="none">
+                    <div className="px-4 py-2">
                       <label htmlFor="enyo-voice" className="text-xs font-medium text-[var(--ejo-text-muted)]">Voice</label>
                       <div className="mt-1 flex gap-2">
                         <select id="enyo-voice" value={prefs.voice} onChange={(e) => updatePrefs({ voice: e.target.value })} className="min-h-11 min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-2 text-sm text-[var(--ejo-text)]">
@@ -460,10 +464,10 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                   <MenuToggle label="Daily greeting" on={prefs.greeting} onChange={(v) => updatePrefs({ greeting: v })} />
                   <MenuToggle label="Curly hair" on={prefs.hair === 'curly'} onChange={(v) => updatePrefs({ hair: v ? 'curly' : 'straight' })} />
                   <MenuToggle label="Glasses" on={prefs.glasses} onChange={(v) => updatePrefs({ glasses: v })} />
-                  <div className="my-1.5 border-t border-[var(--ejo-border)]" role="none" />
-                  <Link role="menuitem" href="/profile/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
+                  <div className="my-1.5 border-t border-[var(--ejo-border)]" aria-hidden="true" />
+                  <Link href="/profile/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="brain" size={17} className="text-[var(--ejo-text-muted)]" />What {name} remembers</Link>
                   {canManage ? (
-                    <Link role="menuitem" href="/settings/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
+                    <Link href="/settings/enyo" onClick={() => { setMenu(false); onNavigate(); }} className="flex min-h-11 items-center gap-3 px-4 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"><EIcon name="settings" size={17} className="text-[var(--ejo-text-muted)]" />{name} settings</Link>
                   ) : null}
                 </div>
               ) : null}
@@ -529,7 +533,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
             </div>
 
             {/* Composer */}
-            {ready && view === 'chat' ? (
+            {ready && view === 'chat' && !loadingChat ? (
               <div className="shrink-0 border-t border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 pb-3 pt-2.5">
                 {voiceIn.processing ? (
                   <p role="status" className="mb-2 flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-surface)] px-3 py-2 text-sm text-[var(--ejo-text)]">
@@ -598,7 +602,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
 
 function MenuToggle({ label, on, onChange }: { label: string; on: boolean; onChange: (v: boolean) => void }) {
   return (
-    <button type="button" role="menuitemcheckbox" aria-checked={on} onClick={() => onChange(!on)} className="flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
+    <button type="button" role="switch" aria-checked={on} onClick={() => onChange(!on)} className="flex min-h-11 w-full items-center justify-between gap-3 px-4 text-left text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">
       {label}
       <span aria-hidden="true" className={`relative inline-flex h-5 w-9 shrink-0 rounded-full transition-colors ${on ? 'bg-[var(--ejo-primary)]' : 'bg-[color-mix(in_srgb,var(--ejo-text-muted)_40%,transparent)]'}`}>
         <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${on ? 'translate-x-[18px]' : 'translate-x-0.5'}`} />

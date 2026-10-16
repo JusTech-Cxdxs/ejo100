@@ -42,7 +42,7 @@ export const mailTools: StaffTool[] = [
       const g = await gate(ctx);
       if (!g.ok) return g;
       // Brief what has not been briefed yet (a few at a time, within the answer's time).
-      await briefMyRecentMail({ limit: 6, budgetMs: 12_000 }).catch(() => null);
+      await briefMyRecentMail({ limit: 4, budgetMs: 10_000, from: 'enyo' }).catch(() => null);
       const days = Math.min(14, Math.max(1, Number(args.days) || 3));
       const since = Date.now() - days * 86_400_000;
       const [d, list] = await Promise.all([getMyMailDigest(), listMyMail({ view: 'inbox' })]);

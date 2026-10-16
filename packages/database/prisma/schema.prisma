@@ -3683,6 +3683,8 @@ model MailMessage {
   aiActions      Json?
   linkedRefs     Json?
   aiAt           DateTime?
+  // v34: briefs that came back empty; after two, Enyo stops trying on its own.
+  aiTries        Int         @default(0)
   createdAt      DateTime    @default(now())
 
   @@unique([accountId, folder, uid])

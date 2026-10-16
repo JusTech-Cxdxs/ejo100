@@ -364,7 +364,7 @@ function Reading({ d, consent, aiAvailable, back }: { d: MailDetail; consent: bo
         ) : !consent ? (
           <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Enyo does not read your email unless you allow it. <LoadingLink href="/mail/settings#enyo" className="font-medium text-[var(--ejo-primary)] hover:underline">Choose in Mail settings</LoadingLink></p>
         ) : !d.brief ? (
-          d.canBrief ? <BriefNow messageId={d.id} auto /> : <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Not briefed yet.</p>
+          d.canBrief ? <BriefNow messageId={d.id} auto={d.autoBrief} /> : <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Not briefed yet.</p>
         ) : (
           <div className="mt-2 space-y-3">
             <p className="text-sm text-[var(--ejo-text)]">{d.brief.summary}</p>

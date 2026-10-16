@@ -64,3 +64,20 @@ test('the frame runs no scripts, and attachments download without running', () =
   const lib = readFileSync(join(ROOT, 'lib/mail/attachments.ts'), 'utf8');
   assert.match(lib, /account: \{ userId: o\.userId/);
 });
+
+test('review: no break-out of <style>, no sender-chosen picture addresses, no background loads, nothing cut off', () => {
+  const evil = '<style>a{}</sty/**/le><img src=x onerror=alert(1)><form action="https://e"><input name=p></form><a href="javascript:alert(1)" target="_self">x</a></style><p>ok</p>';
+  const r = sanitizeMailHtml(evil)!;
+  // What tried to break out is now inert text inside the CSS: no live tag or link.
+  for (const bad of ['<img', '<form', '<input', '<a ', '</sty le']) assert.ok(!r.html.includes(bad), bad);
+  assert.match(r.html, /<\/style><p>ok<\/p>$/);
+  const t = sanitizeMailHtml('<img data-remote-src="https://tracker.test/p.gif" width="1" height="1"><table background="https://bg.test/x.png"><tr><td style="background:u\\72l(https://t.test/a)">Hi</td></tr></table>')!;
+  assert.doesNotMatch(t.html, /tracker\.test|bg\.test|url\(\s*['"]?https?:/i);
+  assert.doesNotMatch(t.html, /\\/); // CSS escapes cannot spell url( any more
+  assert.equal(t.remoteImages, 0);
+  // Three large inline pictures: the layout is tried without them rather than cut.
+  const big = Buffer.alloc(380_000, 7);
+  const many = sanitizeMailHtml('<p>Start</p><img src="cid:a"><img src="cid:b"><img src="cid:c"><p>Please approve the invoice</p>', ['a', 'b', 'c'].map((cid) => ({ cid, contentType: 'image/png', content: big })))!;
+  assert.match(many.html, /Please approve the invoice<\/p>$/);
+  assert.ok(many.html.length <= 1_500_000);
+});

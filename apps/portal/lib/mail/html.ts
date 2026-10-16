@@ -18,35 +18,80 @@ export type InlineImage = { cid: string; contentType: string; content: Buffer };
 
 export const HTML_MAX = 1_500_000;
 const IMAGE_MAX = 400_000;
-const IMAGES_TOTAL = 1_500_000;
+/** Inline pictures, counted as the base64 text they become: well under HTML_MAX, so the words always fit. */
+const IMAGES_TOTAL = 900_000;
+const b64Length = (bytes: number) => Math.ceil(bytes / 3) * 4 + 40;
 
 const TAGS = [
   'a', 'abbr', 'address', 'b', 'big', 'blockquote', 'br', 'caption', 'center', 'cite', 'code', 'col', 'colgroup', 'dd', 'del', 'div', 'dl', 'dt',
   'em', 'figcaption', 'figure', 'font', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'hr', 'i', 'img', 'ins', 'kbd', 'li', 'mark', 'ol', 'p', 'pre', 'q', 's',
   'small', 'span', 'strike', 'strong', 'sub', 'sup', 'table', 'tbody', 'td', 'tfoot', 'th', 'thead', 'tr', 'tt', 'u', 'ul', 'style',
 ];
-const COMMON = ['style', 'class', 'align', 'valign', 'width', 'height', 'bgcolor', 'color', 'dir', 'lang', 'title', 'border', 'background'];
+// No `background` attribute: it would load a picture without asking.
+const COMMON = ['style', 'class', 'align', 'valign', 'width', 'height', 'bgcolor', 'color', 'dir', 'lang', 'title', 'border'];
 
 /** CSS that cannot fetch anything or escape its box. */
 export function cleanCss(css: string): string {
   return css
-    .replace(/\/\*[\s\S]*?\*\//g, '')
+    // A comment becomes a space (removing it could join "</sty" + "le>").
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    // CSS escapes (\72 = "r") can spell url( or expression( past the rules below.
+    .replace(/\\/g, '')
+    .replace(/image-set\s*\(/gi, 'none(')
     .replace(/@import[^;]*;?/gi, '')
     .replace(/url\(\s*(['"]?)(?!data:image\/)[^)]*\1\s*\)/gi, 'none')
     .replace(/expression\s*\(/gi, '')
     .replace(/behavior\s*:/gi, 'x-behavior:')
     .replace(/-moz-binding/gi, 'x-binding')
-    .replace(/position\s*:\s*(fixed|sticky)/gi, 'position: static');
+    .replace(/position\s*:\s*(fixed|sticky)/gi, 'position: static')
+    // Never a tag inside CSS: "<" cannot close <style> or open anything.
+    .replace(/</g, ' ');
 }
 
-/** The cleaned layout, or null when the email has no HTML worth showing. */
+/**
+ * The cleaned layout, or null when the email has no HTML worth showing. A
+ * layout that would not fit is tried again without its inline pictures, and
+ * otherwise left to the plain text, so nothing is ever cut off.
+ */
 export function sanitizeMailHtml(input: string | null | undefined, inline: InlineImage[] = []): { html: string; remoteImages: number } | null {
   if (!input || !input.trim()) return null;
+  const first = cleanOnce(input, inline);
+  if (first && first.html.length <= HTML_MAX) return first;
+  const lighter = inline.length ? cleanOnce(input, []) : null;
+  return lighter && lighter.html.length <= HTML_MAX ? lighter : null;
+}
+
+/** The second, plain pass: whatever the first pass produced is parsed and filtered again. */
+const FINAL: sanitizeHtml.IOptions = {
+  allowedTags: TAGS,
+  allowVulnerableTags: true,
+  allowedAttributes: {
+    '*': COMMON,
+    a: [...COMMON, 'href', 'name', 'target', 'rel'],
+    img: [...COMMON, 'src', 'alt', 'data-remote-src'],
+    td: [...COMMON, 'colspan', 'rowspan', 'nowrap'],
+    th: [...COMMON, 'colspan', 'rowspan', 'scope', 'nowrap'],
+    table: [...COMMON, 'cellpadding', 'cellspacing', 'summary', 'role'],
+    font: [...COMMON, 'face', 'size'],
+    ol: [...COMMON, 'start', 'type'],
+    col: [...COMMON, 'span'],
+    colgroup: [...COMMON, 'span'],
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: { img: ['data'] },
+  allowProtocolRelative: false,
+  disallowedTagsMode: 'discard',
+  nonTextTags: ['script', 'noscript', 'textarea', 'option', 'title', 'head', 'iframe', 'object', 'embed', 'svg', 'math', 'template'],
+  transformTags: { a: (tagName, attribs) => ({ tagName, attribs: { ...attribs, target: '_blank', rel: 'noopener noreferrer nofollow' } }) },
+};
+
+function cleanOnce(input: string, inline: InlineImage[]): { html: string; remoteImages: number } | null {
   let budget = IMAGES_TOTAL;
   const byCid = new Map<string, string>();
   for (const img of inline) {
-    if (!/^image\/(png|jpe?g|gif|webp|bmp)$/i.test(img.contentType) || img.content.length > IMAGE_MAX || img.content.length > budget) continue;
-    budget -= img.content.length;
+    const size = b64Length(img.content.length);
+    if (!/^image\/(png|jpe?g|gif|webp|bmp)$/i.test(img.contentType) || img.content.length > IMAGE_MAX || size > budget) continue;
+    budget -= size;
     byCid.set(img.cid.replace(/^<|>$/g, '').toLowerCase(), `data:${img.contentType.toLowerCase()};base64,${img.content.toString('base64')}`);
   }
   let remoteImages = 0;
@@ -76,6 +121,9 @@ export function sanitizeMailHtml(input: string | null | undefined, inline: Inlin
         const src = (attribs.src ?? '').trim();
         const next: Record<string, string> = { ...attribs };
         delete next.src;
+        // Only this cleaner decides which pictures wait for "Show pictures" — never the email.
+        delete next['data-remote-src'];
+        delete next.srcset;
         if (/^cid:/i.test(src)) {
           const data = byCid.get(src.slice(4).replace(/^<|>$/g, '').toLowerCase());
           if (data) next.src = data;
@@ -93,7 +141,9 @@ export function sanitizeMailHtml(input: string | null | undefined, inline: Inlin
     exclusiveFilter: (frame) => frame.tag === 'img' && !frame.attribs.src && !frame.attribs['data-remote-src'],
   });
   // <style> blocks and inline style attributes: the same rules.
-  const html = out.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, css: string, close: string) => `${open}${cleanCss(css)}${close}`).replace(/\sstyle="([^"]*)"/gi, (_, css: string) => ` style="${cleanCss(css).replace(/"/g, '&quot;')}"`).slice(0, HTML_MAX);
+  const styled = out.replace(/(<style[^>]*>)([\s\S]*?)(<\/style>)/gi, (_, open: string, css: string, close: string) => `${open}${cleanCss(css)}${close}`).replace(/\sstyle="([^"]*)"/gi, (_, css: string) => ` style="${cleanCss(css).replace(/"/g, '&quot;')}"`);
+  // Defence in depth: the edited result is cleaned once more as a whole.
+  const html = sanitizeHtml(styled, FINAL);
   if (!html.replace(/<[^>]+>/g, '').trim() && !/<img\s/i.test(html)) return null;
   return { html, remoteImages };
 }

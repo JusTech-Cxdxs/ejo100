@@ -16,11 +16,12 @@ export function MailHtmlFrame({ html, remoteImages, text }: { html: string; remo
   const [height, setHeight] = useState(240);
   const frame = useRef<HTMLIFrameElement>(null);
 
+  // The content's own height (a wrapper inside the frame): never the frame's, so it cannot grow by itself.
   const measure = useCallback(() => {
-    const doc = frame.current?.contentDocument;
-    if (!doc?.documentElement) return;
-    const h = Math.max(doc.documentElement.scrollHeight, doc.body?.scrollHeight ?? 0);
-    if (h > 0) setHeight(Math.min(h + 8, 20_000));
+    const root = frame.current?.contentDocument?.getElementById('ejo-mail-root');
+    if (!root) return;
+    const h = Math.ceil(root.getBoundingClientRect().height) + 12;
+    if (h > 12) setHeight((prev) => (Math.abs(prev - h) > 2 ? Math.min(h, 20_000) : prev));
   }, []);
 
   useEffect(() => {
@@ -29,12 +30,15 @@ export function MailHtmlFrame({ html, remoteImages, text }: { html: string; remo
     let ro: ResizeObserver | null = null;
     const onLoad = () => {
       measure();
-      const body = el.contentDocument?.body;
-      if (body && 'ResizeObserver' in window) { ro = new ResizeObserver(measure); ro.observe(body); }
+      const root = el.contentDocument?.getElementById('ejo-mail-root');
+      ro?.disconnect();
+      if (root && 'ResizeObserver' in window) { ro = new ResizeObserver(measure); ro.observe(root); }
       // Pictures arriving late change the height.
       el.contentDocument?.querySelectorAll('img').forEach((img) => img.addEventListener('load', measure, { once: true }));
     };
     el.addEventListener('load', onLoad);
+    // Already loaded before React was ready (server-rendered page): measure now.
+    if (el.contentDocument?.readyState === 'complete' && el.contentDocument.getElementById('ejo-mail-root')) onLoad();
     return () => { el.removeEventListener('load', onLoad); ro?.disconnect(); };
   }, [measure, showImages, plain]);
 

@@ -16,7 +16,7 @@ import { BODY_MAX, parseAddressList, SUBJECT_MAX, validateConnect } from '@/lib/
 import { readAddresses, splitAttachments, type Address, type AttachmentInfo } from '@/lib/mail/parse-core';
 import { MAIL_CATEGORIES, readActions, readRefs, type MailAction, type MailCategory } from '@/lib/mail/brief-core';
 import { resolveMailRefs, type ResolvedRef } from '@/lib/mail/refs';
-import { briefNewMessages, suspiciousEmail } from '@/lib/mail/brief';
+import { briefNewMessages, MAX_TRIES, suspiciousEmail } from '@/lib/mail/brief';
 import { MAIL_STYLES, renderPersonalMail, type MailStyle } from '@/lib/email-templates/personal-mail';
 import { portalBaseUrl } from '@/lib/portal-url';
 
@@ -226,6 +226,8 @@ export type MailDetail = MailListItem & {
   remoteImages: number;
   /** Enyo may brief it (consent given and Enyo for email on). */
   canBrief: boolean;
+  /** Brief it straight away on opening (not tried twice without success already). */
+  autoBrief: boolean;
   brief: null | { summary: string; category: MailCategory | null; priority: number | null; refs: ResolvedRef[]; actions: (MailAction & { href: string })[] };
   thread: { id: string; fromName: string | null; fromAddress: string; receivedAt: Date; snippet: string }[];
 };
@@ -262,6 +264,7 @@ export async function readMyMessage(id: string): Promise<MailDetail> {
     html: msg.bodyHtml ?? null,
     remoteImages: msg.bodyHtml ? (msg.bodyHtml.match(/\sdata-remote-src="/g) ?? []).length : 0,
     canBrief: Boolean(box.aiConsentAt) && Boolean(m.organisationId) && (await enyoReady(m.organisationId, 'mailAi')).ready,
+    autoBrief: msg.aiTries < MAX_TRIES,
   };
 }
 
@@ -276,22 +279,22 @@ export async function briefMyMessage(id: string): Promise<{ ok: boolean; message
   if (!box.aiConsentAt) return { ok: false, message: 'Enyo reads your email only if you allow it in Mail settings.' };
   if (!m.organisationId) return { ok: false, message: 'Your account is not linked to an organisation yet.' };
   if (!withinLimit(`mail-brief:${m.id}`, 40, 10 * 60_000)) return { ok: false, message: 'That is a lot of briefs in a few minutes. Wait a little, then try again.' };
-  const done = await briefNewMessages(m.organisationId, box.id, [msg.id], Date.now() + 25_000, { again: true });
+  const done = await briefNewMessages(m.organisationId, box.id, [msg.id], Date.now() + 25_000, { again: true, owner: true });
   return done ? { ok: true } : { ok: false, message: 'Enyo could not brief this message just now. Please try again in a moment.' };
 }
 
 /** Briefs up to ten of the person's recent messages (last 14 days) that have no brief yet. */
-export async function briefMyRecentMail(opts: { limit?: number; budgetMs?: number } = {}): Promise<{ briefed: number; left: number }> {
+export async function briefMyRecentMail(opts: { limit?: number; budgetMs?: number; from?: 'button' | 'enyo' } = {}): Promise<{ briefed: number; left: number }> {
   const limit = Math.min(10, Math.max(1, Number(opts?.limit) || 10));
   const budget = Math.min(40_000, Math.max(5_000, Number(opts?.budgetMs) || 40_000));
   const m = await me();
   const box = await myMailbox(m);
   if (!box?.aiConsentAt || !m.organisationId) return { briefed: 0, left: 0 };
-  if (!withinLimit(`mail-brief-all:${m.id}`, 6, 10 * 60_000)) return { briefed: 0, left: -1 };
+  if (!withinLimit(`mail-brief-all:${opts?.from === 'enyo' ? 'enyo:' : ''}${m.id}`, 6, 10 * 60_000)) return { briefed: 0, left: -1 };
   const since = new Date(Date.now() - 14 * 86_400_000);
-  const ids = (await prisma.mailMessage.findMany({ where: { accountId: box.id, folder: FOLDER, aiSummary: null, receivedAt: { gte: since } }, orderBy: { receivedAt: 'desc' }, take: limit, select: { id: true } })).map((x) => x.id);
+  const ids = (await prisma.mailMessage.findMany({ where: { accountId: box.id, folder: FOLDER, aiSummary: null, aiTries: { lt: MAX_TRIES }, receivedAt: { gte: since } }, orderBy: { receivedAt: 'desc' }, take: limit, select: { id: true } })).map((x) => x.id);
   const briefed = ids.length ? await briefNewMessages(m.organisationId, box.id, ids, Date.now() + budget, { again: true }) : 0;
-  const left = await prisma.mailMessage.count({ where: { accountId: box.id, folder: FOLDER, aiSummary: null, receivedAt: { gte: since } } });
+  const left = await prisma.mailMessage.count({ where: { accountId: box.id, folder: FOLDER, aiSummary: null, aiTries: { lt: MAX_TRIES }, receivedAt: { gte: since } } });
   return { briefed, left };
 }
 
