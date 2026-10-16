@@ -47,11 +47,21 @@ export default async function EnyoLearningPage({ searchParams }: { searchParams:
   const p = await getPrincipal();
   const orgId = p.organisationId ?? (await myOrganisationId());
   const reach = await firstReach(['enyo.manage', 'analytics.business.view']);
-  const [settings, d, canManage] = await Promise.all([
+  const [settings, d, canManage, canSupport, canAnalytics] = await Promise.all([
     getEnyoSettings(orgId),
     learningData({ ...(p.isSuperAdmin ? (orgId ? { organisationId: orgId } : {}) : { organisationId: p.organisationId ?? '__no_organisation__' }), ...reach }),
     allows('enyo.manage'),
+    allows('support.tickets.manage'),
+    allows('analytics.business.view'),
   ]);
+  // Everything Enyo learns from, one press away.
+  const hub: { href: string; label: string; icon: 'sparkles' | 'check-circle' | 'activity' | 'inbox' | 'chart' | 'layers' }[] = [
+    { href: '#predictions', label: 'Estimate predictions', icon: 'sparkles' },
+    ...(canManage ? [{ href: '#data', label: 'Training data', icon: 'check-circle' as const }, { href: '#conversations', label: 'Conversations & learned answers', icon: 'activity' as const }] : []),
+    ...(canSupport ? [{ href: '/crm/support/enyo', label: 'Enyo’s support replies', icon: 'inbox' as const }] : []),
+    ...(canAnalytics ? [{ href: '/analytics/workflows', label: 'How work flows', icon: 'chart' as const }] : []),
+    { href: '/enyo/models', label: 'Trained models', icon: 'layers' },
+  ];
   const mode = MODE_TEXT[settings.predictionsMode];
   const pr = d.promotion;
   const maxStatus = Math.max(1, ...Object.values(d.counts));
@@ -89,7 +99,15 @@ export default async function EnyoLearningPage({ searchParams }: { searchParams:
         }
       />
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+      <nav aria-label="On this page and related" className="mb-6 flex flex-wrap gap-2">
+        {hub.map((h) => (
+          <a key={h.href} href={h.href} className="inline-flex min-h-10 items-center gap-1.5 rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] shadow-sm transition hover:-translate-y-px hover:border-[var(--ejo-primary)]/50 hover:text-[var(--ejo-primary)]">
+            <Icon name={h.icon} size={15} />{h.label}
+          </a>
+        ))}
+      </nav>
+
+      <div id="predictions" className="mb-6 grid scroll-mt-24 gap-4 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <SectionCard icon="sliders" title="How it learns" description="Step by step, and only as fast as it earns trust.">
           <p className="flex flex-wrap items-center gap-2 text-sm text-[var(--ejo-text)]">
             Current mode: <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${mode.tone}`}>{mode.label}</span>
@@ -137,7 +155,7 @@ export default async function EnyoLearningPage({ searchParams }: { searchParams:
       </div>
 
       {canManage && orgId ? (
-        <div className="mb-6">
+        <div id="data" className="mb-6 scroll-mt-24">
           <Suspense fallback={<SectionCard icon="check-circle" title="Training data quality"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Checking the training data…</p></SectionCard>}>
             <DataQualityCard organisationId={orgId} branchIds={reach.branchId === undefined ? null : typeof reach.branchId === 'string' ? [reach.branchId] : reach.branchId.in} />
           </Suspense>
@@ -145,7 +163,7 @@ export default async function EnyoLearningPage({ searchParams }: { searchParams:
       ) : null}
 
       {canManage ? (
-        <div className="mb-6">
+        <div id="conversations" className="mb-6 scroll-mt-24">
           {error ? <div role="alert"><FormFeedbackBanner kind="error" message={error} /></div> : null}
           {status ? <div role="status"><FormFeedbackBanner kind="success" message={status} /></div> : null}
           <Suspense fallback={<SectionCard icon="activity" title="What Enyo learns from its conversations"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Reading the conversations…</p></SectionCard>}>
