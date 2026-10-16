@@ -26,7 +26,7 @@ export function DepartmentsPanel({ branchId, departments, returnTo }: { branchId
             </div>
             <details className="relative">
               <summary className={`${ghost} cursor-pointer list-none`}>Rename</summary>
-              <form action={renameDepartmentFormAction} className="absolute right-0 z-10 mt-1 flex w-72 gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-2 shadow-lg">
+              <form action={renameDepartmentFormAction} className="absolute right-0 z-30 mt-1 flex w-72 gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-2 shadow-lg">
                 <input type="hidden" name="departmentId" value={d.id} /><input type="hidden" name="returnTo" value={returnTo} />
                 <input name="name" defaultValue={d.name} required minLength={2} maxLength={80} aria-label={`New name for ${d.name}`} className={input} />
                 <SubmitButton label="Save" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white" />

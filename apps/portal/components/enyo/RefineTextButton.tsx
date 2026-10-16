@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { FloatingLayer } from '@/components/ui/FloatingLayer';
 import type { EnyoTone } from '@/lib/enyo/client-contract';
 import { getEnyoStatus, refineText } from './api';
 import { EIcon } from './icons';
@@ -50,15 +51,15 @@ export function RefineTextButton({ targetId, label, compact = false }: { targetI
     return () => { live = false; };
   }, []);
 
+  // Escape inside a dialog closes only this menu, not the dialog.
   useEffect(() => {
     if (!menu) return;
-    const outside = (e: MouseEvent) => { if (wrap.current && !wrap.current.contains(e.target as Node)) setMenu(false); };
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.stopPropagation(); setMenu(false); button.current?.focus(); } };
-    document.addEventListener('mousedown', outside);
     document.addEventListener('keydown', esc, true);
-    wrap.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-    return () => { document.removeEventListener('mousedown', outside); document.removeEventListener('keydown', esc, true); };
-  }, [menu]);
+    const id = requestAnimationFrame(() => document.getElementById(menuId)?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus());
+    return () => { document.removeEventListener('keydown', esc, true); cancelAnimationFrame(id); };
+  }, [menu, menuId]);
+  const closeMenu = useCallback(() => setMenu(false), []);
 
   if (!ready) return null;
 
@@ -103,15 +104,16 @@ export function RefineTextButton({ targetId, label, compact = false }: { targetI
         <EIcon name="wand" size={15} />
         {compact ? null : busy ? 'Refining…' : 'Refine'}
       </button>
-      {menu ? (
-        <div id={menuId} role="menu" aria-label="Choose a tone" className="ejo-pop absolute right-0 top-full z-30 mt-1 w-48 overflow-hidden rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl">
+      {/* Drawn above everything (cards that clip, sticky bars, dialogs' own scroll). */}
+      <FloatingLayer anchor={button} open={menu} onClose={closeMenu} align="right" width="12rem" gap={4} label="Choose a tone">
+        <div id={menuId} className="py-1">
           {TONES.map((t) => (
-            <button key={t.tone} type="button" role="menuitem" onClick={() => void run(t.tone)} className="flex min-h-11 w-full items-center px-3.5 text-left text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)] focus:bg-[var(--ejo-surface)] focus:outline-none">
+            <button key={t.tone} type="button" role="menuitem" onClick={() => void run(t.tone)} className="flex min-h-11 w-full items-center px-3.5 text-left text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] focus:bg-[var(--ejo-bg)] focus:outline-none">
               {t.label}
             </button>
           ))}
         </div>
-      ) : null}
+      </FloatingLayer>
       {busy && compact ? <p role="status" className="sr-only">Refining…</p> : null}
       {message ? <p role="status" className={compact ? 'absolute right-0 top-full z-30 mt-1 w-56 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-2 text-xs text-[var(--ejo-text-muted)] shadow-lg' : 'w-full text-right text-xs text-[var(--ejo-text-muted)]'}>{message}</p> : null}
       {result ? (

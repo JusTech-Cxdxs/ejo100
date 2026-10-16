@@ -63,7 +63,7 @@ export function CustomerMultiPicker({ name = 'audienceIds', initial = [] }: { na
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
         />
         {open && q.trim() ? (
-          <ul role="listbox" className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] py-1 shadow-lg">
+          <ul role="listbox" className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] py-1 shadow-lg">
             {busy && !results.length ? <li className="px-3 py-2 text-sm text-[var(--ejo-text-muted)]">Searching…</li> : null}
             {!busy && !results.length ? <li className="px-3 py-2 text-sm text-[var(--ejo-text-muted)]">No customer matches.</li> : null}
             {results.map((c) => {

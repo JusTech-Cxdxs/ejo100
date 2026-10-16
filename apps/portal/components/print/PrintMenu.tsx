@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
+import { FloatingLayer } from '@/components/ui/FloatingLayer';
 import { PrinterIcon, ChevronDownIcon, BuildingIcon, UserCheckIcon } from '@/components/icons';
 
 export function PrintMenu({
@@ -20,20 +21,16 @@ export function PrintMenu({
   size?: 'default' | 'compact';
 }) {
   const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    function onClickOutside(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, []);
+  const button = useRef<HTMLButtonElement>(null);
+  const close = useCallback(() => setOpen(false), []);
 
   return (
-    <div ref={ref} className="relative inline-block print:hidden">
+    <div className="relative inline-block print:hidden">
       <button
+        ref={button}
         type="button"
+        aria-haspopup="menu"
+        aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={
           size === 'compact'
@@ -45,14 +42,16 @@ export function PrintMenu({
         Print
         <ChevronDownIcon className={`h-4 w-4 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
-      {open ? (
-        <div className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} z-10 mt-2 w-56 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg`}>
+      {/* Drawn above headers, tab bars and tables, so it never blends into them. */}
+      <FloatingLayer anchor={button} open={open} onClose={close} align={align} width="14.5rem" label="Print">
+        <div>
           <a
             href={orgHref}
             target="_blank"
             rel="noopener noreferrer"
+            role="menuitem"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+            className="flex min-h-12 items-center gap-2.5 px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
           >
             <BuildingIcon className="h-4 w-4 text-[var(--ejo-primary)]" />
             <span>
@@ -64,8 +63,9 @@ export function PrintMenu({
             href={clientHref}
             target="_blank"
             rel="noopener noreferrer"
+            role="menuitem"
             onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 border-t border-[var(--ejo-border)] px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
+            className="flex min-h-12 items-center gap-2.5 border-t border-[var(--ejo-border)] px-4 py-3 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"
           >
             <UserCheckIcon className="h-4 w-4 text-[var(--ejo-primary)]" />
             <span>
@@ -74,7 +74,7 @@ export function PrintMenu({
             </span>
           </a>
         </div>
-      ) : null}
+      </FloatingLayer>
     </div>
   );
 }
