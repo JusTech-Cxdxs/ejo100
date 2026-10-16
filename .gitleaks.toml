@@ -41,7 +41,7 @@ regexes = [
   '''e2e-cron-secret''',
   '''ci-placeholder-secret-do-not-use-in-production''',
   '''dummy-secret-at-least-32-characters-long''',
-  '''postgres(ql)?://postgres:(e2e-test-only|ci-test-only)@localhost''',
+  '''postgres(ql)?://postgres:(e2e-test-only|ci-test-only|upgrade-test-only)@localhost''',
   '''postgres(ql)?://(user|x):(password|x)@localhost''',
   # .env.example / docs placeholders
   '''replace-with-a-long-random-secret''',
