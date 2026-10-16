@@ -396,3 +396,19 @@ body { overscroll-behavior-y: none; }
   /* Installed: text in the menu and header is not selected by a long press. */
   header, aside, [role="dialog"] nav { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
 }
+
+/* Printable documents: the organisation's logo as a faint watermark on every page (app/print/layout.tsx). */
+.ejo-print-watermark {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  pointer-events: none;
+  background: url('/images/logo/logo.png') center / min(78vw, 640px) auto no-repeat;
+  opacity: 0.05;
+  mix-blend-mode: multiply;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+@media print {
+  .ejo-print-watermark { background-size: 78% auto; opacity: 0.06; }
+}

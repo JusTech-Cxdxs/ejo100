@@ -122,6 +122,8 @@ export function EstimatePdf(props: EstimatePdfProps) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* The organisation's logo, very faint, behind every page (a watermark, repeated on each page). */}
+        <Image fixed src={logoUrl} style={{ position: 'absolute', top: 250, left: 70, width: 455, opacity: 0.045 }} />
         <View style={styles.headerRow}>
           {/* @react-pdf/renderer's own Image primitive, not an HTML
               <img> — it renders directly into the PDF's content

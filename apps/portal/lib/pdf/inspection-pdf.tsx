@@ -115,6 +115,8 @@ export function InspectionPdf(props: InspectionPdfProps) {
   return (
     <Document>
       <Page size="A4" style={styles.page}>
+        {/* The organisation's logo, very faint, behind every page (a watermark, repeated on each page). */}
+        <Image fixed src={logoUrl} style={{ position: 'absolute', top: 250, left: 70, width: 455, opacity: 0.045 }} />
         <View style={styles.headerRow}>
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image src={logoUrl} style={styles.logo} />

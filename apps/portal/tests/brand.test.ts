@@ -36,3 +36,19 @@ test('the installed app gets a short name: the organisation\'s initials, or the 
   assert.equal(appShortName('Bank of the North West Region'), 'BNWR');
   assert.equal(appShortName('Kewalram Chanrai Group', 'Kewalram'), 'Kewalram');
 });
+
+test('dealer brands: a quiet text line in every email footer, in each brand\'s colour; nothing when not set', async () => {
+  const { dealerBrands, renderEmailLayout } = await import('../lib/email-templates/layout');
+  assert.deepEqual(dealerBrands('FOTON:#111111, ISUZU:#E4002B,SOUEAST:#F39800'), [
+    { name: 'FOTON', color: '#111111' }, { name: 'ISUZU', color: '#E4002B' }, { name: 'SOUEAST', color: '#F39800' },
+  ]);
+  assert.deepEqual(dealerBrands('<b>X</b>:red'), [{ name: 'bXb', color: '#334155' }]);
+  assert.deepEqual(dealerBrands(''), []);
+  const before = process.env.NEXT_PUBLIC_DEALER_BRANDS;
+  process.env.NEXT_PUBLIC_DEALER_BRANDS = 'FOTON:#111111,ISUZU:#E4002B';
+  const out = renderEmailLayout({ previewText: 'p', companyName: 'Kewalram Chanrai Group', logoUrl: 'https://x.example/l.png', heading: 'Hi', bodyHtml: 'Body' });
+  assert.match(out, /Authorised dealer/);
+  assert.match(out, /color: #E4002B; font-weight: 800[^>]*>ISUZU</);
+  assert.doesNotMatch(out, /<img[^>]*(foton|isuzu)/i);
+  if (before === undefined) delete process.env.NEXT_PUBLIC_DEALER_BRANDS; else process.env.NEXT_PUBLIC_DEALER_BRANDS = before;
+});
