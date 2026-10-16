@@ -5,7 +5,6 @@ import { logFailure } from '@/lib/log';
 import { claimed, lockRows } from '@/lib/integrity';
 import { retryOnNumberClash } from '@/lib/integrity-core';
 import { cache } from 'react';
-import { after } from 'next/server';
 
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
@@ -424,7 +423,9 @@ let lastSafetyNet = 0;
 function reminderSafetyNet() {
   if (Date.now() - lastSafetyNet < 5 * 60_000) return;
   lastSafetyNet = Date.now();
-  after(() => sendDueAppointmentReminders().then(() => undefined).catch((err) => logFailure('Reminder safety net failed', err)));
+  // Not inside after(): the reminder run writes audit entries that read the request's headers and
+  // cookies, which Next forbids there. The scheduled run is the real sender; this is only a safety net.
+  void sendDueAppointmentReminders().then(() => undefined).catch((err) => logFailure('Reminder safety net failed', err));
 }
 
 /** Dashboard reminders: this person's appointments today (host or

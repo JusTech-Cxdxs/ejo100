@@ -140,12 +140,21 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   // Support tickets: the inbox's own fence (organisation + branch reach; website enquiries are the organisation's).
   const supportReach: Where | null = allowed('support.tickets.manage') ? (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId()))) : null;
 
+  // At most 4 lookups at once: one search never takes every database connection from the pages around it.
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  const slot = async <T,>(fn: () => Promise<T>): Promise<T> => {
+    if (running >= 4) await new Promise<void>((r) => waiting.push(r));
+    running += 1;
+    try { return await fn(); } finally { running -= 1; waiting.shift()?.(); }
+  };
+
   /** Runs one table's search when the person may open it and the query can match it. */
   function find<T>(reach: Where | null | false, fields: Fields, run: (where: Where) => Promise<T[]>): Promise<T[]> {
     if (!reach) return Promise.resolve([]);
     const or = conditions(plan, fields);
     if (!or.length) return Promise.resolve([]);
-    return run({ AND: [reach, { OR: or }] }).catch(() => [] as T[]);
+    return slot(() => run({ AND: [reach, { OR: or }] })).catch(() => [] as T[]);
   }
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;

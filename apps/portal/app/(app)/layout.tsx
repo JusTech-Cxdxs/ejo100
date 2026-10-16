@@ -1,5 +1,5 @@
 import { signedInSession } from '@/lib/assist/server';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
@@ -13,6 +13,7 @@ import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
 import { decide } from '@/lib/authz/catalogue';
 import { EnyoPanel } from '@/components/enyo/EnyoPanel';
+import { NavProgress } from '@/components/NavProgress';
 
 /**
  * Signed-in shell. The user's name and role come from Prisma (`fullName`),
@@ -72,6 +73,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         canManage={decide(principal, 'enyo.manage').allowed}
       />
       <OfflineNotice />
+      <Suspense fallback={null}><NavProgress /></Suspense>
     </NotificationProvider>
   );
 }

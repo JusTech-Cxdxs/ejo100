@@ -23,6 +23,8 @@ export type RoadmapModule = {
   group: RoadmapGroup;
   /** Built first, after Version 1. */
   next?: boolean;
+  /** Partly live already: where to use it today, and what runs. */
+  live?: { href: string; label: string; what: string };
   phases: RoadmapPhase[];
   /** How it will work: data model, permissions, computation, delivery. */
   design?: RoadmapDesign[];
@@ -45,8 +47,9 @@ export const ROADMAP: RoadmapModule[] = [
     key: 'help',
     name: 'AI support centre',
     tagline: 'Help desks for customers and staff, with an assistant that drafts the answer.',
-    description: 'The customer side is live as the Support centre (v36): support@ / warranty@ / technical@ addresses, chat hand-overs and logged calls in one place, with targets, Enyo’s triage, drafts and answers to general questions, and satisfaction. Still to come: the staff help desk (“something is wrong here” from any page) and published guides.',
+    description: 'Live: the Support centre (customers — support@ / warranty@ / technical@ addresses, chat hand-overs and logged calls, targets, Enyo’s triage, drafts and answers from each proven customer’s own records with links), Get help for staff (from any page or error screen), and checking every Enyo reply. Still to come: published guides and saved answers kept per organisation.',
     icon: 'help',
+    live: { href: '/crm/support', label: 'Open the Support centre', what: 'Support centre, Get help for staff, and Enyo’s replies checked by people' },
     group: 'next',
     next: true,
     phases: [
@@ -83,8 +86,9 @@ export const ROADMAP: RoadmapModule[] = [
     key: 'intelligence',
     name: 'Intelligence',
     tagline: 'From what happened, to what is likely next.',
-    description: 'Forecasting and anomaly detection on top of the analytics the platform already computes, run in a separate Python service that only reads curated data and only advises.',
+    description: 'Live: models trained on the organisation’s own history (job times, unusual prices, parts reorder points, complaint themes, how decisions go), the integrity watch (unusual money, parts, warranty, gate and sign-in activity) and How work flows. Still to come: forecasts of workshop load and revenue, and plain-language questions over analytics.',
     icon: 'ai',
+    live: { href: '/analytics/workflows', label: 'Open How work flows', what: 'Enyo models, the integrity watch and How work flows' },
     group: 'next',
     next: true,
     phases: [

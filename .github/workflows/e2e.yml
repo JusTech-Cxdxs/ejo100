@@ -195,3 +195,49 @@ jobs:
           path: apps/portal/e2e/report
           if-no-files-found: ignore
           retention-days: 7
+
+  schema-upgrade:
+    # The deploy path from the schemas production may still have: each baseline
+    # is pushed first, then pre-deploy SQL → db push (never --accept-data-loss)
+    # → post-deploy SQL, exactly as Render/Vercel run it. A change that would stop
+    # a production deploy (e.g. a unique index on a new column) fails here first.
+    name: schema upgrade (deploy path)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: upgrade-test-only
+          POSTGRES_DB: ejo_upgrade
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: 'postgresql://postgres:upgrade-test-only@localhost:5432/ejo_upgrade'
+      DIRECT_URL: 'postgresql://postgres:upgrade-test-only@localhost:5432/ejo_upgrade'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.node-version'
+          cache: 'npm'
+      - run: npm install
+      - name: Upgrade from each baseline (v35 release, and main)
+        run: |
+          set -e
+          for base in 6cf2bb0 origin/main; do
+            echo "::group::baseline $base"
+            psql "$DIRECT_URL" -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'
+            git show "$base:packages/database/prisma/schema.prisma" > /tmp/baseline.prisma
+            npx prisma db push --schema=/tmp/baseline.prisma --skip-generate
+            for f in scripts/predeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+            npx prisma db push --schema=packages/database/prisma/schema.prisma --skip-generate
+            for f in scripts/postdeploy/*.sql; do npx prisma db execute --file="$f" --url="$DIRECT_URL"; done
+            echo "::endgroup::"
+          done

@@ -33,13 +33,19 @@ export default async function RoadmapModulePage({ params }: { params: Promise<{ 
           </div>
           <div className="min-w-0 flex-1">
             {m.next ? (
-              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-primary)]" />Next phase · built after Version 1</p>
+              <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-primary)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-primary)]" />{m.live ? "Partly live · the rest is next" : "Next phase · built after Version 1"}</p>
             ) : (
               <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--ejo-warning-text)]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--ejo-warning)]" />Coming next · planned</p>
             )}
             <h1 className="mt-2 text-3xl font-bold text-[var(--ejo-text)]">{m.name}</h1>
             <p className="mt-1 text-lg text-[var(--ejo-text)]">{m.tagline}</p>
             <p className="mt-3 max-w-2xl text-sm leading-relaxed text-[var(--ejo-text-muted)]">{m.description}</p>
+            {m.live ? (
+              <p className="mt-4 inline-flex flex-wrap items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/30 bg-[var(--ejo-success)]/10 px-3 py-2 text-sm text-[var(--ejo-text)]">
+                <span className="rounded-full bg-[var(--ejo-success)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">Live</span>
+                {m.live.what}. <Link href={m.live.href} className="font-semibold text-[var(--ejo-primary)] hover:underline">{m.live.label} →</Link>
+              </p>
+            ) : null}
           </div>
         </div>
       </section>
