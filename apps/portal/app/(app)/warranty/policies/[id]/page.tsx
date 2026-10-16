@@ -22,6 +22,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { splitLines, durationLabel } from '@/lib/warranty-state';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty_policy.created': 'Policy created',
@@ -273,7 +274,8 @@ export default async function WarrantyPolicyPage({ params, searchParams }: { par
               <form action={requestWarrantyPolicyDeletionFormAction} className="mt-2 space-y-2">
                 <FormPendingOverlay />
                 <input type="hidden" name="policyId" value={policy.id} />
-                <textarea name="reason" required rows={2} placeholder="Why should this policy be deleted?" className={input} />
+                <textarea id="warranty-policies-id-text-1" name="reason" required rows={2} placeholder="Why should this policy be deleted?" className={input} />
+                <RefineTextButton targetId="warranty-policies-id-text-1" />
                 <p className="text-[11px] text-[var(--ejo-text-muted)]">
                   Approved by the Warranty HOD, then the Branch Manager. A policy that has issued warranties is archived instead of erased.
                 </p>

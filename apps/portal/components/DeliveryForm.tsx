@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { VEHICLES } from '@/components/VisitArrivalFields';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const input = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]';
 const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
@@ -53,7 +54,8 @@ export function DeliveryForm({ canGate, action }: { canGate: boolean; action: (f
             <div><label className={label}>Supplier</label><input name="supplierName" required placeholder="e.g. ABC Auto Parts Ltd" className={input} /></div>
             <div><label className={label}>Reference (PO / waybill / invoice)</label><input name="reference" placeholder="e.g. PO-2026-0031" className={input} /></div>
           </div>
-          <div><label className={label}>What is being delivered</label><textarea name="items" required rows={2} placeholder="e.g. 5 cartons of brake pads, 2 drums of engine oil" className={input} /></div>
+          <div><label className={label}>What is being delivered</label><textarea id="deliveryform-text-1" name="items" required rows={2} placeholder="e.g. 5 cartons of brake pads, 2 drums of engine oil" className={input} />
+          <RefineTextButton targetId="deliveryform-text-1" /></div>
           {mode === 'ARRIVED' ? <DeliveryArrivalFields /> : <div><label className={label}>Expected</label><input name="expectedAt" type="datetime-local" required className={input} /></div>}
           <div><label className={label}>Notes (optional)</label><input name="notes" className={input} /></div>
           <SubmitButton label={mode === 'ARRIVED' ? 'Record arrival — tell the Store' : 'Announce the delivery'} pendingLabel="Saving…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-3 text-sm font-medium text-white hover:opacity-90 sm:w-auto" />

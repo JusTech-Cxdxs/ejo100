@@ -14,6 +14,7 @@ import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, PageHeader } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -373,13 +374,14 @@ export default async function WorkshopCustodyPage({
                       <form action={requestJobCardCancellationFormAction} className="mt-2 space-y-2">
                         <FormPendingOverlay />
                         <input type="hidden" name="jobCardId" value={entry.id} />
-                        <textarea
+                        <textarea id={`custody-cancel-${entry.id}`}
                           name="reason"
                           required
                           rows={2}
                           placeholder="Reason — e.g. customer called to cancel, could not afford repair"
                           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-2 text-xs text-[var(--ejo-text)]"
                         />
+                        <RefineTextButton targetId={`custody-cancel-${entry.id}`} />
                         <SubmitButton
                           label="Submit cancellation request"
                           pendingLabel="Requesting…"

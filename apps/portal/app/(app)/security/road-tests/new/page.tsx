@@ -11,6 +11,7 @@ import { FormPendingOverlay } from '@/components/FormPendingOverlay';
 import { SubmitButton } from '@/components/SubmitButton';
 import { durationText } from '@/lib/security-rules';
 import { PageHeader } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const DURATIONS = [15, 30, 45, 60, 90, 120, 180, 240];
 
@@ -57,7 +58,8 @@ export default async function NewRoadTestPage({ searchParams }: { searchParams: 
             {staffForCompanions.map((s) => <option key={s.value} value={s.value}>{s.label}{s.sublabel ? ` — ${s.sublabel}` : ''}</option>)}
           </select>
           <p id="companions-hint" className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Hold Ctrl (or ⌘) to choose more than one. The driver is already included.</p></div>
-        <div><label className={label}>Other people going along (optional — one name per line)</label><textarea name="otherCompanions" rows={2} placeholder="e.g. Customer's representative" className={input} /></div>
+        <div><label className={label}>Other people going along (optional — one name per line)</label><textarea id="security-road-tests-new-text-1" name="otherCompanions" rows={2} placeholder="e.g. Customer's representative" className={input} />
+        <RefineTextButton targetId="security-road-tests-new-text-1" /></div>
         <div><label className={label}>Route (optional)</label><input name="route" placeholder="e.g. Isolo → Oshodi expressway and back" className={input} /></div>
         <div>
           <label className={label}>Expected duration</label>

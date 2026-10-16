@@ -6,6 +6,7 @@ import { ConfirmDeleteButton } from './ConfirmDeleteButton';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { Icon } from './ui/Icon';
 import { pluralize } from '@/lib/utils/pluralize';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 const MISTAKE: Record<BinEntity, string> = {
   JobCard: 'a Job Card opened',
@@ -58,6 +59,7 @@ export function RecycleBinPanel({ offer, entity, id, className = '' }: { offer: 
             placeholder="For example: opened on the wrong vehicle"
             className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
           />
+          <RefineTextButton targetId={`bin-reason-${id}`} />
           <ConfirmDeleteButton
             confirmMessage={`Move ${offer.reference} to the Recycle bin? It disappears from lists and search straight away. An administrator can restore it within ${pluralize(offer.days, 'day')}.`}
             label="Move to Recycle bin"

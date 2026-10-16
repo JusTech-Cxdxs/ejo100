@@ -7,6 +7,7 @@ import { LoadingLink } from './LoadingLink';
 import { FormPendingOverlay } from './FormPendingOverlay';
 import { SubmitButton } from './SubmitButton';
 import { PrintMenu } from './print/PrintMenu';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 type Severity = 'GOOD' | 'ATTENTION' | 'SERVICE_REQUIRED' | 'CRITICAL';
 
@@ -336,13 +337,14 @@ export function InspectionWorkspace({
               </p>
               <input type="hidden" name="inspectionId" value={inspection.id} />
               <input type="hidden" name="vehicleServiceId" value={vehicleServiceId} />
-              <textarea
+              <textarea id="inspectionworkspace-text-1"
                 name="notes"
                 rows={2}
                 defaultValue={inspection.notes ?? ''}
                 placeholder="Optional overall notes"
                 className="mt-3 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2.5 text-sm text-[var(--ejo-text)]"
               />
+              <RefineTextButton targetId="inspectionworkspace-text-1" />
               <SubmitButton
                 label={isCompleted ? 'Update Completion' : 'Complete Inspection'}
                 pendingLabel="Saving…"

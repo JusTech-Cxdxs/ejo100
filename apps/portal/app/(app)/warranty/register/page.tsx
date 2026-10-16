@@ -11,6 +11,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyList } from '@/components/WarrantyList';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader } from '@/components/ui';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 /**
  * Register a vehicle warranty by hand (until sales systems feed them in).
@@ -127,7 +128,8 @@ export default async function RegisterWarrantyPage({ searchParams }: { searchPar
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Evidence</label>
-              <textarea name="evidenceNote" required rows={3} placeholder="e.g. Sales invoice INV-0098 dated 25 Sep 2026; delivery note DN-0431" className={input} />
+              <textarea id="warranty-register-text-1" name="evidenceNote" required rows={3} placeholder="e.g. Sales invoice INV-0098 dated 25 Sep 2026; delivery note DN-0431" className={input} />
+              <RefineTextButton targetId="warranty-register-text-1" />
             </div>
             <SubmitButton label="Register warranty" pendingLabel="Registering…" className="w-full rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90" />
           </form>

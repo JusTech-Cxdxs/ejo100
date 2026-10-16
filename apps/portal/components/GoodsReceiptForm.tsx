@@ -7,6 +7,7 @@ import { SearchableSelect, type SearchableOption } from './SearchableSelect';
 import { SerialNumberInput } from './SerialNumberInput';
 import { IdempotencyKey } from './IdempotencyKey';
 import { pluralizeWord } from '@/lib/utils/pluralize';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 type PartOption = {
   id: string;
@@ -263,11 +264,12 @@ export function GoodsReceiptForm({
 
       <div>
         <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Notes (optional)</label>
-        <textarea
+        <textarea id="goodsreceiptform-text-1"
           name="notes"
           rows={2}
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
+        <RefineTextButton targetId="goodsreceiptform-text-1" />
       </div>
 
       {hasInvalidSerial ? (

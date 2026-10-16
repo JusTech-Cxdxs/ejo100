@@ -3,6 +3,7 @@
  * ask exactly the same things in the same way. The 3 C's are what every
  * provider reads first; the hints say what a strong answer contains.
  */
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 type Visit = { id: string; label: string };
 
 export function WarrantyClaimFields({
@@ -37,17 +38,20 @@ export function WarrantyClaimFields({
     <div className="space-y-4">
       <div>
         <label className={label}>1. Complaint — what the customer reported</label>
-        <textarea name="complaint" rows={2} required defaultValue={defaults.complaint ?? ''} className={input} placeholder="e.g. Battery warning light on; vehicle would not start after short trips" />
+        <textarea id="claim-complaint" name="complaint" rows={2} required defaultValue={defaults.complaint ?? ''} className={input} placeholder="e.g. Battery warning light on; vehicle would not start after short trips" />
+        <RefineTextButton targetId="claim-complaint" label="complaint" />
         <p className={hint}>In the customer&apos;s words: the symptom, when it happens, how often.</p>
       </div>
       <div>
         <label className={label}>2. Cause — what the technician found</label>
-        <textarea name="cause" rows={2} defaultValue={defaults.cause ?? ''} className={input} placeholder="e.g. Alternator output 11.8 V at 2,000 rpm; internal diode failure confirmed on bench test" />
+        <textarea id="claim-cause" name="cause" rows={2} defaultValue={defaults.cause ?? ''} className={input} placeholder="e.g. Alternator output 11.8 V at 2,000 rpm; internal diode failure confirmed on bench test" />
+        <RefineTextButton targetId="claim-cause" label="cause" />
         <p className={hint}>The root cause and how it was proven (tests, readings, fault codes). Say if misuse, accident or wrong fluids were ruled out.</p>
       </div>
       <div>
         <label className={label}>3. Correction — what was done to fix it</label>
-        <textarea name="correction" rows={2} defaultValue={defaults.correction ?? ''} className={input} placeholder="e.g. Replaced alternator assembly; output 14.2 V confirmed; road tested OK" />
+        <textarea id="claim-correction" name="correction" rows={2} defaultValue={defaults.correction ?? ''} className={input} placeholder="e.g. Replaced alternator assembly; output 14.2 V confirmed; road tested OK" />
+        <RefineTextButton targetId="claim-correction" label="correction" />
         <p className={hint}>What was replaced or repaired, and how the fix was verified.</p>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
