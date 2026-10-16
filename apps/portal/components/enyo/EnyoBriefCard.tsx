@@ -91,7 +91,7 @@ export function EnyoBriefCard({ userKey }: { userKey: string }) {
           </button>
         ) : null}
       </div>
-      <div className="px-4 py-3 text-sm leading-relaxed text-[var(--ejo-text)]" role="status" aria-live="polite">
+      <div className="px-4 py-3 text-sm leading-relaxed text-[var(--ejo-text)]" aria-live="polite" aria-busy={busy}>
         {error ? <p className="text-[var(--ejo-error)]">{error}</p> : null}
         {!brief && !busy && !error ? <p className="text-[var(--ejo-text-muted)]">Ask Enyo what is waiting for you — approvals, steps, support requests, reminders, appointments, jobs, your mail and new notifications — with a link to each.</p> : null}
         {busy && !brief ? <p className="text-[var(--ejo-text-muted)]">Enyo is looking through your work…</p> : null}
