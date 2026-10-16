@@ -16,7 +16,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, setAuditActor } from '@ejo/database';
-import { buildSystemPrompt, encodeEvent, lagosNow, runAgent, SSE_HEADERS, trimHistory, webLookupEnabled, webLookupTool, type EnyoEvent } from '@ejo/enyo';
+import { buildSystemPrompt, encodeEvent, lagosNow, routeModel, runAgent, SSE_HEADERS, trimHistory, webLookupEnabled, webLookupTool, type EnyoEvent } from '@ejo/enyo';
 import { currentCustomer, type SignedInCustomer } from '@/lib/customer-portal/session';
 import { clientIp } from '@/lib/customer-audit';
 import { recordErrorEvent, newRef, redact } from '@/lib/error-events';
@@ -189,7 +189,8 @@ export async function POST(req: NextRequest) {
             config: ready.config, emit,
           };
           const result = await runAgent<WebCtx>({
-            config: ready.config,
+            // Cost: greetings and short how-to on the fast model; the rest on the main one.
+            config: { ...ready.config, model: routeModel(message, ready.config).model },
             system,
             messages: turns,
             tools: [...(mode === 'CUSTOMER' ? customerTools : publicTools), ...(webLookupEnabled() ? [webLookupTool<WebCtx>()] : [])],

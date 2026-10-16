@@ -8,6 +8,7 @@ import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
 import { runAgent } from '../src/agent';
 import { buildSystemPrompt, lagosNow, trimHistory } from '../src/prompts';
 import { cleanQuery, trimExtract, webLookup, webLookupEnabled, webLookupTool } from '../src/web';
+import { routeModel } from '../src/routing';
 
 const config: LlmConfig = { baseUrl: 'https://llm.test/v1', apiKey: 'k', model: 'm', fastModel: 'm', providerLabel: 'Test', timeoutMs: 5_000 };
 
@@ -291,4 +292,12 @@ test('reasoning models (gpt-oss): little thinking and extra room for short jobs;
   assert.equal(r.content, 'OK');
   assert.equal(again.seen[1]!.body.reasoning_effort, undefined);
   assert.equal(again.seen[0]!.body.reasoning_effort, 'medium');
+});
+
+test('model routing: the fast model for small talk and short how-to, the main one for records and figures', () => {
+  const cfg = { ...config, model: 'openai/gpt-oss-120b', fastModel: 'openai/gpt-oss-20b' };
+  for (const m of ['hello', 'Good morning!', 'thanks so much', 'how are you doing?', 'who are you', 'How do I open a Job Card?', 'where do i find reminders']) assert.equal(routeModel(m, cfg, {}).tier, 'fast', m);
+  for (const m of ["Today's takings", 'What is the status of JC-2026-000412?', 'How much do I owe?', 'Summarise my mail', 'how do I see the revenue report for this month', 'Which parts are out of stock?']) assert.equal(routeModel(m, cfg, {}).tier, 'main', m);
+  assert.equal(routeModel('hello', cfg, { ENYO_LLM_ROUTING: 'off' }).tier, 'main');
+  assert.equal(routeModel('hello', { ...cfg, fastModel: cfg.model }, {}).tier, 'main');
 });

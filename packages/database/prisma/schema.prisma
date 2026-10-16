@@ -3742,3 +3742,30 @@ model EnyoModel {
   @@index([organisationId, task, status])
   @@map("enyo_models")
 }
+
+// v35 — what Enyo has learned: answers people marked helpful, and replies
+// colleagues wrote when Enyo handed a question over. Only questions that did
+// not read anyone's records (how-to, general knowledge, the organisation's
+// public information), with personal details removed. Used as worked examples
+// (and, for near-identical questions, reused) so Enyo improves and costs less.
+// Additive only.
+model EnyoLearnedAnswer {
+  id              String   @id @default(cuid())
+  organisationId  String
+  // STAFF | CUSTOMER | PUBLIC | SUPPORT
+  channel         String
+  question        String
+  answer          String
+  // The question's words as Enyo compares them (lib/enyo/predict/text.ts tokenise).
+  tokens          Json
+  // Where it came from: the rated answer, or the support reply.
+  source          String
+  sourceId        String   @unique
+  uses            Int      @default(0)
+  lastUsedAt      DateTime?
+  createdById     String?
+  createdAt       DateTime @default(now())
+
+  @@index([organisationId, channel, createdAt])
+  @@map("enyo_learned_answers")
+}

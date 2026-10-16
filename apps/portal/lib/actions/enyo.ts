@@ -7,6 +7,7 @@ import { authorize, currentAssist, getPrincipal, myOrganisationId, refuseDuringA
 import { writeAuditLog } from '@/lib/workshop-core';
 import { logError } from '@/lib/errors';
 import { getEnyoSettings, type EnyoSettings } from '@/lib/enyo/settings';
+import { learnFromRating } from '@/lib/enyo/learned';
 
 /**
  * Enyo for the signed-in person: their own conversations (list, open, rename,
@@ -112,6 +113,9 @@ export async function rateEnyoMessage(messageId: string, rating: number, note?: 
     data: { rating: rating === 0 ? null : rating, ratingNote: rating === 0 ? null : cleanNote || null },
   });
   if (!res.count) throw new EnyoError('That answer is not available.');
+  // A helpful answer to a question that read nobody's records becomes an example Enyo learns from.
+  const organisationId = await myOrganisationId();
+  if (organisationId) await learnFromRating({ messageId, rating, userId: user.id, organisationId }).catch(() => 'skipped');
 }
 
 export type EnyoMemoryFact = { id: string; fact: string; createdAt: Date };
@@ -208,4 +212,31 @@ export async function testEnyoConnection(): Promise<EnyoConnectionResult> {
     const message = err instanceof LlmError ? llmAdminMessage(err) : `The model server could not be reached: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown error'}.`;
     return { ok: false, message: `${message} (reference ${ref})` };
   }
+}
+
+// ── What Enyo has learned (administrators) ────────────────────────────
+
+export type LearnedAnswerRow = { id: string; channel: string; question: string; answer: string; source: string; uses: number; createdAt: Date; lastUsedAt: Date | null };
+
+/** The organisation's learned answers, newest first (the Enyo learning page). */
+export async function listLearnedAnswers(): Promise<LearnedAnswerRow[]> {
+  await authorize('enyo.manage', undefined, 'listLearnedAnswers', 'Only administrators manage Enyo.');
+  return prisma.enyoLearnedAnswer.findMany({
+    where: { ...(await myEnyoOrg()) },
+    orderBy: { createdAt: 'desc' },
+    take: 100,
+    select: { id: true, channel: true, question: true, answer: true, source: true, uses: true, createdAt: true, lastUsedAt: true },
+  });
+}
+
+/** Removes a learned answer (it is wrong, or out of date). */
+export async function removeLearnedAnswer(id: string): Promise<void> {
+  const user = await requireUser();
+  await authorize('enyo.manage', undefined, 'removeLearnedAnswer', 'Only administrators manage Enyo.');
+  await refuseDuringAssist('enyo.learned.remove');
+  const org = await myEnyoOrg();
+  const row = await prisma.enyoLearnedAnswer.findFirst({ where: { id: String(id ?? ''), ...org }, select: { id: true, organisationId: true } });
+  if (!row) throw new EnyoError('That learned answer is not available.');
+  await prisma.enyoLearnedAnswer.delete({ where: { id: row.id } });
+  await writeAuditLog({ userId: user.id, action: 'enyo.learned_answer_removed', entityType: 'EnyoLearnedAnswer', entityId: row.id, organisationId: row.organisationId });
 }

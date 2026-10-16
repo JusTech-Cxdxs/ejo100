@@ -7,6 +7,7 @@ import { LearningAccuracyChartLazy } from '@/components/enyo/LearningAccuracyCha
 import { pluralize } from '@/lib/utils/pluralize';
 import { Suspense } from 'react';
 import { DataQualityCard } from '@/components/enyo/DataQualityCard';
+import { LearnedAnswersCard } from '@/components/enyo/LearnedAnswersCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -132,6 +133,14 @@ export default async function EnyoLearningPage() {
         <div className="mb-6">
           <Suspense fallback={<SectionCard icon="check-circle" title="Training data quality"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Checking the training data…</p></SectionCard>}>
             <DataQualityCard organisationId={orgId} branchIds={reach.branchId === undefined ? null : typeof reach.branchId === 'string' ? [reach.branchId] : reach.branchId.in} />
+          </Suspense>
+        </div>
+      ) : null}
+
+      {canManage ? (
+        <div className="mb-6">
+          <Suspense fallback={<SectionCard icon="sparkles" title="What Enyo has learned"><p role="status" className="text-sm text-[var(--ejo-text-muted)]">Loading…</p></SectionCard>}>
+            <LearnedAnswersCard />
           </Suspense>
         </div>
       ) : null}
