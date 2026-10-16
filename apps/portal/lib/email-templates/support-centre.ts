@@ -72,7 +72,7 @@ export function renderSupportReply(o: Common & { body: string; by: 'agent' | 'ai
     ${ai ? callout(`This answer was written by ${o.assistantName}, our AI assistant, from ${o.fromRecords ? (o.colleague ? 'your account and our how-to guides' : 'your records with us and our published information') : 'our published information'}. A ${o.colleague ? 'person on the support team' : 'colleague'} is one click away.`, 'neutral', 'About this reply') : ''}
     ${ai && o.responseUrl ? buttons([{ label: 'Yes, this solved it', url: `${o.responseUrl}?a=solved`, tone: 'primary' }, { label: 'I still need a person', url: `${o.responseUrl}?a=person`, tone: 'plain' }]) : ''}
     ${details([['Reference', o.number], ['Status', o.statusLabel]])}
-    ${para('To answer, reply to this email and keep the reference in the subject.', 'small')}`;
+    ${para(o.colleague ? 'To answer, open your request in the portal (Get help) and write there.' : 'To answer, reply to this email and keep the reference in the subject.', 'small')}`;
   return {
     subject: `[#${o.number}] ${o.subject.replace(/^\s*(re|fw|fwd)\s*:\s*/i, '')}`.slice(0, 300),
     html: renderEmailLayout({
@@ -83,7 +83,7 @@ export function renderSupportReply(o: Common & { body: string; by: 'agent' | 'ai
       ...(ai ? { status: { label: 'AI assistant', tone: 'info' as const } } : {}),
       heading: ai ? 'An answer to your question' : 'A reply from our team',
       bodyHtml,
-      ...(!ai && o.responseUrl ? { ctaLabel: 'Follow your request', ctaUrl: o.responseUrl } : {}),
+      ...(!ai && o.responseUrl ? { ctaLabel: o.colleague ? 'Open my request' : 'Follow your request', ctaUrl: o.responseUrl } : {}),
       audience: o.colleague ? 'staff' : 'customer',
       reason: `You are receiving this because you asked ${o.companyName} for help (${o.number}).`,
       ...(o.branchContact ? { branchContact: o.branchContact } : {}),

@@ -307,9 +307,10 @@ export function senderFacts(ctx: SenderContext, now = new Date()): { text: strin
     if (ctx.kind === 'both' && !isStaffRequest) lines.push('Answer as a customer if the question is about their own vehicle or account as a customer; as a colleague if it is about their work in the staff portal.');
     if (s.name) {
       lines.push(`Staff portal sign-in: ${staffLoginDiagnosis(s, now).forSender}`);
-      if (s.work) lines.push(s.work);
-      for (const e of s.errors.slice(0, 3)) lines.push(`- Error they saw: reference ${e.ref}${e.path ? ` on ${e.path}` : ''} (${day(e.at)}): ${e.message.slice(0, 160)}`);
-      for (const d of s.denied.slice(0, 3)) lines.push(`- They were refused a page they have no permission for: ${d.page} (${day(d.at)}). Only an administrator can change permissions.`);
+      // Their errors, refused pages and habits only on their own help request (never from an email).
+      if (isStaffRequest && s.work) lines.push(s.work);
+      if (isStaffRequest) for (const e of s.errors.slice(0, 3)) lines.push(`- Error they saw: reference ${e.ref}${e.path ? ` on ${e.path}` : ''} (${day(e.at)}): ${e.message.slice(0, 160)}`);
+      if (isStaffRequest) for (const d of s.denied.slice(0, 3)) lines.push(`- They were refused a page they have no permission for: ${d.page} (${day(d.at)}). Only an administrator can change permissions.`);
       for (const g of s.guides) lines.push(`- How-to "${g.title}"${g.youCanDoThis ? '' : ' (done by someone else in their team)'}: ${g.steps.slice(0, 6).map((x, i) => `${i + 1}. ${x}`).join(' ')}`);
       links.push(...ctx.staffLinks);
     }

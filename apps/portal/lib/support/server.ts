@@ -110,6 +110,8 @@ export type NewTicket = {
   priority: Priority; triage?: Triage | null; entities?: unknown; verified?: boolean; authenticatedSender?: boolean; sourceMessageId?: string | null; openedAt?: Date;
   /** Enyo should read it on the next run (email tickets). */
   aiPending?: boolean; handoverReason?: string | null;
+  /** v37: a colleague's own help request (private from the first moment), who is writing, and tags. */
+  requesterUserId?: string | null; senderKind?: string | null; senderUserId?: string | null; tags?: string[];
 };
 
 /** Creates the ticket with its targets and owner (load-balanced in the queue). */
@@ -127,6 +129,7 @@ export async function openTicket(t: NewTicket, tx: Prisma.TransactionClient = pr
       priority: t.priority, topic: t.triage?.topic ?? null, sentiment: t.triage?.sentiment ?? null, language: t.triage?.language ?? null,
       entities: (t.entities ?? undefined) as Prisma.InputJsonValue | undefined, verified: Boolean(t.verified), authenticatedSender: Boolean(t.authenticatedSender), token,
       aiPendingAt: t.aiPending ? new Date() : null, handoverReason: t.handoverReason ?? null,
+      requesterUserId: t.requesterUserId ?? null, senderKind: t.senderKind ?? null, senderUserId: t.senderUserId ?? null, ...(t.tags?.length ? { tags: t.tags.slice(0, 10) } : {}),
       dueFirstResponseAt: due.first, dueResolutionAt: due.resolve, lastCustomerAt: opened, assignedToId: assignee, sourceMessageId: t.sourceMessageId ?? null,
       createdAt: opened,
     },
@@ -163,12 +166,13 @@ export async function triageEmail(organisationId: string, o: { queueName: string
 }
 
 /** What Enyo may answer from: the organisation's contact facts, hours, and answers people approved. */
-export async function supportKnowledge(organisationId: string, question: string): Promise<{ knowledge: Knowledge; bestScore: number }> {
+export async function supportKnowledge(organisationId: string, question: string, colleague = false): Promise<{ knowledge: Knowledge; bestScore: number }> {
   const [org, branches, settings, learned] = await Promise.all([
     prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true, hotlines: true, email: true, hqAddress: true, website: true } }),
     prisma.branch.findMany({ where: { isActive: true, businessUnit: { organisationId, isActive: true } }, orderBy: { name: 'asc' }, take: 20, select: { name: true, address: true, hotlines: true, email: true } }),
     supportSettings(organisationId),
-    findLearned(organisationId, ['SUPPORT', 'CUSTOMER', 'PUBLIC'], question, 5).catch(() => []),
+    // A colleague's help request learns from colleagues' answers too; customers never see those.
+    findLearned(organisationId, colleague ? ['STAFF', 'SUPPORT'] : ['SUPPORT', 'CUSTOMER', 'PUBLIC'], question, 5).catch(() => []),
   ]);
   return {
     bestScore: learned[0]?.score ?? 0,
@@ -189,7 +193,8 @@ export type AiReplyResult = AiAnswer & { hasSources: boolean; model: string; unk
 
 /** Something only a colleague can do, from the sign-in check (a reason code for aiDecision). */
 export function personOnlyFrom(ctx: SenderContext | null | undefined, topic: string | null): string | null {
-  if (!ctx?.login || !ctx.login.needsPerson) return null;
+  // Unproven senders are treated alike whatever the account's state (nothing confirms that an account exists).
+  if (!ctx?.proven || !ctx.login || !ctx.login.needsPerson) return null;
   // Only when the question is about getting in: a switched-off customer asking opening hours is answered as usual.
   if (topic !== 'account_access') return null;
   return ctx.login.code === 'access_off' ? 'access_off' : ctx.login.code === 'deactivated' ? 'deactivated' : 'no_account';
@@ -203,9 +208,9 @@ export function personOnlyFrom(ctx: SenderContext | null | undefined, topic: str
 export async function aiReply(organisationId: string, o: { customerName: string; subject: string; body: string; topic: string | null; mode: 'answer' | 'draft'; timeoutMs?: number; context?: SenderContext | null }): Promise<AiReplyResult | null> {
   const ready = await enyoReady(organisationId, 'customerAssistant');
   if (!ready.ready) return null;
-  const { knowledge, bestScore } = await supportKnowledge(organisationId, `${o.subject}\n${o.body}`.slice(0, 2000));
-  const sender = o.context ? senderFacts(o.context) : null;
   const colleague = Boolean(o.context?.staff && (o.context.provenHow === 'own_request' || o.context.kind === 'staff'));
+  const { knowledge, bestScore } = await supportKnowledge(organisationId, `${o.subject}\n${o.body}`.slice(0, 2000), o.context?.provenHow === 'own_request');
+  const sender = o.context ? senderFacts(o.context) : null;
   // Records Enyo was given for a question it may answer from them (still never money, complaints or safety).
   const recordsReady = recordsReadyFor(o.context, o.topic);
   const personOnly = personOnlyFrom(o.context, o.topic);
@@ -227,7 +232,7 @@ export async function aiReply(organisationId: string, o: { customerName: string;
     // Links, phones and emails must come from our own details, approved answers or the sender's links.
     const strangers = [
       ...unknownContacts(a.reply, `${JSON.stringify(knowledge)}\n${(sender?.links ?? []).map((l) => l.url).join('\n')}`),
-      ...unknownSpecifics(a.reply, [...(sender?.links ?? []).map((l) => l.url), ...(o.context?.customerLinks ?? []).slice(0, 3).map((l) => l.url), ...(knowledge.contact.website ? [knowledge.contact.website] : [])], `${sender?.text ?? ''}\n${o.subject}\n${o.body}`),
+      ...unknownSpecifics(a.reply, [...(sender?.links ?? []).map((l) => l.url), ...(o.context?.customerLinks ?? []).slice(0, 3).map((l) => l.url), ...(knowledge.contact.website ? [knowledge.contact.website] : []), ...knowledge.answers.flatMap((x) => [...x.answer.matchAll(/https?:\/\/[^\s<>()"']+/g)].map((m) => m[0]))], `${sender?.text ?? ''}\n${o.subject}\n${o.body}`),
     ];
     return { ...a, confidence: a.needsPerson || strangers.length || personOnly ? 0 : confidence, hasSources, model: res.model, unknownContacts: strangers, recordsReady, personOnly };
   } catch (err) {

@@ -226,3 +226,19 @@ test('decisions: process picture, readiness, and de-identified training rows', (
   assert.equal(v.length, names.length);
   assert.equal(v[names.indexOf('requester:other')], 1);
 });
+
+test('review fixes: private details stay private', () => {
+  // A colleague emailing support (not their own help request): no errors, refused pages or habits go to the model.
+  const email = senderFacts(ctx({ kind: 'staff', provenHow: 'dmarc', customer: null, staff: staff({ denied: [{ page: '/users', at: NOW }] }) }), NOW).text;
+  assert.doesNotMatch(email, /3553129217|\/users|Works in/);
+  // What a person does most never counts private actions.
+  assert.match(read('lib/enyo/work-profile.ts'), /integrity\\.\|access\\.\|support\\.help_/);
+  // The audit trail hides integrity entries from non-reviewers and alerts about the viewer.
+  assert.match(read('lib/actions/audit-logs.ts'), /integrityAuditFence/);
+  // Unproven senders get the same treatment whatever their account's state.
+  assert.match(read('lib/support/server.ts'), /if \(!ctx\?\.proven \|\| !ctx\.login/);
+  // Help requests are private from the first moment (one transaction).
+  assert.match(read('lib/actions/help.ts'), /requesterUserId: m\.id, senderKind: 'staff'/);
+  // 'use server' files export only async functions.
+  for (const f of ['lib/actions/support-monitor.ts', 'lib/actions/integrity.ts', 'lib/actions/help.ts', 'lib/actions/workflow-insights.ts']) assert.doesNotMatch(read(f), /^export (const|let|class|function )/m, f);
+});

@@ -46,7 +46,7 @@ export async function senderContext(t: ContextTicket, question = ''): Promise<Se
 
   const [customer, staff] = await Promise.all([
     customerRow ? customerFacts(t.organisationId, customerRow) : null,
-    staffRow ? staffFacts(t.organisationId, staffRow, question) : null,
+    staffRow ? staffFacts(t.organisationId, staffRow, question, Boolean(t.requesterUserId)) : null,
   ]);
   const how = provenSender({
     channel: t.channel, authenticatedSender: t.authenticatedSender, verified: t.verified, ticketCustomerId: t.customerId, requesterUserId: t.requesterUserId ?? null,
@@ -116,15 +116,16 @@ async function customerFacts(organisationId: string, c: { id: string; fullName: 
 
 type StaffRow = { id: string; fullName: string; isActive: boolean; lastLoginAt: Date | null; branch: { name: string } | null; department: { name: string } | null; roles: { role: { name: string; isSuperAdmin: boolean } }[] };
 
-async function staffFacts(organisationId: string, u: StaffRow, question: string): Promise<StaffFacts> {
+/** `ownRequest`: their errors, refused pages and what they do most are loaded only for their own help request. */
+async function staffFacts(organisationId: string, u: StaffRow, question: string, ownRequest: boolean): Promise<StaffFacts> {
   const since = new Date(Date.now() - WEEK);
   const [failed, lastFailed, deactivated, errors, denied, work, principal] = await Promise.all([
     prisma.auditLog.count({ where: { action: 'user.sign_in_failed', entityId: u.id, createdAt: { gte: since } } }),
     prisma.auditLog.findFirst({ where: { action: 'user.sign_in_failed', entityId: u.id }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } }),
     u.isActive ? null : prisma.auditLog.findFirst({ where: { organisationId, action: 'user.deactivated', entityId: u.id }, orderBy: { createdAt: 'desc' }, select: { createdAt: true, metadata: true } }),
-    prisma.errorEvent.findMany({ where: { userId: u.id, app: 'portal', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 5, select: { ref: true, path: true, message: true, createdAt: true } }),
-    prisma.auditLog.findMany({ where: { organisationId, userId: u.id, action: 'access.denied', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 5, select: { entityId: true, createdAt: true } }),
-    workProfile(u.id, organisationId),
+    ownRequest ? prisma.errorEvent.findMany({ where: { userId: u.id, app: 'portal', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 5, select: { ref: true, path: true, message: true, createdAt: true } }) : [],
+    ownRequest ? prisma.auditLog.findMany({ where: { organisationId, userId: u.id, action: 'access.denied', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: 5, select: { entityId: true, createdAt: true } }) : [],
+    ownRequest ? workProfile(u.id, organisationId) : null,
     colleaguePrincipal(u.id).catch(() => null),
   ]).catch(() => [0, null, null, [], [], null, null] as const);
   const q = question.trim();

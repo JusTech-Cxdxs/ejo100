@@ -20,13 +20,15 @@ const SENSITIVE_ACTIONS = /^(refund\.recorded|payment\.(recorded|approved)|exter
 
 export type ScanResult = { findings: number; created: number; updated: number; rules: Record<string, number>; ms: number };
 
-export async function scanOrganisation(organisationId: string, windowDays = 7): Promise<ScanResult> {
+/** `deadline`: checks that would start after it are skipped (the next run catches up — every check looks back a week). */
+export async function scanOrganisation(organisationId: string, windowDays = 7, deadline = Number.POSITIVE_INFINITY): Promise<ScanResult> {
   const started = Date.now();
   const since = new Date(Date.now() - windowDays * DAY);
   const orgJob = { branch: { businessUnit: { organisationId } } };
   const findings: Finding[] = [];
   const settings = await supportSettings(organisationId);
   const safe = async (name: string, fn: () => Promise<void>) => {
+    if (Date.now() > deadline - 6_000) return;
     try { await fn(); } catch (err) { logFailure(`Integrity check ${name} failed`, err); }
   };
 
@@ -76,7 +78,7 @@ export async function scanOrganisation(organisationId: string, windowDays = 7): 
       if (list.length < 2 || !list.some((c) => c.createdAt >= since)) continue;
       const sorted = [...list].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
       const total = sorted.reduce((a, c) => a + num(c.claimedAmount), 0);
-      findings.push({ rule: 'warranty_repeat_vehicle', severity: list.length >= 3 ? 'HIGH' : moneySeverity(total, 'LOW'), title: `${list.length} warranty claims on one vehicle in 90 days (${naira(total)})`, evidence: { claims: sorted.map((c) => c.claimNumber), total }, entityType: 'CustomerVehicle', entityId: vehicleId, subjectUserId: sorted[sorted.length - 1]!.createdById, fingerprint: `wc-repeat:${vehicleId}:${sorted[0]!.id}` });
+      findings.push({ rule: 'warranty_repeat_vehicle', severity: list.length >= 3 ? 'HIGH' : moneySeverity(total, 'LOW'), title: `${list.length} warranty claims on one vehicle in 90 days (${naira(total)})`, evidence: { claims: sorted.map((c) => c.claimNumber), total }, entityType: 'CustomerVehicle', entityId: vehicleId, subjectUserId: sorted[sorted.length - 1]!.createdById, fingerprint: `wc-repeat:${vehicleId}:${sorted[sorted.length - 1]!.id}` });
     }
   });
 
@@ -90,15 +92,25 @@ export async function scanOrganisation(organisationId: string, windowDays = 7): 
         vehicleService: { select: { serviceNumber: true, branchId: true, customer: { select: { fullName: true } } } },
       }, take: 3000,
     });
+    // Totals per job, and cash payments near each refund — a few grouped queries, not three per refund.
+    const jobIds = [...new Set(refunds.map((r) => r.jobCardId).filter((x): x is string => Boolean(x)))];
+    const svcIds = [...new Set(refunds.map((r) => r.vehicleServiceId).filter((x): x is string => Boolean(x)))];
+    const [paidJ, paidS, refJ, refS, cashRows] = await Promise.all([
+      jobIds.length ? prisma.payment.groupBy({ by: ['jobCardId'], where: { jobCardId: { in: jobIds } }, _sum: { amount: true } }) : [],
+      svcIds.length ? prisma.payment.groupBy({ by: ['vehicleServiceId'], where: { vehicleServiceId: { in: svcIds } }, _sum: { amount: true } }) : [],
+      jobIds.length ? prisma.refund.groupBy({ by: ['jobCardId'], where: { jobCardId: { in: jobIds } }, _sum: { amount: true } }) : [],
+      svcIds.length ? prisma.refund.groupBy({ by: ['vehicleServiceId'], where: { vehicleServiceId: { in: svcIds } }, _sum: { amount: true } }) : [],
+      jobIds.length || svcIds.length ? prisma.payment.findMany({ where: { method: 'CASH', recordedAt: { gte: new Date(since.getTime() - DAY) }, OR: [{ jobCardId: { in: jobIds } }, { vehicleServiceId: { in: svcIds } }] }, select: { jobCardId: true, vehicleServiceId: true, amount: true, recordedAt: true, recordedById: true }, take: 20_000 }) : [],
+    ]);
+    const paidOf = new Map<string, number>([...paidJ.map((p) => [`j:${p.jobCardId}`, num(p._sum.amount)] as const), ...paidS.map((p) => [`s:${p.vehicleServiceId}`, num(p._sum.amount)] as const)]);
+    const refundedOf = new Map<string, number>([...refJ.map((p) => [`j:${p.jobCardId}`, num(p._sum.amount)] as const), ...refS.map((p) => [`s:${p.vehicleServiceId}`, num(p._sum.amount)] as const)]);
     for (const r of refunds) {
       const job = r.jobCard ?? r.vehicleService;
       const number = r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? '';
-      const where = r.jobCardId ? { jobCardId: r.jobCardId } : { vehicleServiceId: r.vehicleServiceId };
-      const [paid, refunded, cash] = await Promise.all([
-        prisma.payment.aggregate({ where, _sum: { amount: true } }),
-        prisma.refund.aggregate({ where, _sum: { amount: true } }),
-        prisma.payment.findFirst({ where: { ...where, method: 'CASH', recordedAt: { gte: new Date(r.recordedAt.getTime() - DAY), lte: r.recordedAt } }, select: { id: true, amount: true, recordedById: true } }),
-      ]);
+      const key = r.jobCardId ? `j:${r.jobCardId}` : `s:${r.vehicleServiceId}`;
+      const paid = { _sum: { amount: paidOf.get(key) ?? 0 } };
+      const refunded = { _sum: { amount: refundedOf.get(key) ?? 0 } };
+      const cash = cashRows.find((c) => (r.jobCardId ? c.jobCardId === r.jobCardId : c.vehicleServiceId === r.vehicleServiceId) && c.recordedAt <= r.recordedAt && c.recordedAt.getTime() >= r.recordedAt.getTime() - DAY) ?? null;
       const amount = num(r.amount);
       if (num(refunded._sum.amount) > num(paid._sum.amount) + 0.01) {
         findings.push({ rule: 'refund_exceeds_paid', severity: 'HIGH', title: `${number}: refunded ${naira(num(refunded._sum.amount))}, paid ${naira(num(paid._sum.amount))}`, evidence: { record: number, refund: r.referenceNumber, refunded: num(refunded._sum.amount), paid: num(paid._sum.amount) }, entityType: r.jobCardId ? 'JobCard' : 'VehicleService', entityId: r.jobCardId ?? r.vehicleServiceId, subjectUserId: r.recordedById, branchId: job?.branchId ?? null, fingerprint: `refund-over:${r.jobCardId ?? r.vehicleServiceId}` });
@@ -124,7 +136,7 @@ export async function scanOrganisation(organisationId: string, windowDays = 7): 
     if (p90 <= 0) return;
     const ref = new Map(recent.map((r) => [r.id, r]));
     for (const g of splitGroups(recent.filter((r) => r.createdAt >= since).map((r) => ({ id: r.id, at: r.createdAt, amount: num(r.estimatedAmount), by: r.requestedById })), p90)) {
-      findings.push({ rule: 'split_purchases', severity: moneySeverity(g.total, 'MEDIUM'), title: `${g.ids.length} outside purchases within 48 hours by one person, ${naira(g.total)} together (a single one is usually under ${naira(p90)})`, evidence: { records: g.ids.map((id) => ref.get(id)?.referenceNumber), total: g.total, usualTop: p90 }, entityType: 'ExternalProcurementRequest', entityId: g.ids[0]!, subjectUserId: g.by, branchId: ref.get(g.ids[0]!)?.branchId ?? null, fingerprint: `split:${g.ids[0]}` });
+      findings.push({ rule: 'split_purchases', severity: moneySeverity(g.total, 'MEDIUM'), title: `${g.ids.length} outside purchases within 48 hours by one person, ${naira(g.total)} together (a single one is usually under ${naira(p90)})`, evidence: { records: g.ids.map((id) => ref.get(id)?.referenceNumber), total: g.total, usualTop: p90 }, entityType: 'ExternalProcurementRequest', entityId: g.ids[0]!, subjectUserId: g.by, branchId: ref.get(g.ids[0]!)?.branchId ?? null, fingerprint: `split:${g.by}:${[...g.ids].sort()[0]}` });
     }
   });
 
@@ -167,18 +179,29 @@ export async function scanOrganisation(organisationId: string, windowDays = 7): 
     if (!emails.length) return;
     const customers = await prisma.customer.findMany({ where: { organisationId, email: { in: emails, mode: 'insensitive' } }, select: { id: true, email: true } });
     const staffOf = new Map(staff.map((s) => [s.email.toLowerCase(), s.id]));
-    for (const c of customers) {
-      const userId = staffOf.get(c.email.toLowerCase());
-      if (!userId) continue;
-      const [payments, refunds, approvals] = await Promise.all([
-        prisma.payment.findMany({ where: { recordedById: userId, recordedAt: { gte: since }, OR: [{ jobCard: { customerId: c.id } }, { vehicleService: { customerId: c.id } }] }, select: { id: true, amount: true }, take: 50 }),
-        prisma.refund.findMany({ where: { recordedById: userId, recordedAt: { gte: since }, OR: [{ jobCard: { customerId: c.id } }, { vehicleService: { customerId: c.id } }] }, select: { id: true, amount: true }, take: 50 }),
-        prisma.jobCard.findMany({ where: { approvedById: userId, approvedAt: { gte: since }, customerId: c.id }, select: { id: true, jobNumber: true }, take: 50 }),
-      ]);
-      const total = [...payments, ...refunds].reduce((a, p) => a + num(p.amount), 0);
-      if (payments.length || refunds.length || approvals.length) {
-        findings.push({ rule: 'own_vehicle_work', severity: refunds.length ? 'HIGH' : 'MEDIUM', title: `A colleague recorded ${[payments.length ? `${payments.length} payment${payments.length === 1 ? '' : 's'}` : '', refunds.length ? `${refunds.length} refund${refunds.length === 1 ? '' : 's'}` : '', approvals.length ? `${approvals.length} approval${approvals.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(', ')} on their own vehicle${total ? ` (${naira(total)})` : ''}`, evidence: { payments: payments.length, refunds: refunds.length, approvals: approvals.map((a) => a.jobNumber), total }, entityType: 'Customer', entityId: c.id, subjectUserId: userId, fingerprint: `own:${userId}:${since.toISOString().slice(0, 10)}` });
-      }
+    if (!customers.length) return;
+    const userOf = new Map(customers.map((c) => [c.id, staffOf.get(c.email.toLowerCase())]));
+    const custIds = customers.map((c) => c.id);
+    const users = [...new Set([...userOf.values()].filter((x): x is string => Boolean(x)))];
+    const onOwn = { OR: [{ jobCard: { customerId: { in: custIds } } }, { vehicleService: { customerId: { in: custIds } } }] };
+    const owner = { jobCard: { select: { customerId: true } }, vehicleService: { select: { customerId: true } } } as const;
+    const [payments, refunds, approvals] = await Promise.all([
+      prisma.payment.findMany({ where: { recordedById: { in: users }, recordedAt: { gte: since }, ...onOwn }, select: { id: true, amount: true, recordedById: true, ...owner }, take: 2000 }),
+      prisma.refund.findMany({ where: { recordedById: { in: users }, recordedAt: { gte: since }, ...onOwn }, select: { id: true, amount: true, recordedById: true, ...owner }, take: 2000 }),
+      prisma.jobCard.findMany({ where: { approvedById: { in: users }, approvedAt: { gte: since }, customerId: { in: custIds } }, select: { id: true, jobNumber: true, approvedById: true, customerId: true }, take: 2000 }),
+    ]);
+    const own = (by: string | null, customerId: string | null | undefined) => Boolean(by && customerId && userOf.get(customerId) === by);
+    // One alert per record: the same payment, refund or approval never raises a second one on a later day.
+    for (const p of payments) {
+      const cid = p.jobCard?.customerId ?? p.vehicleService?.customerId;
+      if (own(p.recordedById, cid)) findings.push({ rule: 'own_vehicle_work', severity: moneySeverity(num(p.amount), 'MEDIUM'), title: `A colleague recorded a payment (${naira(num(p.amount))}) on their own vehicle`, evidence: { kind: 'payment', amount: num(p.amount) }, entityType: 'Customer', entityId: cid ?? null, subjectUserId: p.recordedById, fingerprint: `own:payment:${p.id}` });
+    }
+    for (const r of refunds) {
+      const cid = r.jobCard?.customerId ?? r.vehicleService?.customerId;
+      if (own(r.recordedById, cid)) findings.push({ rule: 'own_vehicle_work', severity: 'HIGH', title: `A colleague recorded a refund (${naira(num(r.amount))}) on their own vehicle`, evidence: { kind: 'refund', amount: num(r.amount) }, entityType: 'Refund', entityId: r.id, subjectUserId: r.recordedById, fingerprint: `own:refund:${r.id}` });
+    }
+    for (const a of approvals) {
+      if (own(a.approvedById, a.customerId)) findings.push({ rule: 'own_vehicle_work', severity: 'MEDIUM', title: `A colleague approved Job Card ${a.jobNumber} for their own vehicle`, evidence: { kind: 'approval', record: a.jobNumber }, entityType: 'JobCard', entityId: a.id, subjectUserId: a.approvedById, fingerprint: `own:approval:${a.id}` });
     }
   });
 
@@ -234,28 +257,37 @@ export async function scanOrganisation(organisationId: string, windowDays = 7): 
   return { findings: findings.length, created, updated, rules, ms: Date.now() - started };
 }
 
-/** Due when the last complete daily scan is over 20 hours old and it is 1–5 am in Lagos (quiet hours). */
-export async function integrityScanDue(now = new Date()): Promise<boolean> {
+/**
+ * Due between 1 and 5 am Lagos time unless today's scan is complete. A scan
+ * that ran out of time leaves a cursor (the last organisation done) and the
+ * next run carries on from it.
+ */
+export async function integrityScanDue(now = new Date()): Promise<{ due: boolean; after: string | null }> {
   const hour = Number(now.toLocaleString('en-GB', { timeZone: 'Africa/Lagos', hour: '2-digit', hour12: false }));
-  if (hour < 1 || hour >= 5) return false;
-  const last = await prisma.auditLog.findFirst({ where: { action: 'system.job_run', entityType: 'ScheduledJob', entityId: 'integrity-scan', metadata: { path: ['complete'], equals: true } }, orderBy: { createdAt: 'desc' }, select: { createdAt: true } });
-  return !last || now.getTime() - last.createdAt.getTime() > 20 * 3_600_000;
+  if (hour < 1 || hour >= 5) return { due: false, after: null };
+  const last = await prisma.auditLog.findFirst({ where: { action: 'system.job_run', entityType: 'ScheduledJob', entityId: 'integrity-scan', createdAt: { gte: new Date(now.getTime() - 20 * 3_600_000) } }, orderBy: { createdAt: 'desc' }, select: { metadata: true } });
+  const meta = (last?.metadata && typeof last.metadata === 'object' ? last.metadata : {}) as { complete?: unknown; next?: unknown };
+  if (last && meta.complete === true) return { due: false, after: null };
+  return { due: true, after: typeof meta.next === 'string' ? meta.next : null };
 }
 
-/** Every organisation within the time budget; `complete` when all were checked. */
-export async function scanAllOrganisations(budgetMs: number): Promise<{ organisations: number; created: number; findings: number; complete: boolean }> {
+/** Organisations in id order from after `after`, within the budget; `next` is where the next run carries on. */
+export async function scanAllOrganisations(budgetMs: number, after: string | null = null): Promise<{ organisations: number; created: number; findings: number; complete: boolean; next: string | null }> {
   const deadline = Date.now() + budgetMs;
-  const orgs = await prisma.organisation.findMany({ select: { id: true }, orderBy: { createdAt: 'asc' }, take: 500 });
+  const orgs = await prisma.organisation.findMany({ where: after ? { id: { gt: after } } : {}, select: { id: true }, orderBy: { id: 'asc' }, take: 500 });
   let n = 0;
   let created = 0;
   let found = 0;
-  let tried = 0;
+  let next: string | null = after;
   for (const o of orgs) {
-    if (Date.now() > deadline - 10_000) break;
-    tried += 1;
-    const r = await scanOrganisation(o.id).catch((err) => { logFailure('Integrity scan failed', err); return null; });
-    if (r) { n += 1; created += r.created; found += r.findings; }
+    if (Date.now() > deadline - 15_000) return { organisations: n, created, findings: found, complete: false, next };
+    const r = await scanOrganisation(o.id, 7, deadline).catch((err) => { logFailure('Integrity scan failed', err); return null; });
+    if (r) {
+      n += 1; created += r.created; found += r.findings;
+      // One "integrity.scan" entry per organisation, so its page shows when it was last checked.
+      await prisma.auditLog.create({ data: { organisationId: o.id, userId: null, action: 'integrity.scan', entityType: 'IntegrityAlert', metadata: { findings: r.findings, created: r.created, ms: r.ms, scheduled: true } } }).catch(() => undefined);
+    }
+    next = o.id;
   }
-  return { organisations: n, created, findings: found, complete: tried === orgs.length };
+  return { organisations: n, created, findings: found, complete: orgs.length < 500, next: orgs.length < 500 ? null : next };
 }
-

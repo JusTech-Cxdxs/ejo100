@@ -72,6 +72,12 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   // My own requests for help: their replies come to me, linked to my help page.
   const requested = await prisma.supportTicket.findMany({ where: { requesterUserId: m.id, updatedAt: { gte: recent } }, select: { id: true }, take: 200 }).catch(() => []);
   const myHelp = new Set(requested.map((t: { id: string }) => t.id));
+  // Colleagues' own help requests are private: unless I manage support or work their team, their events are not news for me.
+  const canManageSupport = m.isMaster || (await allows('support.manage').catch(() => false));
+  const privateHelp = canManageSupport ? [] : (await prisma.supportTicket.findMany({
+    where: { organisationId: m.organisationId ?? '__no_organisation__', updatedAt: { gte: recent }, requesterUserId: { not: null }, NOT: { requesterUserId: m.id }, ...(myQueues.length ? { OR: [{ queueId: null }, { queueId: { notIn: myQueues } }] } : {}) },
+    select: { id: true }, take: 2000,
+  }).catch(() => [])).map((t: { id: string }) => t.id);
   const byType = new Map<string, string[]>();
   for (const r of mine) if (r.entityId) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
   const add = (t: string, ids: { id: string }[]) => { if (ids.length) byType.set(t, [...new Set([...(byType.get(t) ?? []), ...ids.map((x) => x.id)])]); };
@@ -86,7 +92,7 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
     createdAt: { gte: since },
     action: { notIn: HIDDEN_ACTIONS },
     // Not the low-level data journal, and not failed API attempts.
-    NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }],
+    NOT: [{ entityType: { startsWith: 'db:' } }, { action: { endsWith: '.failed' } }, ...(privateHelp.length ? [{ entityType: 'SupportTicket', entityId: { in: privateHelp } }] : [])],
     OR: [{ userId: null }, { userId: { not: m.id } }],
     ...(scope === 'ALL' ? {} : { AND: [{ OR: [...(scope.length ? [{ entityType: { in: scope } }] : []), ...involved, ...financeWatch] }] }),
   };

@@ -9,7 +9,8 @@ import { createHash } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { trainingRow, type DecisionRow, type DecisionTrainingRow } from './decisions-core';
 
-const CAP = 5000;
+/** The newest decisions of each step (ordered, so a cap never samples at random). */
+const CAP = 10_000;
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
 
 export async function decisionLog(o: { organisationId: string; since: Date; branchIds?: string[] | null }): Promise<DecisionRow[]> {
@@ -19,18 +20,18 @@ export async function decisionLog(o: { organisationId: string; since: Date; bran
   const [prs, epr, jobs, services, cancels, estimates, returns, claims] = await Promise.all([
     prisma.partRequestSlip.findMany({
       where: { ...inOrg, OR: [{ hodApprovedAt: { gte: since } }, { storeApprovedAt: { gte: since } }, { rejectedAt: { gte: since } }] },
-      take: CAP, select: { id: true, branchId: true, createdAt: true, requestedById: true, hodApprovedAt: true, hodApprovedById: true, storeApprovedAt: true, storeApprovedById: true, rejectedAt: true, rejectedById: true, rejectionStage: true, rejectionReason: true, _count: { select: { lines: true } } },
+      orderBy: { updatedAt: 'desc' }, take: CAP, select: { id: true, branchId: true, createdAt: true, requestedById: true, hodApprovedAt: true, hodApprovedById: true, storeApprovedAt: true, storeApprovedById: true, rejectedAt: true, rejectedById: true, rejectionStage: true, rejectionReason: true, _count: { select: { lines: true } } },
     }),
     prisma.externalProcurementRequest.findMany({
       where: { ...inOrg, OR: [{ financeReviewedAt: { gte: since } }, { managerApprovedAt: { gte: since } }, { rejectedAt: { gte: since } }] },
-      take: CAP, select: { id: true, branchId: true, createdAt: true, requestedById: true, estimatedAmount: true, approvedTotal: true, financeReviewedAt: true, financeReviewedById: true, managerApprovedAt: true, managerApprovedById: true, rejectedAt: true, rejectedById: true, rejectionStage: true, rejectionReason: true },
+      orderBy: { updatedAt: 'desc' }, take: CAP, select: { id: true, branchId: true, createdAt: true, requestedById: true, estimatedAmount: true, approvedTotal: true, financeReviewedAt: true, financeReviewedById: true, managerApprovedAt: true, managerApprovedById: true, rejectedAt: true, rejectedById: true, rejectionStage: true, rejectionReason: true },
     }),
-    prisma.jobCard.findMany({ where: { ...inOrg, approvedAt: { gte: since }, approvalStatus: { in: ['APPROVED', 'REJECTED'] } }, take: CAP, select: { id: true, branchId: true, createdAt: true, createdById: true, approvedAt: true, approvedById: true, approvalStatus: true, rejectionReason: true } }),
-    prisma.vehicleService.findMany({ where: { ...inOrg, approvedAt: { gte: since }, approvalStatus: { in: ['APPROVED', 'REJECTED'] } }, take: CAP, select: { id: true, branchId: true, createdAt: true, createdById: true, approvedAt: true, approvedById: true, approvalStatus: true, rejectionReason: true } }),
-    prisma.cancellationRequest.findMany({ where: { jobCard: inOrg, decidedAt: { gte: since }, status: { in: ['APPROVED', 'DECLINED'] } }, take: CAP, select: { id: true, requestedAt: true, requestedById: true, decidedAt: true, decidedById: true, status: true, decisionNotes: true, jobCard: { select: { branchId: true } } } }),
-    prisma.estimate.findMany({ where: { jobCard: inOrg, managerApprovedAt: { gte: since } }, take: CAP, select: { id: true, submittedAt: true, approvedAt: true, createdById: true, managerApprovedAt: true, managerApprovedById: true, jobCard: { select: { branchId: true } }, _count: { select: { lineItems: true } } } }),
-    prisma.auditLog.findMany({ where: { organisationId: o.organisationId, action: 'estimate.returned_for_changes', createdAt: { gte: since } }, take: CAP, select: { id: true, userId: true, entityId: true, createdAt: true, metadata: true } }),
-    prisma.warrantyClaim.findMany({ where: { customer: { organisationId: o.organisationId }, decidedAt: { gte: since }, status: { in: ['ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'SETTLED'] } }, take: CAP, select: { id: true, submittedAt: true, createdById: true, decidedAt: true, decidedById: true, status: true, decisionNotes: true, claimedAmount: true, jobCard: { select: { branchId: true } }, vehicleService: { select: { branchId: true } } } }),
+    prisma.jobCard.findMany({ where: { ...inOrg, approvedAt: { gte: since }, approvalStatus: { in: ['APPROVED', 'REJECTED'] } }, orderBy: { approvedAt: 'desc' }, take: CAP, select: { id: true, branchId: true, createdAt: true, createdById: true, approvedAt: true, approvedById: true, approvalStatus: true, rejectionReason: true } }),
+    prisma.vehicleService.findMany({ where: { ...inOrg, approvedAt: { gte: since }, approvalStatus: { in: ['APPROVED', 'REJECTED'] } }, orderBy: { approvedAt: 'desc' }, take: CAP, select: { id: true, branchId: true, createdAt: true, createdById: true, approvedAt: true, approvedById: true, approvalStatus: true, rejectionReason: true } }),
+    prisma.cancellationRequest.findMany({ where: { jobCard: inOrg, decidedAt: { gte: since }, status: { in: ['APPROVED', 'DECLINED'] } }, orderBy: { decidedAt: 'desc' }, take: CAP, select: { id: true, requestedAt: true, requestedById: true, decidedAt: true, decidedById: true, status: true, decisionNotes: true, jobCard: { select: { branchId: true } } } }),
+    prisma.estimate.findMany({ where: { jobCard: inOrg, managerApprovedAt: { gte: since } }, orderBy: { managerApprovedAt: 'desc' }, take: CAP, select: { id: true, submittedAt: true, approvedAt: true, createdById: true, managerApprovedAt: true, managerApprovedById: true, jobCard: { select: { branchId: true } }, _count: { select: { lineItems: true } } } }),
+    prisma.auditLog.findMany({ where: { organisationId: o.organisationId, action: 'estimate.returned_for_changes', createdAt: { gte: since } }, orderBy: { createdAt: 'desc' }, take: CAP, select: { id: true, userId: true, entityId: true, createdAt: true, metadata: true } }),
+    prisma.warrantyClaim.findMany({ where: { customer: { organisationId: o.organisationId }, decidedAt: { gte: since }, status: { in: ['ACCEPTED', 'PARTIALLY_ACCEPTED', 'REJECTED', 'SETTLED'] } }, orderBy: { decidedAt: 'desc' }, take: CAP, select: { id: true, submittedAt: true, createdById: true, decidedAt: true, decidedById: true, status: true, decisionNotes: true, claimedAmount: true, jobCard: { select: { branchId: true } }, vehicleService: { select: { branchId: true } } } }),
   ]);
   // Estimates sent back: the Job Card's estimate (requester and lines).
   const returnedJobIds = [...new Set(returns.map((r) => r.entityId).filter((x): x is string => Boolean(x)))];

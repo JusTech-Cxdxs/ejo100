@@ -48,6 +48,8 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
     : kind === 'api' ? { entityType: { startsWith: 'api:' } }
     : kind === 'business' ? { ...notJob, NOT: [{ entityType: { startsWith: 'db:' } }, { entityType: { startsWith: 'api:' } }] }
     : notJob;
+  // Integrity alerts and Speak up concerns: integrity reviewers only, and never the alerts about the viewer.
+  const integrityFence = await integrityAuditFence();
   const rows = await prisma.auditLog.findMany({
     where: {
       // Each organisation sees only its own history; the platform team sees all.
@@ -58,6 +60,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
         kindWhere,
         // Personal screen state (read markers, mute) is not business history.
         { entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference', 'db:CustomerNotificationRead'] } },
+        integrityFence,
       ],
       ...(f.userId ? { userId: f.userId } : {}),
       ...(createdAt.gte || createdAt.lt ? { createdAt } : {}),
@@ -149,4 +152,12 @@ export async function listAuditUsers() {
   // The platform team is never listed to organisations (their entries show as "Platform support").
   const p = await getPrincipal();
   return prisma.user.findMany({ where: p.isSuperAdmin ? {} : { ...(await orgWhere()), roles: { none: { role: { isSuperAdmin: true } } } }, orderBy: { fullName: 'asc' }, select: { id: true, fullName: true } });
+}
+
+/** Audit entries about integrity alerts: hidden unless the viewer reviews them, and never those about the viewer. */
+async function integrityAuditFence(): Promise<Record<string, unknown>> {
+  const me = await requireUser();
+  if (!(await allows('integrity.review').catch(() => false))) return { NOT: { entityType: 'IntegrityAlert' } };
+  const aboutMe = await prisma.integrityAlert.findMany({ where: { subjectUserId: me.id }, select: { id: true }, take: 5000 });
+  return aboutMe.length ? { NOT: { entityType: 'IntegrityAlert', entityId: { in: aboutMe.map((a: { id: string }) => a.id) } } } : {};
 }

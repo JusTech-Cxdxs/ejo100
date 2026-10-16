@@ -8,7 +8,7 @@ import { ticketReachWhere } from '@/lib/support-rules';
 import { fenceStaffHelp } from '@/lib/support/reach';
 import { reasonLabels } from '@/lib/support/core';
 import { RECORD_TOPICS, TOPIC_LABEL, asTopic, type Topic } from '@/lib/support/ai-core';
-import { asFailureReason, asVerdict, enyoMeasures, FAILURE_LABEL, gapReport, VERDICT_LABEL, type Gap } from '@/lib/support/monitor-core';
+import { asFailureReason, asVerdict, enyoMeasures, ENYO_REPLY_FILTERS, FAILURE_LABEL, gapReport, VERDICT_LABEL, type EnyoReplyFilter, type Gap } from '@/lib/support/monitor-core';
 import { scrubText } from '@/lib/enyo/predict/dataset-core';
 import { tokenise } from '@/lib/enyo/predict/text';
 import { scrubKeepingLines } from '@/lib/enyo/learned-core';
@@ -30,8 +30,6 @@ class MonitorError extends Error {}
 const PERM = 'support.tickets.manage' as const;
 type TicketWhere = Prisma.SupportTicketWhereInput;
 
-export const ENYO_REPLY_FILTERS = ['to_check', 'sent', 'drafts', 'checked', 'wrong'] as const;
-export type EnyoReplyFilter = (typeof ENYO_REPLY_FILTERS)[number];
 
 export type EnyoReplyRow = {
   id: string; kind: 'AI' | 'AI_DRAFT'; body: string; createdAt: Date; confidence: number | null; model: string | null;

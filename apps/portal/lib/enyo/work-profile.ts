@@ -11,7 +11,8 @@ import { prisma } from '@ejo/database';
 import { securityActionLabel } from '@/lib/security-labels';
 
 const DAYS = 60;
-const SKIP = /^(system\.|auth\.|session\.|notification|enyo\.|mailbox\.sync|user\.signed)/;
+// Never counted: system and personal actions, and anything private (integrity, Speak up, refused pages, help requests, mail).
+const SKIP = /^(system\.|auth\.|session\.|notification|enyo\.|mailbox\.|user\.sign|integrity\.|access\.|support\.help_|assist\.)/;
 
 export async function workProfile(userId: string, organisationId: string | null): Promise<string | null> {
   try {

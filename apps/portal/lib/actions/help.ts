@@ -111,15 +111,17 @@ export async function openHelpRequest(input: { subject?: string; body?: string; 
   const page = typeof input.page === 'string' && /^\/[\w\-/[\]?=&.%]{0,200}$/.test(input.page) ? input.page : null;
   const body = [text, ref ? `Error reference: ${ref}` : '', page ? `Page: ${page}` : ''].filter(Boolean).join('\n\n');
   const queue = await helpQueue(m.organisationId);
-  const created = await openTicket({
-    organisationId: m.organisationId, channel: 'STAFF', queue, branchId: m.branchId, contactName: m.fullName, contactEmail: m.email, subject, summary: text.slice(0, 600),
-    priority: priorityFromText(`${subject}\n${text}`, ref ? 'HIGH' : 'NORMAL'), verified: true, authenticatedSender: true,
-    aiPending: queue.aiMode !== 'OFF', handoverReason: 'staff_help', openedAt: new Date(),
+  // One transaction: the request is private (requesterUserId) and has its first message from the moment it exists.
+  const created = await prisma.$transaction(async (tx) => {
+    const t = await openTicket({
+      organisationId: m.organisationId, channel: 'STAFF', queue, branchId: m.branchId, contactName: m.fullName, contactEmail: m.email, subject, summary: text.slice(0, 600),
+      priority: priorityFromText(`${subject}\n${text}`, ref ? 'HIGH' : 'NORMAL'), verified: true, authenticatedSender: true,
+      aiPending: queue.aiMode !== 'OFF', handoverReason: 'staff_help', openedAt: new Date(),
+      requesterUserId: m.id, senderKind: 'staff', senderUserId: m.id, tags: to === 'platform' ? ['platform', 'staff_help'] : ['staff_help'],
+    }, tx);
+    await tx.supportReply.create({ data: { ticketId: t.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body } });
+    return t;
   });
-  await prisma.$transaction([
-    prisma.supportTicket.update({ where: { id: created.id }, data: { requesterUserId: m.id, senderKind: 'staff', senderUserId: m.id, tags: to === 'platform' ? ['platform', 'staff_help'] : ['staff_help'] } }),
-    prisma.supportReply.create({ data: { ticketId: created.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body } }),
-  ]);
   await supportEvent({ organisationId: m.organisationId, ticketId: created.id, userId: m.id, action: 'support.help_requested', metadata: { number: created.number, to, ...(ref ? { ref } : {}) } });
   return { id: created.id, number: created.number };
 }

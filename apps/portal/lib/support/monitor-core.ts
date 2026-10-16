@@ -8,6 +8,10 @@
 import { HANDOVER_REASON_LABEL } from './core';
 import { TOPIC_LABEL, asTopic } from './ai-core';
 
+/** The tabs of the Enyo replies page. */
+export const ENYO_REPLY_FILTERS = ['to_check', 'sent', 'drafts', 'checked', 'wrong'] as const;
+export type EnyoReplyFilter = (typeof ENYO_REPLY_FILTERS)[number];
+
 /** A person's verdict on an Enyo reply or draft. */
 export const VERDICTS = ['GOOD', 'FIXED', 'WRONG'] as const;
 export type Verdict = (typeof VERDICTS)[number];
