@@ -465,7 +465,7 @@ export default async function WorkshopCustodyPage({
                   </form>
                 ) : (
                   <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">
-                    Only a Workshop Manager or HOD can notify the customer.
+                    Only a Manager or HOD can notify the customer.
                   </p>
                 )}
               </div>

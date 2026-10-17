@@ -11,6 +11,10 @@ import { getHeadquarters } from '@/lib/actions/headquarters';
 import { getLeadershipPulse } from '@/lib/actions/leadership';
 import { getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { getTeamPerformance } from '@/lib/actions/team';
+import { getItTrends, getWebsiteTraffic } from '@/lib/actions/it-trends';
+import { secondsText } from '@/lib/it-trends-core';
+import { getPrincipal } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { KIND_LABEL, KIND_TODO, isErrorKind, normaliseRef } from '@/lib/error-events-core';
 import { nothing, ok, r2, refused, text, when } from '../tool-helpers';
 import type { StaffTool } from '../types';
@@ -100,6 +104,36 @@ export const leadershipTools: StaffTool[] = [
         technical: { name: e.name, message: e.message.slice(0, 600), firstStackLines: e.stack ? e.stack.split('\n').slice(0, 5).map((l) => l.trim()) : [] },
         tip: 'Explain it to an IT person: what happened in one sentence, the likely cause (from the message and kind), whether data could be affected (changes run in transactions — nothing is half-saved), and the next check. Never invent details not in the record.',
       }, [{ label: `Error ${e.ref}`, href: `/audit-logs/errors?ref=${encodeURIComponent(e.ref)}` }]);
+    },
+  },
+  {
+    name: 'website_traffic',
+    kind: 'read',
+    status: 'Reading the website figures…',
+    description:
+      'The public website\'s own visitor report and IT trends: visitors and page views per day, how many chatted with Enyo versus only browsed, average time on a page, the share who left after one page, top pages (with time on page), devices and referring sites; for IT also errors, sign-ins, failed sign-ins, Enyo conversations, emails and scheduled job runs per day with the trend. Anonymous counts only. For IT and leadership.',
+    parameters: {
+      type: 'object',
+      properties: { days: { type: 'number', minimum: 1, maximum: 90, description: 'How many days back (1–90). Default 14.' } },
+      additionalProperties: false,
+    },
+    run: async (args) => {
+      const me = await getPrincipal();
+      const it = me.isSuperAdmin || scopeFor(me, 'audit.view') === 'ALL';
+      if (!it && scopeFor(me, 'analytics.business.view') !== 'ALL') return refused('the website report is for IT and leadership (organisation-wide).');
+      const n = typeof args.days === 'number' && Number.isFinite(args.days) ? Math.min(90, Math.max(1, Math.round(args.days))) : 14;
+      const [w, t] = await Promise.all([getWebsiteTraffic(n), it ? getItTrends(Math.min(30, Math.max(7, n))).catch(() => null) : Promise.resolve(null)]);
+      return ok({
+        website: w ? {
+          since: w.since,
+          totals: { ...w.totals, averageTimeOnPage: secondsText(w.totals.avgSeconds) },
+          perDay: w.days.map((d) => ({ day: d.label, visitors: d.visitors, views: d.views, chattedWithEnyo: d.chatted })),
+          topPages: w.topPages.map((p) => ({ page: p.path, views: p.views, visitors: p.visitors, timeOnPage: secondsText(p.avgSeconds) })),
+          devices: w.devices, cameFrom: w.referrers,
+        } : 'Not counted yet: the database needs v40 (deploy the API first).',
+        itTrends: t ? { perDay: t.days.map((d) => ({ day: d.label, errors: d.errors, signIns: d.signIns, failedSignIns: d.failedSignIns, enyoChats: d.chats, ...(t.emailsShown ? { emailsSent: d.emailsSent, emailsFailed: d.emailsFailed, jobRuns: d.jobRuns } : {}) })), trend: t.trend } : undefined,
+        tip: 'Lead with visitors and the trend, then chatted vs browsed only, time on page and the top pages. Do not invent causes; suggest what to look at.',
+      }, [{ label: 'IT control room', href: '/it' }]);
     },
   },
 ];

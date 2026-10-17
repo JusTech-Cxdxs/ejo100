@@ -9,6 +9,7 @@ import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { authorize, allows, currentAssist, getPrincipal, refuseDuringAssist } from '@/lib/authz/server';
 import { actorLabel } from '@/lib/assist/rules';
+import { nameWithRole } from '@/lib/authz/catalogue';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { getDashboardNotifications, type DashboardNotification } from './dashboard';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
@@ -101,13 +102,17 @@ export async function getActivityFeed(opts: { unreadOnly?: boolean; take?: numbe
   const keys = rows.map((r: { id: string }) => `audit:${r.id}`);
   const [reads, actors] = await Promise.all([
     prisma.notificationRead.findMany({ where: { userId: m.id, key: { in: keys } }, select: { key: true } }),
-    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))] } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }),
+    prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))] } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true, slug: true } } } } } }),
   ]);
   const read = new Set(reads.map((r: { key: string }) => r.key));
   // Exact pages (an estimate line → its Job Card, a payment → its service…).
   const resolved = await resolveRecords(rows.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
   // The platform team is shown to organisations as "Platform support".
-  const name = new Map(actors.map((a: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean } }[] }) => [a.id, !m.isMaster && a.roles.some((r) => r.role.isSuperAdmin) ? 'Platform support' : a.fullName]));
+  // Each actor with the role they acted in: "Justice Enefola (Manager)" — two managers in one branch are never confused.
+  const name = new Map(actors.map((a: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean; slug: string } }[] }) => {
+    const sa = a.roles.some((r) => r.role.isSuperAdmin);
+    return [a.id, !m.isMaster && sa ? 'Platform support' : nameWithRole(a.fullName, a.roles.map((r) => r.role.slug), { isSuperAdmin: sa })];
+  }));
   // Reach: a branch-scoped person is never told about another branch's records
   // (the same rule as the pages the links open).
   const principal = await getPrincipal();

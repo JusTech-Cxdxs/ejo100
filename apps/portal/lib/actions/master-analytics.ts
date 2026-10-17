@@ -41,7 +41,7 @@ function periodRange(key: PeriodKey, now: Date, custom?: { from?: string; to?: s
 const SLIP_JOB = { slipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } as const;
 
 export async function getMasterAnalytics(periodKey?: string, custom?: { from?: string; to?: string }) {
-  if (!(await canSeeMasterAnalytics())) throw new Error('The master dashboard is for the Master Admin, Administrators, the Workshop Manager and Finance.');
+  if (!(await canSeeMasterAnalytics())) throw new Error('The master dashboard is for the Master Admin, Administrators, the Manager and Finance.');
   const now = new Date();
   const key = ((PERIODS as readonly string[]).includes(periodKey ?? '') ? periodKey : 'this_month') as PeriodKey;
   const { from, to, label } = periodRange(key, now, custom);

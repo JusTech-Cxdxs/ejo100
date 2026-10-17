@@ -98,7 +98,7 @@ export async function sendStaffAccessEmail(userId: string, kind: 'welcome' | 'up
     });
     let error: string | null = null;
     try {
-      await sendEmail(a.user.email, subject, html);
+      await sendEmail(a.user.email, subject, html, undefined, { observer: false });
     } catch (err) {
       error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
     }

@@ -103,7 +103,7 @@ export const supportTools: StaffTool[] = [
     name: 'inventory_overview',
     kind: 'read',
     status: 'Reading the stock analytics…',
-    description: 'Inventory Analytics for one branch (the person\'s own by default): stock value, parts, last-12-months revenue, cost and margin, turnover and days of inventory, parts out of stock / below safety / below reorder, stock-outs expected in 14 and 30 days, dead and overstock value, and the top recommended actions with links. For Store and Workshop Managers and administrators.',
+    description: 'Inventory Analytics for one branch (the person\'s own by default): stock value, parts, last-12-months revenue, cost and margin, turnover and days of inventory, parts out of stock / below safety / below reorder, stock-outs expected in 14 and 30 days, dead and overstock value, and the top recommended actions with links. For Store and Managers and administrators.',
     parameters: { type: 'object', properties: { branch: { type: 'string', maxLength: 80, description: 'Branch name (optional; default the person\'s branch).' } }, additionalProperties: false },
     run: async (args) => {
       if (!(await allows('analytics.inventory.view'))) return NOT_PERMITTED;

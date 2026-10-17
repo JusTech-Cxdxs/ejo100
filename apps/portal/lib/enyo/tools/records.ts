@@ -198,7 +198,7 @@ export const recordTools: StaffTool[] = [
       additionalProperties: false,
     },
     run: async (args) => {
-      if (!(await allows('crm.view'))) return refused('customer profiles are for the front desk, the Workshop Manager and administrators (Customers).');
+      if (!(await allows('crm.view'))) return refused('customer profiles are for the front desk, the Manager and administrators (Customers).');
       const q = text(args.customer, 100);
       const found = CUID.test(q) ? [{ id: q, fullName: '', email: '', phone: null }] : await searchCrmCustomers(q);
       if (!found.length) return nothing('No customer of this organisation matches that.');

@@ -100,7 +100,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
       branchContact: branch ? { address: branch.address, phones: branch.hotlines, email: branch.email } : undefined,
     });
     subject = rendered.subject;
-    await sendEmail(customer.email, rendered.subject, rendered.html);
+    await sendEmail(customer.email, rendered.subject, rendered.html, undefined, { observer: false });
   } catch (err) {
     error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
     logFailure('Customer access email failed', customer.id, kind, error);

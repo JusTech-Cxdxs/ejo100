@@ -14,6 +14,7 @@
  */
 import { webLookupEnabled, webLookupTool } from '@ejo/enyo';
 import type { StaffCtx, StaffTool } from '../types';
+import { selectToolNames, slimToolNames } from '../tool-select';
 import { guideTools } from './guide';
 import { workTools } from './work';
 import { recordTools } from './records';
@@ -30,6 +31,7 @@ import { supportTools } from './support';
 import { integrityTools } from './integrity';
 import { organisationTools } from './organisation';
 import { leadershipTools } from './leadership';
+import { peopleTools } from './people';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -49,6 +51,20 @@ export function staffTools(): StaffTool[] {
     ...integrityTools,
     ...organisationTools,
     ...leadershipTools,
+    ...peopleTools,
     ...(webLookupEnabled() ? [webLookupTool<StaffCtx>()] : []),
   ];
+}
+
+/**
+ * The tools offered for one question: the ones it can need (see
+ * tool-select.ts), so each request stays small enough for the model server's
+ * per-minute budget. `slim` is the smaller set for a second try.
+ */
+export function staffToolsFor(message: string, previous = ''): { tools: StaffTool[]; slim: StaffTool[] } {
+  const all = staffTools();
+  const { names, web } = selectToolNames(message, previous);
+  const pick = (ns: string[]) => all.filter((t) => ns.includes(t.name));
+  const webTool = web ? all.filter((t) => !names.includes(t.name) && /web/i.test(t.name)) : [];
+  return { tools: [...pick(names), ...webTool], slim: pick(slimToolNames(message)) };
 }

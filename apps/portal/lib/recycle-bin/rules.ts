@@ -254,14 +254,14 @@ export type DeleterRights = {
 };
 
 /** Job Cards and Vehicle Services: the person who opened it (front desk)
- * within 24 hours, or a Workshop Manager / administrator while it is eligible. */
+ * within 24 hours, or a Manager / administrator while it is eligible. */
 export function mayDeleteJob(r: DeleterRights, rec: { createdById: string; createdAt: Date }, now: Date = new Date()): boolean {
   if (r.isSuperAdmin || r.manageBin || r.ownerRight) return true;
   const fresh = now.getTime() - rec.createdAt.getTime() <= CREATOR_WINDOW_HOURS * 3_600_000;
   return Boolean(r.openJobs) && rec.createdById === r.userId && fresh;
 }
 
-export const JOB_DELETE_REFUSED = `Only the person who opened it (within ${CREATOR_WINDOW_HOURS} hours), a Workshop Manager or an administrator can delete it.`;
+export const JOB_DELETE_REFUSED = `Only the person who opened it (within ${CREATOR_WINDOW_HOURS} hours), a Manager or an administrator can delete it.`;
 
 /** Customers, vehicles and parts: whoever manages them, or an administrator. */
 export function mayDeleteOther(r: DeleterRights): boolean {

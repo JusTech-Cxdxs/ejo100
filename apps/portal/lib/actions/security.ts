@@ -10,7 +10,7 @@ import { cache } from 'react';
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE, refuseDuringAssist, currentAssist } from '@/lib/authz/server';
-import { decide, type PermissionKey } from '@/lib/authz/catalogue';
+import { decide, type PermissionKey , SENIOR_REQUESTER_SLUGS } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
@@ -52,7 +52,9 @@ async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const isOfficer = slugs.includes('security-officer');
   const isReceptionist = slugs.includes('receptionist');
   const isGate = decide(principal, 'security.gate.operate', here).allowed;
-  const isManager = (await managerApprovers(null)).some((m) => m.id === user.id);
+  // A real Manager of this branch only — never someone on the fallback list (executives, the platform team).
+  const branchManagers = await listEligibleManagersForBranch(await getWorkshopBranchId()).catch(() => ({ supervisors: [] as Person[], usingFallback: true }));
+  const isManager = !branchManagers.usingFallback && (branchManagers.supervisors as Person[]).some((m) => m.id === user.id);
   return { userId: user.id, isMaster, isCso, isOfficer, isReceptionist, isManager, isGate, isFrontDesk: isGate || decide(principal, 'security.reception.operate', here).allowed };
 }
 
@@ -431,16 +433,69 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
     const heads = (await usersWithSlugs(HEAD_SLUGS, { departmentId: me.departmentId })).filter((h) => h.id !== requesterId);
     if (heads.length) return heads;
   }
-  const any = (await usersWithSlugs(['department-head'])).filter((h) => h.id !== requesterId);
-  return any.length ? any : (await masterAdmins()).filter((h) => h.id !== requesterId);
+  // Headquarters people (IT, administrators) and managers: decided above them — in the requester's own organisation.
+  const org = (await prisma.user.findUnique({ where: { id: requesterId }, select: { organisationId: true } }))?.organisationId ?? null;
+  if (await isSeniorRequester(requesterId)) return seniorApprovers(requesterId, org);
+  const any = (await usersWithSlugs(['department-head'], org ? { organisationId: org } : {})).filter((h) => h.id !== requesterId);
+  return any.length ? any : seniorApprovers(requesterId, org);
 }
 /** The branch's Managers (the same people Warranty uses as Branch Manager).
  * Uses the record's branch when given: a pass or permit is decided by its
  * own branch's Manager. Falls back quietly so a pass is never stuck. */
 async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
-  const m = await listEligibleManagersForBranch(branchId ?? (await getWorkshopBranchId()));
-  const list = (m.usingFallback ? await masterAdmins() : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
-  return list.length ? list : (await masterAdmins()).filter((x) => x.id !== excludeId);
+  const branch = branchId ?? (await getWorkshopBranchId());
+  const org = await orgOfBranch(branch);
+  // A manager's own pass (or a headquarters person's) goes up, to the executives — never back to themselves.
+  if (excludeId && (await isSeniorRequester(excludeId))) return seniorApprovers(excludeId, org);
+  const m = await listEligibleManagersForBranch(branch);
+  const list = (m.usingFallback ? [] : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
+  return list.length ? list : seniorApprovers(excludeId, org);
+}
+const branchOrg = new Map<string, string | null>();
+async function orgOfBranch(branchId: string): Promise<string | null> {
+  if (!branchOrg.has(branchId)) {
+    const b = await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } });
+    if (branchOrg.size > 500) branchOrg.clear();
+    branchOrg.set(branchId, b?.businessUnit?.organisationId ?? null);
+  }
+  return branchOrg.get(branchId) ?? null;
+}
+
+/** Headquarters and managers: their passes are decided above them. */
+const SENIOR_SLUGS = SENIOR_REQUESTER_SLUGS;
+async function isSeniorRequester(userId: string): Promise<boolean> {
+  const { slugs } = await slugsOf(userId);
+  return SENIOR_SLUGS.some((s) => slugs.includes(s));
+}
+/**
+ * Above the branch: the organisation's executives (e.g. the director grants
+ * the IT administrator's pass); with none, its administrators; only then the
+ * platform team. Never the person who asked.
+ */
+async function seniorApprovers(excludeId: string | null, organisationId?: string | null): Promise<Person[]> {
+  // The record's own organisation (not the viewer's — the platform team may be working in another one).
+  const org = organisationId ? { organisationId } : {};
+  const exec = (await usersWithSlugs(['executive'], org)).filter((x) => x.id !== excludeId);
+  if (exec.length) return exec;
+  const admins = (await usersWithSlugs(['administrator'], org)).filter((x) => x.id !== excludeId);
+  if (admins.length) return admins;
+  return (await masterAdmins()).filter((x) => x.id !== excludeId);
+}
+
+const FINAL_SLUGS = ['workshop-manager', 'executive', 'administrator'];
+/** Which of these records waiting for the final decision this person may decide (their own approvers: see managerApprovers). */
+async function finalDecidable(rows: { id: string; status: string; requestedById: string | null; branchId: string | null }[], userId: string, isMaster: boolean): Promise<Set<string>> {
+  const out = new Set<string>();
+  // Only Managers, executives, administrators and the platform team are ever on a final-approver list.
+  if (!isMaster && !(await slugsOf(userId)).slugs.some((s) => FINAL_SLUGS.includes(s))) return out;
+  const memo = new Map<string, boolean>();
+  for (const r of rows) {
+    if (r.status !== 'PENDING_MANAGER' || (r.requestedById === userId && !isMaster)) continue;
+    const key = `${r.requestedById}|${r.branchId}`;
+    if (!memo.has(key)) memo.set(key, isMaster || (await managerApprovers(r.requestedById, r.branchId)).some((m) => m.id === userId));
+    if (memo.get(key)) out.add(r.id);
+  }
+  return out;
 }
 
 /** Request a pass for yourself and/or others — several employees and named
@@ -758,13 +813,18 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
     },
     orderBy: { createdAt: 'desc' },
     take: 300,
-    select: { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, gateInAt: true, requestedById: true, createdAt: true, requestedBy: { select: { fullName: true } }, people: { select: { name: true } } },
+    select: { id: true, passNumber: true, status: true, reason: true, returning: true, expectedOutAt: true, expectedReturnAt: true, gateOutAt: true, gateInAt: true, requestedById: true, branchId: true, createdAt: true, requestedBy: { select: { fullName: true } }, people: { select: { name: true } } },
   });
   if (scope !== 'to_decide') return rows;
   // Only the passes waiting at THIS viewer's step.
   const out: typeof rows = [];
+  // The final step belongs to the pass's own approvers: its branch's Managers, or — for a
+  // manager's or headquarters person's own pass — the executives above them.
+  const finals = await finalDecidable(rows, user.id, roles.isMaster);
   for (const p of rows) {
-    if (p.status === 'PENDING_MANAGER' && (roles.isManager || roles.isMaster)) out.push(p);
+    if (p.status === 'PENDING_MANAGER') {
+      if (finals.has(p.id)) out.push(p);
+    }
     else if (p.status === 'PENDING_HEAD' && (roles.isMaster || (await headApproversFor(p.requestedById)).some((h) => h.id === user.id))) out.push(p);
   }
   return out;
@@ -798,9 +858,10 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
   if (await currentAssist()) return false;
   const user = await requireUser();
   const roles = await getSecurityRoles();
-  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, requestedById: true } });
+  const p = await prisma.exitPass.findUnique({ where: { id: passId }, select: { status: true, requestedById: true, branchId: true } });
   if (!p || (p.requestedById === user.id && !roles.isMaster)) return false;
-  if (p.status === 'PENDING_MANAGER') return roles.isManager || roles.isMaster;
+  // The same people the decision itself accepts (decideExitPass): never a different list.
+  if (p.status === 'PENDING_MANAGER') return roles.isMaster || (await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id);
   if (p.status === 'PENDING_HEAD') return roles.isMaster || (await headApproversFor(p.requestedById)).some((h) => h.id === user.id);
   return false;
 }
@@ -863,7 +924,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
   // Everything below is independent — one parallel round instead of five.
   const [store, ctr, newIncidents, atGateAll, expectedDeliveries, atReception, passes, tests] = await Promise.all([
     isStore(user.id, roles.isMaster),
-    roles.isManager || roles.isMaster || roles.isGate ? listContractorPasses(undefined, 'all') : Promise.resolve({ rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'] }),
+    roles.isManager || roles.isMaster || roles.isGate || (await getPrincipal()).roleSlugs.some((s) => s === 'executive' || s === 'administrator') ? listContractorPasses(undefined, 'all') : Promise.resolve({ rows: [] as Awaited<ReturnType<typeof listContractorPasses>>['rows'], decidableIds: [] as string[] }),
     roles.isCso || roles.isMaster ? prisma.securityIncident.findMany({ where: { ...reach, status: 'OPEN' }, select: { id: true, incidentNumber: true, type: true, severity: true, createdAt: true } }) : Promise.resolve([]),
     prisma.gateDelivery.findMany({ where: { ...storeReach, status: 'AT_GATE' }, select: { id: true, deliveryNumber: true, supplierName: true, arrivedAt: true } }),
     roles.isGate ? prisma.gateDelivery.findMany({ where: { ...reach, status: 'EXPECTED', expectedAt: { gte: dayStart, lt: new Date(dayStart.getTime() + 86400000) } }, select: { id: true, deliveryNumber: true, supplierName: true, expectedAt: true } }) : Promise.resolve([]),
@@ -874,7 +935,7 @@ export async function getSecurityDashboardItems(): Promise<{ id: string; title: 
   const atGateForStore = store ? atGateAll : [];
   const today = lagosDay(new Date());
   const contractorItems = [
-    ...ctr.rows.filter((c) => (roles.isManager || roles.isMaster) && c.status === 'PENDING_MANAGER' && c.requestedById !== user.id).map((c) => ({ id: `ctr-d-${c.id}`, title: `Contractor pass ${c.passNumber} needs your approval`, detail: `${c.company} — ${c.work}`, url: `/security/contractors/${c.id}`, createdAt: c.createdAt })),
+    ...ctr.rows.filter((c) => ctr.decidableIds.includes(c.id)).map((c) => ({ id: `ctr-d-${c.id}`, title: `Contractor pass ${c.passNumber} needs your approval`, detail: `${c.company} — ${c.work}`, url: `/security/contractors/${c.id}`, createdAt: c.createdAt })),
     ...ctr.rows.filter((c) => roles.isGate && c.state === 'ACTIVE' && lagosDay(c.validFrom) <= today).map((c) => ({ id: `ctr-t-${c.id}`, title: `Contractors due today — ${c.company}`, detail: `${c.passNumber} · team of ${c.teamSize} · ${c.workArea}`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
     ...ctr.rows.filter((c) => roles.isGate && c.afterHours > 0).map((c) => ({ id: `ctr-l-${c.id}`, title: `Contractors still on site after 5 pm — ${c.company}`, detail: `${c.passNumber} · ${durationText(c.afterHours)} past closing`, url: `/security/contractors/${c.id}`, createdAt: new Date() })),
   ];
@@ -1137,7 +1198,7 @@ const RT_OPEN: ('PENDING_MANAGER' | 'APPROVED' | 'OUT')[] = ['PENDING_MANAGER', 
 export type RoadTestInput = { jobCardId?: string; vehicleServiceId?: string; driverId: string; purpose: string; route?: string; expectedDurationMinutes: number; companionIds?: string[]; otherCompanions?: string[] };
 
 /** Road tests are requested by the people working on the job (its supervisor,
- * technician or whoever opened it) or the branch's Workshop Manager — the
+ * technician or whoever opened it) or the branch's Manager — the
  * same rule decides whether the page offers the button. */
 export async function canRequestRoadTestOn(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string): Promise<boolean> {
   await requireUser();
@@ -1161,7 +1222,7 @@ export async function requestRoadTest(input: RoadTestInput): Promise<{ id: strin
     : await prisma.vehicleService.findUnique({ where: { id: input.vehicleServiceId! }, select: { status: true, serviceNumber: true, vehicleId: true } }).then((v: { status: string; serviceNumber: string; vehicleId: string } | null) => v && { active: VS_ACTIVE.includes(v.status), number: v.serviceNumber, vehicleId: v.vehicleId });
   if (!rec) throw new SecurityError('Record not found.');
   if (!(await canRequestRoadTestOn(input.jobCardId ? 'JOB_CARD' : 'VEHICLE_SERVICE', (input.jobCardId ?? input.vehicleServiceId)!))) {
-    return refuse('workshop.job.work', 'requestRoadTest', 'Only the people working on this job or a Workshop Manager can request a road test.');
+    return refuse('workshop.job.work', 'requestRoadTest', 'Only the people working on this job or a Manager can request a road test.');
   }
   if (!rec.active) throw new SecurityError('This vehicle is not in the workshop — a road test can only be requested while it is being worked on.');
   const open = await prisma.roadTestPermit.findFirst({ where: { vehicleId: rec.vehicleId, status: { in: RT_OPEN } }, select: { permitNumber: true } });
@@ -1287,7 +1348,7 @@ export async function extendRoadTest(id: string, extraMinutes: number, reason: s
 }
 
 const RT_ROW = {
-  id: true, permitNumber: true, status: true, purpose: true, route: true, expectedDurationMinutes: true, gateOutAt: true, gateInAt: true, startOdometer: true, endOdometer: true, createdAt: true, requestedById: true,
+  id: true, permitNumber: true, status: true, purpose: true, route: true, expectedDurationMinutes: true, gateOutAt: true, gateInAt: true, startOdometer: true, endOdometer: true, createdAt: true, requestedById: true, branchId: true,
   jobCard: { select: { id: true, jobNumber: true } }, vehicleService: { select: { id: true, serviceNumber: true } },
   vehicle: { select: { id: true, make: true, model: true, plateNumber: true } }, driver: { select: { fullName: true } }, requestedBy: { select: { fullName: true } },
 } as const;
@@ -1308,7 +1369,10 @@ export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'a
     take: 300,
     select: RT_ROW,
   });
-  return scope === 'to_decide' && !roles.isManager && !roles.isMaster ? [] : rows;
+  if (scope !== 'to_decide') return rows;
+  // Only the permits this person decides (a manager's own permit goes to the executives).
+  const mine = await finalDecidable(rows, user.id, roles.isMaster);
+  return rows.filter((r) => mine.has(r.id));
 }
 
 export async function listRoadTestsFor(opts: { jobCardId?: string; vehicleServiceId?: string }) {
@@ -1759,7 +1823,7 @@ export async function contractorSignOut(id: string, note: string): Promise<void>
 }
 
 const CTR_ROW = {
-  id: true, passNumber: true, status: true, company: true, work: true, workArea: true, leadName: true, teamSize: true, validFrom: true, validUntil: true, requestedById: true, createdAt: true,
+  id: true, passNumber: true, status: true, company: true, work: true, workArea: true, leadName: true, teamSize: true, validFrom: true, validUntil: true, requestedById: true, branchId: true, createdAt: true,
   host: { select: { fullName: true } }, attendance: { where: { signedOutAt: null }, select: { id: true, signedInAt: true, workersPresent: true } },
 } as const;
 const CTR_TABS = ['on_site', 'active', 'to_decide', 'upcoming', 'ended', 'all'] as const;
@@ -1784,17 +1848,19 @@ export async function listContractorPasses(q?: string, tab?: string) {
     const open = p.attendance[0] ?? null;
     return { ...p, onSite: open, state: contractorState(p, Boolean(open), now), afterHours: open ? contractorAfterHoursMinutes(open.signedInAt, now) : 0 };
   });
-  const canDecide = roles.isManager || roles.isMaster;
+  // Decided by the pass's own approvers: its branch's Managers, or the executives for a manager's own pass.
+  const decidable = await finalDecidable(rows, user.id, roles.isMaster);
+  const canDecide = roles.isManager || roles.isMaster || decidable.size > 0;
   const is: Record<(typeof CTR_TABS)[number], (r: (typeof rows)[number]) => boolean> = {
     on_site: (r) => r.state === 'ON_SITE',
     active: (r) => r.state === 'ACTIVE' || r.state === 'ON_SITE',
-    to_decide: (r) => canDecide && r.status === 'PENDING_MANAGER' && r.requestedById !== user.id,
+    to_decide: (r) => decidable.has(r.id),
     upcoming: (r) => r.state === 'UPCOMING' || r.state === 'PENDING_MANAGER',
     ended: (r) => ['ENDED', 'DECLINED', 'REVOKED', 'CANCELLED'].includes(r.state),
     all: () => true,
   };
   const current = ((CTR_TABS as readonly string[]).includes(tab ?? '') ? tab : 'on_site') as (typeof CTR_TABS)[number];
-  return { tab: current, canDecide, counts: Object.fromEntries(CTR_TABS.map((k) => [k, rows.filter(is[k]).length])) as Record<(typeof CTR_TABS)[number], number>, rows: rows.filter(is[current]) };
+  return { tab: current, canDecide, decidableIds: [...decidable], counts: Object.fromEntries(CTR_TABS.map((k) => [k, rows.filter(is[k]).length])) as Record<(typeof CTR_TABS)[number], number>, rows: rows.filter(is[current]) };
 }
 
 export async function getContractorPass(id: string) {

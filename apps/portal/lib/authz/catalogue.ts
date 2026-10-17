@@ -288,13 +288,33 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
 
 /** How each role is named to people. */
 export const ROLE_LABELS: Record<string, string> = {
-  administrator: 'Organisation Administrator (headquarters)', 'branch-administrator': 'Branch Administrator', 'workshop-manager': 'Workshop Manager', 'workshop-supervisor': 'Workshop Supervisor', technician: 'Technician',
+  administrator: 'Organisation Administrator (headquarters)', 'branch-administrator': 'Branch Administrator', 'workshop-manager': 'Manager', 'workshop-supervisor': 'Workshop Supervisor', technician: 'Technician',
   'finance-officer': 'Finance Officer', 'store-manager': 'Store Manager', 'store-officer': 'Store Officer', 'warranty-hod': 'Warranty HOD',
   'warranty-officer': 'Warranty Officer', 'department-head': 'Department Head', 'chief-security-officer': 'Chief Security Officer',
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
   'branch-assistant': 'Branch Assistant (IT support)',
   'customer-care': 'Customer Care', 'customer-care-lead': 'Customer Care Lead', executive: 'Executive (director / general manager)', 'it-administrator': 'IT Administrator',
 };
+
+/** The role a person is shown with (their most senior one), e.g. "Justice Enefola (Manager)". */
+const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'warranty-hod', 'department-head', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
+export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string | null {
+  if (isSuperAdmin) return 'Master Administrator';
+  const best = ROLE_SENIORITY.find((s) => slugs.includes(s)) ?? slugs[0];
+  // The short form ("Executive", "Front Desk"): it is shown inside brackets after a name.
+  return best ? ROLE_LABELS[best]?.replace(/\s*\(.*\)\s*$/, '') ?? null : null;
+}
+/** Managers and headquarters people: their own passes and permits are decided above them (the Executive). */
+export const SENIOR_REQUESTER_SLUGS = ['workshop-manager', 'executive', 'administrator', 'it-administrator', 'branch-administrator', 'customer-care-lead'];
+/** Headquarters roles: they oversee every branch rather than belonging to one. */
+export const HQ_ROLE_SLUGS = ['executive', 'administrator', 'it-administrator'] as const;
+export const isHqRole = (slugs: string[]): boolean => HQ_ROLE_SLUGS.some((s) => slugs.includes(s));
+/** "Name (Role)", or "You (Role)" for the person reading. */
+export function nameWithRole(name: string, slugs: string[], opts: { isSuperAdmin?: boolean; isMe?: boolean } = {}): string {
+  const role = primaryRoleLabel(slugs, opts.isSuperAdmin);
+  const who = opts.isMe ? 'You' : name;
+  return role ? `${who} (${role})` : who;
+}
 
 /**
  * What each role is for, in plain words — shown on the Roles page so an

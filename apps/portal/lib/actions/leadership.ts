@@ -1,7 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { allows, authorize, myOrganisationId, reachWhere } from '@/lib/authz/server';
+import { allows, authorize, getPrincipal, myOrganisationId, reachWhere } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { lagosYmd } from '@/lib/nigeria-calendar';
 import { jobIsLate, jobStatuses } from '@/lib/job-runs';
 import { schemaHealth } from '@/lib/schema-health';
@@ -190,6 +191,9 @@ export async function getItPulse(): Promise<ItPulse> {
 
 /** Which overviews the dashboard shows this person. */
 export async function overviewsFor(): Promise<{ leadership: boolean; it: boolean }> {
-  const [biz, audit, users] = await Promise.all([allows('analytics.business.view'), allows('audit.view'), allows('admin.users.manage')]);
-  return { leadership: biz, it: audit && users };
+  const p = await getPrincipal();
+  // Headquarters only: a branch manager keeps the branch dashboard (no branch-comparison panels).
+  const orgWide = (k: 'analytics.business.view' | 'audit.view') => p.isSuperAdmin || scopeFor(p, k) === 'ALL';
+  const [audit, users] = await Promise.all([allows('audit.view'), allows('admin.users.manage')]);
+  return { leadership: orgWide('analytics.business.view'), it: audit && users && orgWide('audit.view') };
 }

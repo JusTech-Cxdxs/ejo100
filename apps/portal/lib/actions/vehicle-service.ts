@@ -1126,8 +1126,8 @@ async function requireVehicleServiceStepRole(
   if (!allowed) {
     const who =
       step === 'SIGN_OFF'
-        ? "this Vehicle Service's supervisor or a Workshop Manager"
-        : "this Vehicle Service's supervisor, its assigned technician, or a Workshop Manager";
+        ? "this Vehicle Service's supervisor or a Manager"
+        : "this Vehicle Service's supervisor, its assigned technician, or a Manager";
     return refuse('workshop.job.work', 'requireVehicleServiceStepRole', `Only ${who} can take this step.`);
   }
 }

@@ -4,6 +4,7 @@ import { actorLabel } from '@/lib/assist/rules';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { allows, getPrincipal, lensPeopleWhere, orgWhere } from '@/lib/authz/server';
+import { nameWithRole } from '@/lib/authz/catalogue';
 import { JOBS } from '@/lib/job-runs';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
@@ -73,10 +74,14 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
   });
   const page = rows.slice(0, PAGE);
   const ids = [...new Set(page.map((r: { userId: string | null }) => r.userId).filter((v: string | null): v is string => Boolean(v)))];
-  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true } } } } } }) : [];
+  const users = ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, roles: { select: { role: { select: { isSuperAdmin: true, slug: true } } } } } }) : [];
   const viewerPlatform = await prisma.userRole.findFirst({ where: { userId: (await requireUser()).id, role: { isSuperAdmin: true } }, select: { id: true } });
   // The platform team is shown to organisations as "Platform support".
-  const name = new Map(users.map((u: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean } }[] }) => [u.id, !viewerPlatform && u.roles.some((r) => r.role.isSuperAdmin) ? 'Platform support' : u.fullName]));
+  // Each person with the role they hold: "Justice Enefola (Manager)".
+  const name = new Map(users.map((u: { id: string; fullName: string; roles: { role: { isSuperAdmin: boolean; slug: string } }[] }) => {
+    const sa = u.roles.some((r) => r.role.isSuperAdmin);
+    return [u.id, !viewerPlatform && sa ? 'Platform support' : nameWithRole(u.fullName, u.roles.map((r) => r.role.slug), { isSuperAdmin: sa })];
+  }));
   const resolved = await resolveRecords(page.filter((r: { entityId: string | null; entityType: string }) => r.entityId && !r.entityType.startsWith('api:')).map((r: { entityType: string; entityId: string | null }) => ({ type: r.entityType, id: r.entityId! })));
   const rec = (type: string, id: string | null) => (id ? [resolved.get(`${type}:${id}`) ?? { label: 'Record', url: recordUrl(type.replace(/^db:/, ''), id) }] : []);
   const mapped: AuditRow[] = page.map((r: (typeof page)[number]) => {

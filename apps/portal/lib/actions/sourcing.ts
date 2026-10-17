@@ -1728,7 +1728,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
   }
 }
 
-/** A Workshop Manager approves the full total (original estimate plus
+/** A Manager approves the full total (original estimate plus
  * Finance's supplementary lines) before any money moves. */
 export async function approveExternalProcurementRequest(requestId: string, notes?: string): Promise<void> {
   // Decisions are never taken during an assisted session (the assistant approves nothing).

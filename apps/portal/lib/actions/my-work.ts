@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { allows, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
+import { allows, getPrincipal, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
 import { ticketReachWhere } from '@/lib/support-rules';
 import { requireUser } from './workshop';
 import { lagosYmd } from '@/lib/nigeria-calendar';
@@ -59,8 +59,15 @@ export async function getMyWorkItems(): Promise<MyWorkItem[]> {
 async function supportItems(userId: string): Promise<MyWorkItem[]> {
   if (!(await allows('support.tickets.manage'))) return [];
   const fence = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage', { lens: false }), await myOrganisationId())));
+  // New, unowned requests are the support department's work: the teams this
+  // person works in, and customer care (or the platform team). A manager who
+  // may LOOK at the Support centre is not asked to answer it.
+  const p = await getPrincipal();
+  const care = p.isSuperAdmin || p.roleSlugs.some((s) => s === 'customer-care' || s === 'customer-care-lead');
+  const myQueues = (await prisma.supportQueueMember.findMany({ where: { userId }, select: { queueId: true } }).catch(() => [])).map((q) => q.queueId);
+  const unowned = care ? [{ assignedToId: null }] : myQueues.length ? [{ assignedToId: null, queueId: { in: myQueues } }] : [];
   const rows = await prisma.supportTicket.findMany({
-    where: { AND: [fence, { status: 'OPEN' }, { OR: [{ assignedToId: userId }, { assignedToId: null }] }] },
+    where: { AND: [fence, { status: 'OPEN' }, { OR: [{ assignedToId: userId }, ...unowned] }] },
     orderBy: { createdAt: 'asc' },
     take: 15,
     select: { id: true, number: true, contactName: true, subject: true, assignedToId: true, createdAt: true, updatedAt: true, priority: true, firstResponseAt: true, dueFirstResponseAt: true },

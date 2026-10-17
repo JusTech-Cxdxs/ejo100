@@ -5,6 +5,7 @@ import { isCronRequest } from '@/lib/cron-auth';
 import { setAuditActor } from '@ejo/database';
 import { recordJobRun } from '@/lib/job-runs';
 import { purgeOldErrorEvents } from '@/lib/error-events';
+import { purgeOldSiteVisits } from '@/lib/site-visits-retention';
 import { purgeExpiredOnSchedule } from '@/lib/recycle-bin/server';
 import { purgeOldEnyoConversations } from '@/lib/enyo/retention';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
@@ -91,6 +92,9 @@ export async function GET(request: NextRequest) {
   // Done and cancelled reminders are kept 12 months (data inventory: Reminder).
   const remindersPurged = await purgeOldReminders().catch((err) => { logFailure('Reminder clean-up failed', err); return null; });
   if (remindersPurged !== null) await recordJobRun('reminder-retention', { remindersRemoved: remindersPurged });
+  // Website page views are kept 13 months (data inventory: SiteVisit). A database before v40 simply has none.
+  const visitsPurged = await purgeOldSiteVisits(400).catch(() => null);
+  if (visitsPurged !== null) await recordJobRun('site-visit-retention', { pageViewsRemoved: visitsPurged });
 
   // Enyo: score yesterday's job time estimates against when the vehicles were actually ready.
   const durations = await resolveDurations().catch((err) => { logFailure('Enyo job time scoring failed', err); return null; });

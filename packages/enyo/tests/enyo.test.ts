@@ -392,3 +392,26 @@ test('free web search: DuckDuckGo results parsed, ads and its own links skipped,
   assert.equal(r.pages.length, 1);
   assert.match(r.pages[0]!.title, /Ada Obi - Director - Example Group \| LinkedIn/);
 });
+
+test('agent: a request too large for the per-minute budget is tried once more, smaller, before any error', async () => {
+  const tooLarge = () => new Response(JSON.stringify({ error: { message: 'Request too large for model openai/gpt-oss-120b on tokens per minute (TPM): Limit 8000, Requested 9800', code: 'rate_limit_exceeded' } }), { status: 413 });
+  const { impl, seen } = scripted([tooLarge, () => say('Hello Justice!')]);
+  const events: EnyoEvent[] = [];
+  const earlier = Array.from({ length: 10 }, (_, i) => ({ role: (i % 2 ? 'assistant' : 'user') as 'user', content: `turn ${i}` }));
+  const r = await runAgent({ config, system: 'sys', messages: [...earlier, { role: 'user', content: 'hi' }], tools: [takings], ctx: { role: 'finance' }, emit: (e) => events.push(e), fetchImpl: impl, retrySmaller: { tools: [], model: 'small-model', keepMessages: 3 } });
+  assert.equal(r.error, undefined);
+  assert.equal(r.answer, 'Hello Justice!');
+  assert.equal(seen.length, 2);
+  assert.equal(seen[1]?.body.model, 'small-model');
+  const kept = seen[1]?.body.messages as { role: string }[];
+  assert.equal(kept.length, 4, 'system + the last three turns');
+  assert.equal(kept[1]!.role, 'user', 'the kept history starts with a question');
+  assert.equal(seen[1]?.body.tools, undefined, 'no tools on the smaller try');
+});
+
+test('agent: other refusals are not retried', async () => {
+  const { impl, seen } = scripted([() => new Response('bad', { status: 400 })]);
+  const r = await runAgent({ config, system: 'sys', messages: [{ role: 'user', content: 'hi' }], tools: [takings], ctx: { role: 'finance' }, emit: () => undefined, fetchImpl: impl, retrySmaller: { tools: [] } });
+  assert.equal(r.error?.kind, 'rejected');
+  assert.equal(seen.length, 1);
+});

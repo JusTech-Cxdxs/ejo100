@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { as, expectHealthy, open, waitOutcome } from './helpers';
+import { SUPERMANAGER } from './people';
 
 /**
  * Each role sees its own job (docs/ROLES_AND_ACCESS.md): a technician gets
@@ -67,6 +68,11 @@ test('an exit pass waits in each approver’s Approvals list until they decide i
   // Their own history lists it.
   await open(page, '/security/exit-passes');
   await expect(page.locator(`main a[href="${url}"]`)).toBeVisible();
+  // …and Approvals shows it under "Waiting on others", with who has it.
+  await open(page, '/approvals');
+  const waiting = page.getByRole('list', { name: 'Waiting on others' });
+  await expect(waiting.locator(`a[href="${url}"]`)).toBeVisible();
+  await expect(waiting.locator(`a[href="${url}"]`)).toContainText(/head of department/i);
 
   const inApprovals = (p: Page) => p.locator(`main a[href="${url}"]`);
 
@@ -130,7 +136,7 @@ test('the Roles page explains each role before it is given', async ({ page }) =>
   const tech = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Technician', exact: true }) }).first();
   await expect(tech).toContainText('Does the work on the jobs assigned to them');
   await expect(tech).toContainText('can do');
-  const mgr = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Workshop Manager', exact: true }) }).first();
+  const mgr = page.locator('section').filter({ has: page.getByRole('heading', { name: 'Manager', exact: true }) }).first();
   await expect(mgr).toContainText('can approve');
 });
 
@@ -153,7 +159,7 @@ test.describe('on a phone', () => {
   }
 });
 
-test('an executive sees the business at a glance, read-only, and approves nothing', async ({ page }) => {
+test('an executive sees the business at a glance, read-only; decides only what is escalated to them', async ({ page }) => {
   await as(page, 'executive');
   await open(page, '/dashboard');
   const panel = page.getByTestId('leadership-overview');
@@ -170,6 +176,18 @@ test('an executive sees the business at a glance, read-only, and approves nothin
     await page.goto(url);
     await expect(page, url).toHaveURL(/\/access-denied/);
   }
+});
+
+test('a Manager keeps the simple branch dashboard: no headquarters or IT panels, no support desk work', async ({ page }) => {
+  await as(page, 'workshop-manager');
+  await open(page, '/dashboard');
+  await expect(page.getByRole('heading', { name: 'Dashboard', level: 1 })).toBeVisible();
+  await expect(page.getByTestId('leadership-overview')).toHaveCount(0);
+  await expect(page.getByTestId('it-overview')).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Log a call or complaint' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open a Job Card' })).toHaveCount(0);
+  // The top bar names the role as people say it.
+  await expect(page.getByText(/^Manager( · .+)?$/).first()).toBeVisible();
 });
 
 test('an IT administrator sees systems and access, never the money', async ({ page }) => {
@@ -195,4 +213,38 @@ test('customer care works the Support centre but never its set-up', async ({ pag
   await expect(page.getByRole('heading', { name: /Support centre/, level: 1 })).toBeVisible();
   await page.goto('/settings/support');
   await expect(page).toHaveURL(/\/access-denied/);
+});
+
+test('a Manager’s own exit pass goes up to the Executive — never back to a Manager', async ({ page }) => {
+  await as(page, 'workshop-manager');
+  await page.goto('/security/exit-passes/new');
+  const form = page.locator('form').filter({ has: page.locator('select[name="who"]') }).first();
+  await form.locator('select[name="who"]').selectOption('ME');
+  await form.locator('textarea[name="reason"]').fill('Meeting at head office');
+  await form.locator('select[name="leaveWhen"]').selectOption('NOW');
+  await form.locator('select[name="returning"]').selectOption('yes');
+  await form.locator('select[name="outHours"]').selectOption('2');
+  await form.locator('select[name="outMinutes"]').selectOption('0');
+  await form.getByRole('button', { name: 'Submit for approval' }).click();
+  await waitOutcome(page, /\/security\/exit-passes\/[^/?]+\?status=requested/);
+  const url = new URL(page.url()).pathname;
+  // Nobody approves their own pass.
+  await expect(page.getByRole('button', { name: /^Approve \(/ })).toHaveCount(0);
+  // The Manager sees it waiting on the Executive, by name.
+  await open(page, '/approvals');
+  const waiting = page.getByRole('list', { name: 'Waiting on others' });
+  await expect(waiting.locator(`a[href="${url}"]`)).toContainText(/\(Executive\)/);
+
+  // Another Manager is not asked.
+  await as(page, SUPERMANAGER);
+  await open(page, '/approvals');
+  await expect(page.locator(`main ul[aria-label$="approvals"] a[href="${url}"]`)).toHaveCount(0);
+
+  // The Executive is, and approves it as the Executive.
+  await as(page, 'executive');
+  await open(page, '/approvals');
+  await expect(page.locator(`main ul[aria-label$="approvals"] a[href="${url}"]`)).toBeVisible();
+  await open(page, url);
+  await page.getByRole('button', { name: /^Approve \(Executive\)/ }).click();
+  await waitOutcome(page, /status=approve/);
 });

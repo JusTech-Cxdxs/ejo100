@@ -2408,7 +2408,7 @@ export async function submitEstimateForValidation(jobCardId: string): Promise<vo
   }
 }
 
-/** Workshop Managers for the branch (a Manager covers both Passenger and
+/** Managers for the branch (a Manager covers both Passenger and
  * Commercial departments, so eligibility is by branch). Falls back to
  * Master Admins like the supervisor list. */
 async function listEligibleManagersForBranchUncached(branchId: string): Promise<EligibleSupervisorResult> {
@@ -2446,9 +2446,9 @@ type ManagerPermission = 'workshop.close.approve' | 'workshop.estimate.final_app
 
 export async function requireEligibleManager(branchId: string, key: ManagerPermission = 'workshop.close.approve'): Promise<{ id: string }> {
   const user = await requireUser();
-  // Authorization Catalogue (Workshop Manager by default, plus Roles-page
+  // Authorization Catalogue (Manager by default, plus Roles-page
   // grants; Master Admin always), checked against the record's branch.
-  await authorize(key, { branchId, homeBranch: true }, `manager:${key}`, 'Only a Workshop Manager for this branch can approve this.');
+  await authorize(key, { branchId, homeBranch: true }, `manager:${key}`, 'Only a Manager for this branch can approve this.');
   return user;
 }
 
@@ -2537,7 +2537,7 @@ export async function approveEstimate(jobCardId: string): Promise<void> {
   }
 }
 
-/** The Workshop Manager's sign-off. The Job Card's creator is then told the
+/** The Manager's sign-off. The Job Card's creator is then told the
  * estimate is ready; sending it to the customer is a separate, explicit
  * step (notifyCustomerOfApprovedEstimate). */
 export async function approveEstimateAsManager(jobCardId: string): Promise<void> {
@@ -2841,7 +2841,7 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
 export type PaymentMethod = 'BANK_TRANSFER' | 'CASH';
 
 /** Finance Officers for the branch (with the Master Admin fallback), who may
- * record payments. Branch-scoped like Workshop Managers. */
+ * record payments. Branch-scoped like Managers. */
 export async function listEligibleFinanceOfficersForBranch(branchId: string): Promise<EligibleSupervisorResult> {
   await requireUser();
   // Never another organisation's staff list (names and emails).
@@ -3188,7 +3188,7 @@ export async function recordPayment(
 // ---------------------------------------------------------------------------
 // CANCELLATION: the creator, the assigned supervisor or a Master Admin
 // raises a request with a reason (however the customer asked), and a
-// Workshop Manager approves or declines it. JobCard.status only changes on
+// Manager approves or declines it. JobCard.status only changes on
 // approval, so a decline has nothing to revert.
 // ---------------------------------------------------------------------------
 

@@ -2,7 +2,7 @@ import 'server-only';
 /**
  * Gathers a person's brief from the same lists they see elsewhere, each built
  * by its module with the person's own permissions and reach: decisions and
- * steps (dashboard / Approvals), open jobs, appointments, reminders, their
+ * steps (dashboard / Approvals), the person's own requests waiting on others, open jobs, appointments, reminders, their
  * support requests, their own mail (never during an assisted session), new
  * activity and announcements. Every item carries the link to act on it.
  */
@@ -10,6 +10,7 @@ import { prisma } from '@ejo/database';
 import { allows, currentAssist, myOrganisationId, reachWhere } from '@/lib/authz/server';
 import { getDashboardNotifications } from '@/lib/actions/dashboard';
 import { getMyJobs } from '@/lib/actions/my-work';
+import { getMyPending } from '@/lib/actions/pending';
 import { listCalendar } from '@/lib/actions/scheduling';
 import { getActivityFeed, getMyBroadcasts } from '@/lib/actions/notifications';
 import { approvalArea } from '@/lib/approvals';
@@ -35,7 +36,7 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
   const calTo = period.from ? new Date(Math.max(now.getTime(), lagosMidnight.getTime() + DAY)) : new Date(lagosMidnight.getTime() + DAY);
 
   const reminderWindow = { ownerId: user.id, status: 'PENDING' as const, dueAt: { lte: new Date(Math.max(now.getTime(), lagosMidnight.getTime() + DAY)) } };
-  const [actions, jobs, calendar, reminders, support, mail, activity, broadcasts, reminderTotal] = await Promise.all([
+  const [actions, jobs, calendar, reminders, support, mail, activity, broadcasts, reminderTotal, waiting] = await Promise.all([
     safe(getDashboardNotifications() as Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]>, []),
     safe(getMyJobs(), []),
     safe(listCalendar(calFrom, calTo) as Promise<{ id: string; title: string; startsAt: Date; status: string; room: { name: string } | null; location: string | null }[]>, []),
@@ -45,6 +46,7 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
     safe(getActivityFeed({ unreadOnly: true, take: 60 }) as Promise<{ id: string; title: string; detail: string | null; url: string; at: Date; read: boolean }[]>, []),
     safe(getMyBroadcasts(), []),
     safe(prisma.reminder.count({ where: reminderWindow }), 0),
+    safe(getMyPending(), []),
   ]);
 
   const sections: BriefSection[] = [];
@@ -69,6 +71,8 @@ export async function collectBrief(period: { from: Date | null; to: Date; label:
   const appts = calendar.filter((a) => a.status !== 'CANCELLED' && new Date(a.startsAt) >= calFrom && new Date(a.startsAt) < calTo).sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime());
   sections.push({ key: 'appointments', title: period.from && period.from < lagosMidnight ? 'Appointments' : 'Appointments today', count: appts.length, items: appts.slice(0, 8).map((a) => ({ title: a.title, href: `/schedule/${a.id}`, when: lagos(new Date(a.startsAt)), detail: a.room?.name ?? a.location ?? undefined })), href: '/schedule' });
   sections.push({ key: 'jobs', title: 'Your open jobs', count: jobs.length, items: jobs.slice(0, 8).map((j) => ({ title: `${j.number}${j.vehicle ? ` — ${j.vehicle}` : ''}`, detail: `${j.as}, ${j.status.replace(/_/g, ' ').toLowerCase()}`, href: j.url })), href: '/dashboard' });
+  // What this person sent that is still with someone else (named, with the role).
+  sections.push({ key: 'waiting', title: 'Your requests waiting on others', count: waiting.length, items: waiting.slice(0, 8).map((w) => ({ title: `${w.number} — ${w.title}`, detail: `with ${w.waitingOn}`, href: w.url, when: `since ${lagos(new Date(w.since))}` })), href: '/approvals#waiting' });
   if (mail) sections.push(mail);
   // Notifications: unread ones in the period ("now": the last 7 days), each title once (one event can concern a Job Card and its road test).
   const activityFrom = period.from ?? new Date(nowMs - 7 * DAY);

@@ -22,7 +22,7 @@ const STATUS_BADGE_CLASS: Record<string, string> = {
   REJECTED: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]',
 };
 
-/** External procurement (cash advance) requests across the branch, for the Workshop Manager and Finance. */
+/** External procurement (cash advance) requests across the branch, for the Manager and Finance. */
 export default async function ExternalProcurementPage({
   searchParams,
 }: {

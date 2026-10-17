@@ -130,7 +130,10 @@ export default async function ExternalProcurementDetailPage({
             <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{request.referenceNumber}</h2>
           </div>
           <span className="rounded-full bg-[var(--ejo-info)]/15 px-3 py-1 text-xs font-medium text-[var(--ejo-info)]">
-            {STATUS_LABEL[request.status] ?? request.status}
+            {request.status === 'PENDING_MANAGER_APPROVAL' && isEligibleManager && !approveBlocked ? 'Waiting for you (Manager)'
+              : request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance && !reviewBlocked ? 'Waiting for you (Finance)'
+              : request.status === 'APPROVED' && isEligibleFinance && !payBlocked ? 'Waiting for you to pay out (Finance)'
+              : STATUS_LABEL[request.status] ?? request.status}
           </span>
         </div>
 

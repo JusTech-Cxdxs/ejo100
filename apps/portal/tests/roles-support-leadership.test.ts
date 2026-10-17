@@ -73,8 +73,8 @@ test('System health says when the database is behind this release', async () => 
   const r = schemaVerdict(v37);
   assert.equal(r.state, 'behind');
   assert.equal(r.at, 'v37');
-  assert.equal(r.expected, 'v39');
-  assert.equal(r.missing.length, 4);
+  assert.equal(r.expected, 'v40');
+  assert.equal(r.missing.length, 5);
   assert.equal(schemaVerdict(new Set()).at, 'older than v36');
   assert.match(read('app/(app)/settings/page.tsx'), /schemaHealth\(\)/);
 });

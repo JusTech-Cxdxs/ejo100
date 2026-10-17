@@ -56,7 +56,7 @@ export async function sendManualServiceReminder(vehicleId: string): Promise<void
 }
 
 /**
- * "Send all due reminders": a Workshop Manager or Master Admin sends the
+ * "Send all due reminders": a Manager or Master Admin sends the
  * reminders that are due now (same stages, 7-working-day spacing and skips).
  * Never scheduled: nothing is emailed without a person choosing to.
  */
@@ -65,7 +65,7 @@ export async function runServiceRemindersNow(): Promise<{ evaluated: number; sen
   if (!(await currentUserIsMasterAdmin())) {
     const managers = await listEligibleManagersForBranch(await getWorkshopBranchId());
     if (!managers.supervisors.some((m: { id: string }) => m.id === user.id)) {
-      throw new Error('Only a Workshop Manager can run reminders on demand.');
+      throw new Error('Only a Manager can run reminders on demand.');
     }
   }
   const needing = await getVehiclesNeedingServiceReminder();

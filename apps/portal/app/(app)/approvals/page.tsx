@@ -7,6 +7,8 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { EmptyState, Icon, PageHeader, SectionCard, type IconName } from '@/components/ui';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { getMyPending } from '@/lib/actions/pending';
+import { WaitingOnOthers } from '@/components/WaitingOnOthers';
 
 const AREA_ICON: Record<ApprovalArea, IconName> = { Workshop: 'wrench', Store: 'package', Money: 'money', Warranty: 'shield-check', Security: 'lock' };
 const AREA_HINT: Record<ApprovalArea, string> = {
@@ -22,13 +24,15 @@ const AREA_HINT: Record<ApprovalArea, string> = {
  * same live list as the dashboard and the bell, so an item disappears here the
  * moment it is decided. Each item opens the record, where the decision is made
  * (and checked again on the server). Open to everyone signed in: it only ever
- * lists what is waiting for the viewer.
+ * lists what is waiting for the viewer — and, below, what the viewer asked
+ * for that is still waiting on someone else.
  */
 export default async function ApprovalsPage() {
   await requireUser().catch(() => redirect('/signed-out'));
   // Nothing is decided during an assisted session, so nothing is listed.
   const assisting = await currentAssist();
-  const items = (assisting ? [] : await getDashboardNotifications())
+  const [notes, waiting] = assisting ? [[], []] : await Promise.all([getDashboardNotifications(), getMyPending().catch(() => [])]);
+  const items = notes
     .map((n) => ({ ...n, area: approvalArea(n) }))
     .filter((n): n is typeof n & { area: ApprovalArea } => n.area !== null)
     .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
@@ -69,6 +73,9 @@ export default async function ApprovalsPage() {
           ))}
         </div>
       )}
+      <div className="mt-6">
+        <WaitingOnOthers items={waiting} />
+      </div>
     </div>
   );
 }

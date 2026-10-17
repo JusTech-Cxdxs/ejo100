@@ -406,7 +406,7 @@ export default async function VehicleServiceCustodyPage({
           <h2 className="mb-1 text-sm font-semibold text-[var(--ejo-text)]">Cancelled — Awaiting Hand-back</h2>
           <p className="mb-3 text-xs text-[var(--ejo-text-muted)]">
             Cancelled services whose vehicle is still with us. Grace: 7 working days, then numbered collection notices every 2 working
-            days (Workshop Managers). Hand-back is done on the Vehicle Service page once any refund is complete.
+            days (Managers). Hand-back is done on the Vehicle Service page once any refund is complete.
           </p>
           <div className="space-y-3">
             {summary.cancelledAwaitingHandBack.map((entry: (typeof summary.cancelledAwaitingHandBack)[number]) => (

@@ -11,9 +11,11 @@ import { EXIT_PASS_STATUS_LABEL, durationText, minutesBetween, exitPassOverdueMi
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
+import { getPrincipal } from '@/lib/authz/server';
+import { primaryRoleLabel } from '@/lib/authz/catalogue';
 
 const DONE: Record<string, string> = {
-  requested: 'Exit pass submitted — your Department Head has been asked to authorise it.',
+  requested: 'Exit pass submitted — the person who approves it has been asked, and it shows under Approvals → Waiting on others until it is decided.',
   approve: 'Decision recorded — the next person has been told.',
   decline: 'Exit pass declined — the requester has been told.',
   cancel: 'Exit pass cancelled.',
@@ -36,7 +38,10 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
   const line = 'rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]';
   const Hidden = ({ action }: { action: string }) => (<><FormPendingOverlay /><input type="hidden" name="passId" value={p.id} /><input type="hidden" name="action" value={action} /></>);
   const Row = ({ k, val }: { k: string; val: string | null | undefined }) => (val ? <div className="flex justify-between gap-3 py-1 text-sm"><dt className="text-[var(--ejo-text-muted)]">{k}</dt><dd className="text-right text-[var(--ejo-text)]">{val}</dd></div> : null);
-  const step = p.status === 'PENDING_HEAD' ? 'Authorise (Department Head)' : 'Approve (Manager)';
+  // The final approval is the Manager's; a manager's or headquarters person's own pass is approved above them (Executive).
+  const me = await getPrincipal();
+  const finalAs = me.roleSlugs.includes('workshop-manager') ? 'Manager' : primaryRoleLabel(me.roleSlugs, me.isSuperAdmin) ?? 'Manager';
+  const step = p.status === 'PENDING_HEAD' ? 'Authorise (Department Head)' : `Approve (${finalAs})`;
 
   return (
     <div className="p-4 sm:p-8">

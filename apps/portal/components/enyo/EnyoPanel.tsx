@@ -556,6 +556,15 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                           onRated={(r) => { patchTurn(t.key, (x) => ({ ...x, rating: r })); if (r === 1) setHappy(true); }}
                           onListen={voiceOut.supported ? () => (voiceOut.speaking ? cancelSpeech() : speakAloud(plainText(t.text))) : undefined}
                           speaking={voiceOut.speaking}
+                          onRetry={() => {
+                            // Ask the same question again: the failed answer and its question are replaced.
+                            const prev = turns[i - 1];
+                            // Only when a question can actually be sent now (otherwise nothing disappears).
+                            if (prev?.role !== 'user' || busy || !ready) return;
+                            setTurns((list) => list.filter((x) => x.key !== t.key && x.key !== prev.key));
+                            void ask(prev.text);
+                          }}
+                          onNewChat={newChat}
                         />
                       )}
                     </li>

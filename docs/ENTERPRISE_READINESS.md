@@ -96,7 +96,7 @@ returns only what the person could open on screen. Drafts are never submitted on
 | Leadership overview (money this month, workshop now, decisions waiting and for how long, branches side by side, support) and IT overview (accounts, sign-ins and failures, errors, refused access, health checks), each with "as of" time. | `components/dashboard/*Overview.tsx`, `lib/actions/leadership.ts` | `tests/dashboards.test.ts`; e2e `role-experience.spec.ts` (executive, IT administrator, customer care: what each sees and is refused). |
 | Support centre: owners emailed on assignment; team leads emailed when nobody is free or a request is late; each team's own automatic-reply text; Reply by email / Call / WhatsApp on each request; settings read first, edited on purpose. | `lib/support/notify.ts`, `settings/support/*` | `tests/support-realism.test.ts`, `tests/emails.test.ts`. |
 | Enyo: free web search when no key is set, a "Test the web search" button for administrators, the organisation's published people answered first. | `packages/enyo/src/web.ts`, `settings/enyo` | `packages/enyo` tests (DuckDuckGo parsing). |
-| Database version check extended to v39 (`support_queues.ackMessage`, `support_queue_members.isLead`). | `lib/schema-health-core.ts` | `tests/roles-support-leadership.test.ts`. |
+| Database version check extended to v39 (`support_queues.ackMessage`, `support_queue_members.isLead`), then v40 (`site_visits`). | `lib/schema-health-core.ts` | `tests/roles-support-leadership.test.ts`. |
 
 Test runs for this branch: portal unit/static tests, Enyo engine tests, website tests, typecheck and lint
 locally; CI (unit, e2e, security suites) on the pull request. Results are recorded on the pull request.
@@ -231,6 +231,17 @@ emails use `lib/support/notify.ts` with the same rules.
 - **IT control room** (`/it`, audit trail access, organisation-wide): health checks, sign-ins and failures for seven days, sessions, people per branch, roles in use, access changes, refused attempts by permission, errors by kind and page (each with **Explain with Enyo**), the Support centre's teams and every scheduled job.
 - **Enyo briefings**: `branch_briefing` (Business analytics) and `explain_error` (audit trail), run as the signed-in person. "Brief me" buttons ask straight away and read the answer aloud with the browser's own voice; nothing is sent elsewhere.
 
+## 6c. Roles as people know them, "Waiting on others", website and IT trends, Enyo reliability
+
+- **"Manager"** (slug `workshop-manager` unchanged; postdeploy `0006` renames the role). You are a branch's Manager by holding the role in that branch; the same holds for Store Manager, HOD and Supervisor by branch/department. Names in activity and the audit trail read **"Name (Role)"**, and **"You (Role)"** for the reader. The top bar shows the role and place ("Manager · Isolo", "Executive · Headquarters"). Record pages say **"Waiting for you (Manager)"** when the reader is the one to decide (separation of duties respected).
+- **Headquarters roles** (Executive, Administrator, IT Administrator) oversee every branch; only they get the leadership and IT overviews. A Manager keeps the simple branch dashboard; "Log a call or complaint" is the support team's; support action items go to Customer Care (and the request's own team), never to a Manager.
+- **Exit passes (and road tests, contractor passes) go up**: a Manager's or headquarters person's own request is decided by the **Executive** (then Administrators, then the platform team) — never by the requester and never sent back to a Manager. The pass page, the Approvals list and the decision itself use one list of approvers (`managerApprovers`). E2E: `role-experience.spec.ts`.
+- **"Waiting on others"** for every role (`lib/actions/pending.ts`): Job Cards and Vehicle Services waiting for the supervisor, estimates (supervisor, then Manager), parts requests (Manager, Store, release), outside purchases (Finance, Manager, pay-out), exit passes, warranty claims, close and cancel requests, road tests, help requests — each naming who has it and since when. On Approvals, the dashboard, Enyo's brief and Enyo's `my_pending`.
+- **Master-admin observer copy**: staff workflow emails are BCC'd to `MAIL_OBSERVER_BCC` (or `PLATFORM_OWNER_EMAIL`) while testing — real role holders still receive their own. Never copied: sign-in, verification, password and account emails, and anything to customers or outsiders. Set `MAIL_OBSERVER_BCC=off` at go-live.
+- **Website visitors (v40, `site_visits`)**: anonymous, cookie-less page views (a daily keyed hash of address + browser that is never stored or reversible, paths with ids masked, never the customer portal, Do-Not-Track respected, bots ignored), time a page was actually in view, and whether the visitor chatted with Enyo. IT control room → *Website visitors*; Enyo `website_traffic`. Kept 13 months. Enyo offers one page-fitting question after 40 s on a page (once per visit, never on the customer portal).
+- **IT trends** (14 days): errors, sign-ins and failures, Enyo conversations (staff vs website), emails sent and failed, scheduled job runs, each with its direction.
+- **Enyo reliability**: each request offers only the tools the question can need (`lib/enyo/tool-select.ts`; "hi" sends ~10 instead of ~40), history is trimmed, and a "too large / too many" answer from the model server is retried once smaller on the fast model. A failed answer shows **Try again** and **New chat**. `staff_directory` answers "who is …" from the organisation's own records (role, branch or headquarters, work email only).
+
 ---
 
 ## 7. Hierarchy and migration plan (Stage 2)
@@ -258,7 +269,8 @@ emails use `lib/support/notify.ts` with the same rules.
    `[db-push] Done.` in the Render log.
 3. Then Vercel (portal and website). If the web apps go first, pages that read new columns fail until
    step 2 finishes.
-4. Check **Settings → System health**: the database version must say **v39**; scheduled jobs on time.
+4. Check **Settings → System health**: the database version must say **v40**; scheduled jobs on time
+   (the new *Website visit clean-up* shows "not on time" until its first daily run).
 5. Smoke test: sign in, open a Job Card, open the Support centre, ask Enyo a question,
    **Settings → Enyo → Test the web search**.
 

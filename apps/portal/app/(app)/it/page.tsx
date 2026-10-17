@@ -6,6 +6,8 @@ import { PageHeader, SectionCard, StatTile, StatusChip } from '@/components/ui';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
+import { Suspense } from 'react';
+import { ItTrendsSection, WebsiteSection } from '@/components/it/ItTrends';
 
 export const metadata = { title: 'IT control room' };
 export const dynamic = 'force-dynamic';
@@ -40,8 +42,8 @@ function SignInBars({ days }: { days: { label: string; ok: number; failed: numbe
  * The IT control room: everything IT looks after, for the whole organisation
  * or the branch chosen in the branch bar — health checks, sign-ins and
  * sessions, people per branch, roles and access changes, refused attempts,
- * errors (with Enyo to explain any one), the Support centre and every
- * scheduled job. Read-only; each section opens the page where it is managed.
+ * errors (with Enyo to explain any one), the Support centre, 14-day trends,
+ * the public website's visitors and every scheduled job. Read-only; each section opens the page where it is managed.
  */
 export default async function ItControlRoomPage() {
   await guardPage('audit.view', '/it');
@@ -139,6 +141,10 @@ export default async function ItControlRoomPage() {
           </SectionCard>
         </div>
       </div>
+
+      {/* Streamed in: the rest of the room never waits for the 14-day trends or the website report. */}
+      <Suspense fallback={<SectionCard icon="chart" title="Trends, last 14 days"><p className="text-sm text-[var(--ejo-text-muted)]">Loading the trends…</p></SectionCard>}><ItTrendsSection /></Suspense>
+      <Suspense fallback={<SectionCard icon="globe" title="Website visitors"><p className="text-sm text-[var(--ejo-text-muted)]">Loading the website report…</p></SectionCard>}><WebsiteSection /></Suspense>
 
       <SectionCard icon="clock" title="Scheduled jobs" description="Every background job, when it last ran, and runs in the last seven days" flush>
         <div className="overflow-x-auto">
