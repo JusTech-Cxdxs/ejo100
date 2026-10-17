@@ -152,3 +152,44 @@ test.describe('on a phone', () => {
     });
   }
 });
+
+test('an executive sees the business at a glance, read-only, and approves nothing', async ({ page }) => {
+  await as(page, 'executive');
+  await open(page, '/dashboard');
+  const panel = page.getByTestId('leadership-overview');
+  await expect(panel.getByRole('heading', { name: /at a glance/ })).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByText('Decisions waiting', { exact: false }).first()).toBeVisible();
+  await expect(panel.getByText('Branches side by side')).toBeVisible();
+  await expect(page.getByTestId('it-overview')).toHaveCount(0);
+  await open(page, '/analytics');
+  await expect(page.getByRole('heading', { name: 'Business analytics', level: 1 })).toBeVisible();
+  for (const url of ['/users', '/settings', '/crm/support', '/integrity']) {
+    await page.goto(url);
+    await expect(page, url).toHaveURL(/\/access-denied/);
+  }
+});
+
+test('an IT administrator sees systems and access, never the money', async ({ page }) => {
+  await as(page, 'it-administrator');
+  await open(page, '/dashboard');
+  const panel = page.getByTestId('it-overview');
+  await expect(panel.getByRole('heading', { name: 'Systems and access' })).toBeVisible({ timeout: 30_000 });
+  await expect(panel.getByText('Health checks')).toBeVisible();
+  await expect(page.getByTestId('leadership-overview')).toHaveCount(0);
+  for (const url of ['/users', '/roles', '/audit-logs', '/audit-logs/errors', '/settings', '/settings/enyo']) {
+    await open(page, url);
+    await expect(page, url).not.toHaveURL(/\/access-denied/);
+  }
+  for (const url of ['/analytics', '/recycle-bin', '/integrity']) {
+    await page.goto(url);
+    await expect(page, url).toHaveURL(/\/access-denied/);
+  }
+});
+
+test('customer care works the Support centre but never its set-up', async ({ page }) => {
+  await as(page, 'customer-care');
+  await open(page, '/crm/support');
+  await expect(page.getByRole('heading', { name: /Support centre/, level: 1 })).toBeVisible();
+  await page.goto('/settings/support');
+  await expect(page).toHaveURL(/\/access-denied/);
+});

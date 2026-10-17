@@ -15,6 +15,10 @@ import { DashboardTrendChart } from '@/components/LazyCharts';
 import { LoadingLink } from '@/components/LoadingLink';
 import { DashboardActivity } from '@/components/DashboardActivity';
 import { EnyoBriefCard } from '@/components/enyo/EnyoBriefCard';
+import { LeadershipOverview } from '@/components/dashboard/LeadershipOverview';
+import { ItOverview } from '@/components/dashboard/ItOverview';
+import { overviewsFor } from '@/lib/actions/leadership';
+import { Suspense } from 'react';
 import { EmptyState, Icon, PageHeader, SectionCard, StatTile, type IconName, type Tone } from '@/components/ui';
 import { ACTION_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
 import { APPROVAL_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
@@ -77,6 +81,7 @@ export default async function DashboardPage() {
     Promise.all([allows('workshop.job.work'), allows('workshop.job.supervise')]).then((xs) => xs.some(Boolean)),
   ]);
   const approver = approverFlags.some(Boolean);
+  const overviews = await overviewsFor();
   const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
@@ -125,6 +130,10 @@ export default async function DashboardPage() {
 
       {/* Enyo's brief: what is waiting for this person, with links, to read or to hear. */}
       <EnyoBriefCard userKey={me.id} />
+
+      {/* Leadership and IT overviews: streamed in, so the rest of the dashboard never waits for them. */}
+      {overviews.leadership ? <Suspense fallback={<OverviewSkeleton label="The business at a glance" />}><LeadershipOverview /></Suspense> : null}
+      {overviews.it ? <Suspense fallback={<OverviewSkeleton label="Systems and access" />}><ItOverview /></Suspense> : null}
 
       {seesWorkshop ? (
         <div className="ejo-stagger mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
@@ -284,6 +293,15 @@ export default async function DashboardPage() {
           </LoadingLink>
         </div>
       </div>
+    </div>
+  );
+}
+
+function OverviewSkeleton({ label }: { label: string }) {
+  return (
+    <div className="mb-6" aria-busy="true" aria-label={`${label} — loading`}>
+      <div className="mb-3 h-5 w-56 animate-pulse rounded bg-[var(--ejo-border)]" />
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{Array.from({ length: 6 }, (_, i) => <div key={i} className="h-24 animate-pulse rounded-[var(--ejo-radius-lg)] bg-[var(--ejo-border)]/60" />)}</div>
     </div>
   );
 }

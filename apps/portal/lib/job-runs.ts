@@ -53,3 +53,8 @@ export async function jobStatuses(): Promise<{ jobs: JobStatus[]; emails7d: { se
   ]);
   return { jobs, emails7d: { sent, failed, lastError: lastFail?.error ?? null } };
 }
+
+/** A job not running on time: never ran, or quiet for longer than its rhythm allows (frequent jobs 1 hour, daily ones 3 days). */
+export function jobIsLate(j: { key: string; lastRun: Date | null }, now = Date.now()): boolean {
+  return !j.lastRun || now - j.lastRun.getTime() > (j.key === 'appointment-reminders' || j.key.startsWith('support') ? 3_600_000 : 3 * 86_400_000);
+}

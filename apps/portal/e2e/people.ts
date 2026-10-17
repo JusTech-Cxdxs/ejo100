@@ -25,6 +25,10 @@ export const PEOPLE: readonly Person[] = [
   { email: 'broadcaster@e2e.test', name: 'Bimbo Broadcaster', role: 'broadcaster' },
   // Helps colleagues on their behalf (assisted sessions).
   { email: 'assistant@e2e.test', name: 'Ada Assistant', role: 'branch-assistant' },
+  // Leadership, IT and the support department.
+  { email: 'executive@e2e.test', name: 'Eze Executive', role: 'executive' },
+  { email: 'itadmin@e2e.test', name: 'Ifeoma Itadmin', role: 'it-administrator' },
+  { email: 'care@e2e.test', name: 'Chidi Care', role: 'customer-care' },
   // Holds BOTH Workshop Supervisor and Workshop Manager — for the
   // segregation-of-duties checks (approves as supervisor, so may not also
   // give the Manager's final approval).
