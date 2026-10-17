@@ -239,7 +239,7 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
       try {
         const settings = await supportSettings(box.organisationId);
         const head = await letterheadFor(box.organisationId, null);
-        // The team's own words (v38); a database a version behind simply has none.
+        // The team's own words (v39); a database a version behind simply has none.
         const own = await prisma.supportQueue.findUnique({ where: { id: queue.id }, select: { ackMessage: true } }).catch(() => null);
         const m = renderSupportAcknowledgement({
           ...head, queueName: queue.name, teamMessage: own?.ackMessage ?? null, number: created.number, subject: cleanSubject, customerName: customer?.fullName ?? from?.name ?? '',

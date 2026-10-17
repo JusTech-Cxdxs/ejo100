@@ -75,3 +75,30 @@ test('error references are tied to the request id in the logs', () => {
   assert.match(mw, /forwarded\.set\('x-request-id', requestId\)/);
   assert.match(mw, /res\.headers\.set\('x-request-id', requestId\)/);
 });
+
+test('the person whose step it now is gets an email, end to end', () => {
+  const src = read('lib/actions/sourcing.ts');
+  // Finance hears when an outside purchase is ready to pay out; the reviewer hears when the manager turns it down.
+  assert.match(body(src, 'approveExternalProcurementRequest'), /where: 'external_procurement\.approved'/);
+  assert.match(body(src, 'rejectExternalProcurementRequest'), /if \(stage === 'MANAGER_APPROVAL'\)[\s\S]*financeReviewedById/);
+  // Whoever raised a parts request or outside purchase hears every outcome; a Store rejection also tells the HOD.
+  assert.match(src, /slip\?\.requestedById, kind === 'rejected' && slip\?\.rejectionStage === 'STORE' \? slip\.hodApprovedById/);
+  assert.match(src, /jobCard\.assignedTechnicianId, req\?\.requestedById/);
+  const ws = read('lib/actions/workshop.ts');
+  assert.match(ws, /where: 'job_card\.quality_check'/);
+  assert.match(ws, /where: 'job_card\.rework'/);
+  assert.match(body(ws, 'returnEstimateForChanges'), /where: 'estimate\.returned_for_changes'/);
+  assert.match(body(ws, 'reassignSupervisor'), /where: 'job_card\.supervisor_reassigned'/);
+  const sup = read('lib/actions/support.ts');
+  assert.match(body(sup, 'moveSupportTicket'), /nextAssignee\(t\.organisationId, target\.id\)/);
+  assert.match(body(sup, 'moveSupportTicket'), /nobody_free_alerted/);
+  assert.match(sup, /where: 'support\.reassigned'/);
+  assert.match(read('lib/actions/security.ts'), /Department Head authorised/);
+  assert.match(read('lib/actions/users-admin.ts'), /if \(active\) after\(\(\) => tellReactivated\(user\.id\)\)/);
+  assert.match(read('lib/auth.ts'), /onPasswordReset: async/);
+  // One helper: never the person who acted, active colleagues of the same organisation only, never throws.
+  const h = read('lib/workflow-notify.ts');
+  assert.match(h, /x !== o\.exceptUserId/);
+  assert.match(h, /organisationId, isActive: true/);
+  assert.match(h, /catch \(err\)/);
+});

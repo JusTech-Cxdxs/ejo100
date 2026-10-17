@@ -11,6 +11,11 @@ import { authorize, getPrincipal } from '@/lib/authz/server';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { hashPassword } from 'better-auth/crypto';
 import { randomBytes } from 'node:crypto';
+import { sendEmail } from '@/lib/email';
+import { portalBaseUrl } from '@/lib/portal-url';
+import { logFailure } from '@/lib/log';
+import { renderWorkflowNoticeEmail } from '@/lib/email-templates/workflow-notice';
+import { portalConfig } from '@/lib/site-config';
 
 export type AdminUserRow = { id: string; fullName: string; email: string; employeeId: string | null; isActive: boolean; branch: string | null; department: string | null; roles: { id: string; name: string; isPlatform: boolean }[] };
 export type AssignableRole = { id: string; name: string; isPlatform: boolean };
@@ -315,4 +320,27 @@ export async function setStaffActive(userId: string, active: boolean, reason: st
   });
   await writeAuditLog({ userId: p.userId, action: active ? 'user.reactivated' : 'user.deactivated', entityType: 'User', entityId: userId, metadata: { person: user.fullName, reason: why || undefined } });
   revalidatePath('/users');
+  // Switched back on: the person is told they can sign in again. (Switched
+  // off: nothing is emailed; they are signed out and their administrator
+  // speaks to them.)
+  if (active) after(() => tellReactivated(user.id));
+}
+
+async function tellReactivated(userId: string): Promise<void> {
+  try {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { fullName: true, email: true, organisation: { select: { name: true } } } });
+    if (!u) return;
+    const base = portalBaseUrl();
+    const m = renderWorkflowNoticeEmail({
+      companyName: u.organisation?.name ?? portalConfig.organisationName, logoUrl: `${base}/images/logo/email-logo.png`, recipientName: u.fullName,
+      subject: 'Your EJO 100 account is switched on again',
+      heading: 'You can sign in again',
+      intro: 'Your administrator switched your EJO 100 account back on. Your roles are as they were.',
+      next: 'Sign in with your usual password. Forgotten it? Use "Forgot password" on the sign-in page.',
+      status: { label: 'Account', tone: 'success' }, url: `${base}/sign-in`, ctaLabel: 'Sign in',
+    });
+    await sendEmail(u.email, m.subject, m.html);
+  } catch (err) {
+    logFailure('Could not tell a person their account is switched on again', userId, err);
+  }
 }

@@ -2,6 +2,7 @@
 import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
+import { emailColleagues } from '@/lib/workflow-notify';
 
 import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
@@ -1285,6 +1286,47 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     }
   }
 
+  // Colleagues whose step it now is. Quality check: the supervisor passes it
+  // or sends it back (with no supervisor, the branch Managers). Rework: the
+  // technician redoes the work. Never the person who made the move.
+  if (priorStatus !== status && status === JobCardStatus.QUALITY_CHECK) {
+    const managers = jobCard.supervisorId ? [] : (await listEligibleManagersForBranch(jobCard.branchId).catch(() => ({ supervisors: [] as { id: string }[] }))).supervisors.map((m: { id: string }) => m.id);
+    await emailColleagues({
+      branchId: jobCard.branchId,
+      userIds: [jobCard.supervisorId, ...managers],
+      exceptUserId: user.id,
+      path: `/workshop/job-cards/${id}`,
+      where: 'job_card.quality_check',
+      notice: {
+        subject: `Ready for quality check — Job Card ${jobCard.jobNumber}`,
+        heading: 'A vehicle is ready for quality check',
+        intro: `The work on Job Card ${jobCard.jobNumber} is done and waiting for its quality check.`,
+        facts: [['Job Card', jobCard.jobNumber], ['Customer', jobCard.customer.fullName], ['Vehicle', [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle']],
+        next: 'Inspect the work, then mark it Completed — or send it back for rework with the reason.',
+        status: { label: 'Quality check', tone: 'info' },
+        ctaLabel: 'Open the Job Card',
+      },
+    });
+  }
+  if (priorStatus !== status && isReworkTransition) {
+    await emailColleagues({
+      branchId: jobCard.branchId,
+      userIds: [jobCard.assignedTechnicianId],
+      exceptUserId: user.id,
+      path: `/workshop/job-cards/${id}`,
+      where: 'job_card.rework',
+      notice: {
+        subject: `Rework needed — Job Card ${jobCard.jobNumber}`,
+        heading: 'A job was sent back for rework',
+        intro: `Job Card ${jobCard.jobNumber} did not pass its quality check and is back with you.`,
+        facts: [['Job Card', jobCard.jobNumber], ['Vehicle', [jobCard.vehicle.make, jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle'], ...(reworkReason?.trim() ? [['What to fix', reworkReason.trim().slice(0, 300)] as [string, string]] : [])],
+        next: 'Fix what was found, then move the Job Card back to Quality check.',
+        status: { label: 'Rework', tone: 'warning' },
+        ctaLabel: 'Open the Job Card',
+      },
+    });
+  }
+
   // CHECKED_OUT emails the customer and every staff party on the Job Card
   // (creator, supervisor, technician, branch Managers), once per transition.
   // CLOSED never reaches here; its emails are sent from approveCloseRequest.
@@ -1466,6 +1508,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     where: { id: jobCardId },
     select: {
       createdById: true,
+      branchId: true,
       departmentId: true,
       jobNumber: true,
       supervisorId: true,
@@ -1508,6 +1551,23 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
     entityId: jobCardId,
     metadata: { newSupervisorId },
   });
+  // The supervisor it was taken from hears that it is no longer theirs.
+  if (jobCard.supervisorId && jobCard.supervisorId !== newSupervisorId) {
+    await emailColleagues({
+      branchId: jobCard.branchId,
+      userIds: [jobCard.supervisorId],
+      exceptUserId: user.id,
+      path: `/workshop/job-cards/${jobCardId}`,
+      where: 'job_card.supervisor_reassigned',
+      notice: {
+        subject: `Job Card ${jobCard.jobNumber} has a new supervisor`,
+        heading: 'A Job Card was given to another supervisor',
+        intro: `Job Card ${jobCard.jobNumber} (${jobCard.customer.fullName}) now has another supervisor. You no longer need to approve or supervise it.`,
+        status: { label: 'Reassigned', tone: 'neutral' },
+        ctaLabel: 'Open the Job Card',
+      },
+    });
+  }
 
   try {
     const supervisor = await prisma.user.findUnique({
@@ -2577,6 +2637,23 @@ export async function returnEstimateForChanges(jobCardId: string, reason: string
     data: { status: 'SUBMITTED', approvedAt: null, approvedById: null },
   }), 'This estimate was just approved or changed by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'estimate.returned_for_changes', entityType: 'JobCard', entityId: jobCardId, metadata: { reason: why } });
+  // The supervisor (who approves it again) and the technician (who edits it) hear at once.
+  await emailColleagues({
+    branchId: estimate.jobCard.branchId,
+    userIds: [estimate.jobCard.supervisorId, estimate.jobCard.assignedTechnicianId],
+    exceptUserId: user.id,
+    path: `/workshop/job-cards/${jobCardId}`,
+    where: 'estimate.returned_for_changes',
+    notice: {
+      subject: `Estimate sent back — Job Card ${estimate.jobCard.jobNumber}`,
+      heading: 'The manager sent an estimate back',
+      intro: `The manager sent the estimate on Job Card ${estimate.jobCard.jobNumber} back for changes before approving it.`,
+      facts: [['Job Card', estimate.jobCard.jobNumber], ['What to change', why]],
+      next: 'Change the estimate, then the supervisor approves it again and it goes back to the manager.',
+      status: { label: 'Sent back', tone: 'warning' },
+      ctaLabel: 'Open the Job Card',
+    },
+  });
 }
 
 /** Sends the Manager-approved estimate to the customer. Only the Job Card's

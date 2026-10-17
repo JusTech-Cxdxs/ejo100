@@ -91,7 +91,7 @@ const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+
 /** Creates or updates a team. Targets are given in minutes per priority; anything missing keeps the defaults. */
 export async function saveSupportQueue(input: {
   id?: string; name?: string; kind?: string; description?: string; branchId?: string; aiMode?: string; autoAcknowledge?: boolean; isDefault?: boolean; active?: boolean; signature?: string;
-  /** The team's own words in its automatic reply (v38). */ ackMessage?: string;
+  /** The team's own words in its automatic reply (v39). */ ackMessage?: string;
   targets?: Partial<Record<string, { first?: number; resolve?: number }>>;
 }): Promise<{ id: string }> {
   const { organisationId, userId } = await supportOrg('saveSupportQueue');

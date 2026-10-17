@@ -2,6 +2,7 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
+import { emailColleagues } from '@/lib/workflow-notify';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService, refuseDuringAssist, refuse } from '@/lib/authz/server';
 
@@ -130,9 +131,15 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
   rejectionReason?: string,
 ): Promise<void> {
   try {
-    const jobCard = await getPartRequestEmailContext(jobCardId);
-    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
-    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const [jobCard, slip] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { requestedById: true, hodApprovedById: true, rejectionStage: true } }),
+    ]);
+    // The job's technician and supervisor, the person who raised the request
+    // (when someone else did), and — when the Store turns it down — the HOD
+    // who approved it.
+    const recipientIds = [...new Set([jobCard.supervisorId, jobCard.assignedTechnicianId, slip?.requestedById, kind === 'rejected' && slip?.rejectionStage === 'STORE' ? slip.hodApprovedById : null].filter((id): id is string => Boolean(id)))];
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds }, isActive: true }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
@@ -170,9 +177,13 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
   rejectionReason?: string,
 ): Promise<void> {
   try {
-    const jobCard = await getPartRequestEmailContext(jobCardId);
-    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
-    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const [jobCard, req] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { requestedById: true } }),
+    ]);
+    // The job's technician and supervisor, and the person who raised the request (when someone else did).
+    const recipientIds = [...new Set([jobCard.supervisorId, jobCard.assignedTechnicianId, req?.requestedById].filter((id): id is string => Boolean(id)))];
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds }, isActive: true }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
@@ -1784,6 +1795,25 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   });
 
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'approved', approvedTotal);
+  // Finance pays it out next: tell the branch's Finance officers. Not the
+  // person who raised it or the manager who approved it (they may not pay it out).
+  const finance = await listEligibleFinanceOfficersForBranch(request.branchId).catch(() => ({ supervisors: [] as { id: string }[] }));
+  await emailColleagues({
+    branchId: request.branchId,
+    userIds: finance.supervisors.map((f) => f.id).filter((id) => id !== request.requestedById),
+    exceptUserId: user.id,
+    path: `/workshop/external-procurement/${requestId}`,
+    where: 'external_procurement.approved',
+    notice: {
+      subject: `Ready to pay out — ${request.referenceNumber}`,
+      heading: 'An outside purchase is ready to pay out',
+      intro: `The manager approved outside purchase ${request.referenceNumber}. It is waiting for Finance to pay it out.`,
+      facts: [['Reference', request.referenceNumber], ['Approved total', `₦${approvedTotal.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]],
+      next: 'Open the request, record how it was paid (method and reference), and pay out exactly the approved total.',
+      status: { label: 'Ready to pay out', tone: 'info' },
+      ctaLabel: 'Open the request',
+    },
+  });
 }
 
 /** Finance records the disbursement. No amount parameter: the amount is the
@@ -1863,7 +1893,7 @@ export async function disburseExternalProcurementRequest(
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
   // Decisions are never taken during an assisted session (the assistant approves nothing).
   await refuseDuringAssist('rejectExternalProcurementRequest');
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, financeReviewedById: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -1899,4 +1929,22 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
   });
 
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'rejected', undefined, reason.trim());
+  // Turned down by the manager: the Finance colleague who reviewed it hears too.
+  if (stage === 'MANAGER_APPROVAL') {
+    await emailColleagues({
+      branchId: request.branchId,
+      userIds: [request.financeReviewedById],
+      exceptUserId: user.id,
+      path: `/workshop/external-procurement/${requestId}`,
+      where: 'external_procurement.rejected',
+      notice: {
+        subject: `Not approved — ${request.referenceNumber}`,
+        heading: 'An outside purchase you reviewed was not approved',
+        intro: `The manager did not approve outside purchase ${request.referenceNumber}, which you sent for approval. Nothing is to be paid out.`,
+        facts: [['Reference', request.referenceNumber], ['Reason', reason.trim().slice(0, 300)]],
+        status: { label: 'Not approved', tone: 'warning' },
+        ctaLabel: 'Open the request',
+      },
+    });
+  }
 }

@@ -7,6 +7,7 @@
 import { renderPasswordResetEmail } from '../lib/email-templates/password-reset';
 import { renderCustomerWelcomeEmail } from '../lib/email-templates/customer-welcome';
 import { renderStaffAccessEmail } from '../lib/email-templates/staff-access';
+import { renderWorkflowNoticeEmail } from '../lib/email-templates/workflow-notice';
 import { renderSupportAssignedEmail, renderSupportLateEmail, renderSupportNobodyFreeEmail } from '../lib/email-templates/support-staff';
 import { renderCustomerEstimateApprovedEmail } from '../lib/email-templates/customer-estimate-approved';
 import { renderCustomerServiceEstimateApprovedEmail } from '../lib/email-templates/customer-service-estimate-approved';
@@ -267,5 +268,7 @@ export function emailSamples(opts: { hostile?: boolean } = {}): EmailSample[] {
     s('staff-support-assigned', 'renderSupportAssignedEmail', 'staff', undefined, () => renderSupportAssignedEmail({ companyName: org, logoUrl: portalLogo, recipientName: staff, number: 'SUP-2026-000042', subject: x('My car is making a noise'), contactName: customer, teamName: x('Customer care'), priority: 'High', due: 'Mon 19 Oct 2026, 10:30', url: `${SAMPLE_PORTAL}/crm/support/t1`, channel: 'Website enquiry', by: manager })),
     s('staff-support-nobody-free', 'renderSupportNobodyFreeEmail', 'staff', undefined, () => renderSupportNobodyFreeEmail({ companyName: org, logoUrl: portalLogo, recipientName: manager, number: 'SUP-2026-000043', subject: x('Refund query'), contactName: customer, teamName: x('Customer care'), priority: 'Normal', due: null, url: `${SAMPLE_PORTAL}/crm/support/t2`, channel: 'Email', reason: 'everyone on the team is marked away' })),
     s('staff-support-late', 'renderSupportLateEmail', 'staff', undefined, () => renderSupportLateEmail({ companyName: org, logoUrl: portalLogo, recipientName: manager, number: 'SUP-2026-000044', subject: x('Warranty claim follow-up'), contactName: customer, teamName: x('Warranty'), priority: 'Urgent', due: 'Mon 19 Oct 2026, 09:00', url: `${SAMPLE_PORTAL}/crm/support/t3`, channel: 'Customer portal', owner: staff })),
+    // Workflow steps: the colleague whose step it now is
+    s('staff-workflow-notice', 'renderWorkflowNoticeEmail', 'staff', undefined, () => renderWorkflowNoticeEmail({ companyName: org, logoUrl: portalLogo, recipientName: staff, subject: 'Ready to pay out — EPR-2026-0007', heading: 'An outside purchase is ready to pay out', intro: x('The manager approved outside purchase EPR-2026-0007. It is waiting for Finance to pay it out.'), facts: [['Reference', 'EPR-2026-0007'], ['Approved total', '₦45,000.00']], next: 'Open the request, record how it was paid, and pay out exactly the approved total.', status: { label: 'Ready to pay out', tone: 'info' }, url: `${SAMPLE_PORTAL}/workshop/external-procurement/e1`, ctaLabel: 'Open the request' })),
   ];
 }

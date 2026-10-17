@@ -5,6 +5,7 @@ import { prisma } from '@ejo/database';
 import { after } from 'next/server';
 import { sendEmail } from './email';
 import { renderPasswordResetEmail } from './email-templates/password-reset';
+import { renderWorkflowNoticeEmail } from './email-templates/workflow-notice';
 import { renderEmailLayout, html, greeting, para } from './email-templates/layout';
 import { portalConfig } from './site-config';
 import { portalBaseUrl } from './portal-url';
@@ -57,6 +58,29 @@ export const auth = betterAuth({
       const companyName = org?.organisation?.name ?? portalConfig.organisationName;
       const message = renderPasswordResetEmail({ fullName: name, email: user.email, url, companyName, logoUrl: `${base}/images/logo/email-logo.png` });
       await sendEmail(user.email, message.subject, message.html);
+    },
+    // Afterwards: a notice that the password was set or changed, so someone
+    // who did not do it knows at once (every session was already signed out).
+    onPasswordReset: async ({ user }) => {
+      try {
+        const base = portalBaseUrl();
+        const org = await prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true, organisation: { select: { name: true } } } }).catch(() => null);
+        const m = renderWorkflowNoticeEmail({
+          companyName: org?.organisation?.name ?? portalConfig.organisationName,
+          logoUrl: `${base}/images/logo/email-logo.png`,
+          recipientName: org?.fullName ?? user.name ?? null,
+          subject: 'Your EJO 100 password was changed',
+          heading: 'Your password was changed',
+          intro: `The password for ${user.email} was just set or changed, and every device was signed out.`,
+          next: 'If this was you, there is nothing to do. If it was not, use "Forgot password" on the sign-in page now and tell your administrator.',
+          status: { label: 'Security', tone: 'warning' },
+          url: `${base}/sign-in`,
+          ctaLabel: 'Sign in',
+        });
+        await sendEmail(user.email, m.subject, m.html);
+      } catch {
+        // A notice only: the change itself already went through.
+      }
     },
   },
 

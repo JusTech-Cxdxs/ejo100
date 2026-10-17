@@ -20,7 +20,7 @@ import {
   asPriority, dueDates, dueLabel, extractEntities, PRIORITIES, PRIORITY_LABEL, reasonLabels, slaState, type Entities, type Priority, type SlaState,
 } from '@/lib/support/core';
 import { TOPIC_LABEL, asTopic } from '@/lib/support/ai-core';
-import { aiReply, aiSummary, followUrl, letterheadFor, openTicket, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings } from '@/lib/support/server';
+import { aiReply, aiSummary, followUrl, letterheadFor, nextAssignee, openTicket, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings } from '@/lib/support/server';
 import { learnFromResolution } from '@/lib/support/learn';
 import { draftUse } from '@/lib/support/monitor-core';
 import { senderContext } from '@/lib/support/context';
@@ -29,6 +29,7 @@ import { PLATFORM } from '@/lib/brand';
 import { fenceStaffHelp } from '@/lib/support/reach';
 import { after } from 'next/server';
 import { announceRouted, emailAssignee } from '@/lib/support/notify';
+import { emailColleagues } from '@/lib/workflow-notify';
 
 /**
  * The Support centre for colleagues: customers and visitors handed over by
@@ -442,6 +443,21 @@ export async function assignSupportTicket(ticketId: string, assigneeId: string):
   });
   // The colleague it was given to hears by email too (not when they took it themselves).
   if (target && target !== me.id) announceLater(t.id, me.id);
+  // The previous owner hears that it is no longer theirs (not when they passed it on themselves).
+  if (t.assignedToId && t.assignedToId !== me.id) {
+    const was = t.assignedToId;
+    const run = () => emailColleagues({
+      branchId: t.branchId, organisationId: t.organisationId, userIds: [was], path: `/crm/support/${t.id}`, where: 'support.reassigned',
+      notice: {
+        subject: `${t.number} is no longer yours`,
+        heading: 'A support request was moved from you',
+        intro: target ? `${t.number} (${t.subject}) was given to ${targetName ?? 'a colleague'}. You no longer need to answer it.` : `${t.number} (${t.subject}) was taken off you and is waiting for its team to pick it up.`,
+        status: { label: 'Reassigned', tone: 'neutral' },
+        ctaLabel: 'Open the request',
+      },
+    }).then(() => undefined).catch(() => undefined);
+    try { after(run); } catch { void run(); }
+  }
 }
 
 /** Urgent, high, normal or low. Before the first answer, the target moves with it. */
@@ -475,11 +491,20 @@ export async function moveSupportTicket(ticketId: string, queueId: string): Prom
   const queue = await queueById(t.organisationId, target.id);
   const s = await supportSettings(t.organisationId);
   const due = dueDates(t.createdAt, asPriority(t.priority), queue.targets, s.hours, s.holidays);
+  // Without an owner, the new team's next free colleague takes it; if nobody
+  // there is free, that team's leads are told (once, for this team).
+  const assignee = t.assignedToId ? null : await nextAssignee(t.organisationId, target.id).catch(() => null);
+  const tags = t.assignedToId ? null : (await prisma.supportTicket.findUnique({ where: { id: t.id }, select: { tags: true } }))?.tags ?? [];
   claimed(await prisma.supportTicket.updateMany({
-    where: { id: t.id, queueId: t.queueId },
-    data: { queueId: target.id, ...(t.firstResponseAt ? {} : { dueFirstResponseAt: due.first, slaWarnedAt: null, slaBreachedAt: null }), dueResolutionAt: due.resolve },
+    where: { id: t.id, queueId: t.queueId, assignedToId: t.assignedToId },
+    data: {
+      queueId: target.id, ...(t.firstResponseAt ? {} : { dueFirstResponseAt: due.first, slaWarnedAt: null, slaBreachedAt: null }), dueResolutionAt: due.resolve,
+      ...(assignee ? { assignedToId: assignee } : {}),
+      ...(tags ? { tags: { set: tags.filter((x) => x !== 'nobody_free_alerted') } } : {}),
+    },
   }));
-  await writeAuditLog({ userId: me.id, organisationId: t.organisationId, action: 'support.queue_changed', entityType: 'SupportTicket', entityId: t.id, metadata: { number: t.number, from: t.queueId, to: target.id, queue: target.name } });
+  await writeAuditLog({ userId: me.id, organisationId: t.organisationId, action: 'support.queue_changed', entityType: 'SupportTicket', entityId: t.id, metadata: { number: t.number, from: t.queueId, to: target.id, queue: target.name, ...(assignee ? { assignedTo: assignee } : {}) } });
+  if (!t.assignedToId && assignee !== me.id) announceLater(t.id);
 }
 
 /** Enyo writes a reply for the colleague to check and send (nothing is sent). */
