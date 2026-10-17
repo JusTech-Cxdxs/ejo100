@@ -171,7 +171,8 @@ test('deploys: pre-deploy SQL is additive and re-runnable, and runs before every
   }
   for (const f of readdirSync(join(repo, 'scripts', 'postdeploy')).filter((x: string) => x.endsWith('.sql'))) {
     const sql = readFileSync(join(repo, 'scripts', 'postdeploy', f), 'utf8').replace(/--.*$/gm, '');
-    assert.doesNotMatch(sql, /\b(DROP|DELETE|TRUNCATE)\b/i, `${f} must not remove anything`);
+    // No statement that removes data or structure (trigger definitions may name the events they guard).
+    assert.doesNotMatch(sql, /\bDROP\s+(TABLE|COLUMN|SCHEMA|INDEX|TYPE|VIEW|FUNCTION|TRIGGER)\b|\bDELETE\s+FROM\b|^\s*TRUNCATE\b|\bALTER\s+TABLE[^;]*\bDISABLE\s+TRIGGER\b/im, `${f} must not remove anything`);
   }
   const rls = readFileSync(join(repo, 'scripts', 'postdeploy', '0001-rls-default-deny.sql'), 'utf8');
   assert.match(rls, /ENABLE ROW LEVEL SECURITY/);

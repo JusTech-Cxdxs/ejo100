@@ -100,6 +100,12 @@ export function installErrorSink(): void {
         h = null; // outside a request (scheduled job, build)
       }
       const path = h?.get('next-url') ?? h?.get('referer')?.replace(/^https?:\/\/[^/]+/, '') ?? null;
+      // Correlation: the reference the person was shown, tied to the request id
+      // the middleware gave this request (and the host's own request id), so one
+      // search in the hosting logs finds every line of the failing request.
+      const requestId = h?.get('x-request-id') ?? null;
+      const hostId = h?.get('x-vercel-id') ?? null;
+      if (requestId || hostId) console.error(JSON.stringify({ level: 'error', at: new Date().toISOString(), message: 'Error reference', ref: r.ref, where: r.where, requestId, hostId }));
       await recordErrorEvent({ ref: r.ref, err: r.err, kind: classifyError(r.err, { where: r.where }), headers: h, method: h ? 'POST' : null, path, route: r.where });
     })();
     import('next/server').then(({ after }) => { try { after(work); } catch { /* outside a request */ } }).catch(() => undefined);

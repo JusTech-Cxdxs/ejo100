@@ -63,6 +63,11 @@ export default async function ExternalProcurementDetailPage({
   ]);
   const isEligibleManager = isMasterAdmin || eligibleManagers.supervisors.some((m: { id: string }) => m.id === viewerId);
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
+  // Separation of duties (the server enforces it too): nobody reviews,
+  // approves or pays out a request they raised or already approved.
+  const reviewBlocked = viewerId === request.requestedById;
+  const approveBlocked = viewerId === request.requestedById || viewerId === request.financeReviewedById;
+  const payBlocked = viewerId === request.requestedById || viewerId === request.managerApprovedById;
   // Finance's changes to supplementary lines go on the timeline, so a
   // removed line still has a record.
   const supplementaryLineEvents = auditTrail.filter((e: (typeof auditTrail)[number]) => e.action.startsWith('external_procurement.supplementary_line_'));
@@ -260,7 +265,7 @@ export default async function ExternalProcurementDetailPage({
           {request.status === 'DISBURSED' ? (
             <PrintMenu orgHref={`/print/external-procurement/${request.id}`} clientHref={`/print/external-procurement/${request.id}?variant=client`} clientLabel="Requester Copy" />
           ) : null}
-          {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
+          {request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance && reviewBlocked ? (<p className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 text-sm text-[var(--ejo-text-muted)]" data-testid="sod-note">You raised this request, so another Finance colleague reviews it.</p>) : request.status === 'PENDING_FINANCE_REVIEW' && isEligibleFinance ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Review</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -315,7 +320,7 @@ export default async function ExternalProcurementDetailPage({
             </div>
           ) : null}
 
-          {request.status === 'PENDING_MANAGER_APPROVAL' && isEligibleManager ? (
+          {request.status === 'PENDING_MANAGER_APPROVAL' && isEligibleManager && approveBlocked ? (<p className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 text-sm text-[var(--ejo-text-muted)]" data-testid="sod-note">You already took part in this request (raised or reviewed it), so another manager approves it.</p>) : request.status === 'PENDING_MANAGER_APPROVAL' && isEligibleManager ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Manager Approval</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
@@ -342,7 +347,7 @@ export default async function ExternalProcurementDetailPage({
             </div>
           ) : null}
 
-          {request.status === 'APPROVED' && isEligibleFinance ? (
+          {request.status === 'APPROVED' && isEligibleFinance && payBlocked ? (<p className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 text-sm text-[var(--ejo-text-muted)]" data-testid="sod-note">You already took part in this request (raised or approved it), so another Finance colleague pays it out.</p>) : request.status === 'APPROVED' && isEligibleFinance ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Finance Disbursement</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">
