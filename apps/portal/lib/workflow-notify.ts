@@ -1,4 +1,5 @@
 import 'server-only';
+import { after } from 'next/server';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
 import { portalBaseUrl } from '@/lib/portal-url';
@@ -48,4 +49,10 @@ export async function emailColleagues(o: {
     logFailure(`Could not work out whom to email (${o.where})`, o.path, err);
     return 0;
   }
+}
+
+/** The same, after the response: a slow mail server never delays the person who acted. */
+export function emailColleaguesLater(o: Parameters<typeof emailColleagues>[0]): void {
+  const run = () => emailColleagues(o).then(() => undefined);
+  try { after(run); } catch { void run(); }
 }

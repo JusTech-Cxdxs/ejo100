@@ -51,6 +51,7 @@ export type LeadershipPulse = {
 export async function getLeadershipPulse(): Promise<LeadershipPulse> {
   await authorize('analytics.business.view', undefined, 'getLeadershipPulse', 'This overview is for leadership and managers.');
   const branchIds = await myBranches('analytics.business.view');
+  const reach = await reachWhere('analytics.business.view');
   const org = await myOrganisationId();
   const now = Date.now();
   const monthStart = new Date(`${lagosYmd(new Date()).slice(0, 8)}01T00:00:00+01:00`);
@@ -110,20 +111,21 @@ export async function getLeadershipPulse(): Promise<LeadershipPulse> {
   for (const p of payJc) { const b = p.jobCard?.branchId; if (b) collected.set(b, (collected.get(b) ?? 0) + num(p.amount)); }
   for (const p of payVs) { const b = p.vehicleService?.branchId; if (b) collected.set(b, (collected.get(b) ?? 0) + num(p.amount)); }
 
-  // Support: the organisation's requests (counts only); for those who also work it, the same numbers they see there.
+  // Support: the requests within the viewer's reach (counts only); for those who also work it, the same numbers they see there.
   let support: LeadershipPulse['support'] = null;
   if (org) {
-    const openWhere = { organisationId: org, status: { in: ['OPEN' as const, 'WAITING_ON_CUSTOMER' as const, 'ON_HOLD' as const] } };
+    // Within the viewer's reach: a branch-scoped viewer counts only their branches' requests.
+    const inReach = 'branchId' in reach && reach.branchId !== undefined ? { branchId: { in: branchIds } } : {};
+    const openWhere = { organisationId: org, ...inReach, status: { in: ['OPEN' as const, 'WAITING_ON_CUSTOMER' as const, 'ON_HOLD' as const] } };
     const [open, late, unassigned, csat] = await Promise.all([
       prisma.supportTicket.count({ where: openWhere }),
       prisma.supportTicket.count({ where: { ...openWhere, slaBreachedAt: { not: null }, firstResponseAt: null } }),
       prisma.supportTicket.count({ where: { ...openWhere, assignedToId: null } }),
-      prisma.supportTicket.aggregate({ where: { organisationId: org, csatScore: { not: null }, updatedAt: { gte: since30 } }, _avg: { csatScore: true }, _count: { csatScore: true } }),
+      prisma.supportTicket.aggregate({ where: { organisationId: org, ...inReach, csatScore: { not: null }, updatedAt: { gte: since30 } }, _avg: { csatScore: true }, _count: { csatScore: true } }),
     ]).catch(() => [0, 0, 0, null] as const);
     support = { open: open as number, late: late as number, unassigned: unassigned as number, csat: csat && csat._avg.csatScore !== null ? Math.round(csat._avg.csatScore * 10) / 10 : null, csatResponses: csat ? csat._count.csatScore : 0 };
   }
 
-  const reach = await reachWhere('analytics.business.view');
   return {
     asOf: new Date(),
     scope: typeof reach.branchId === 'string' ? 'branch' : 'organisation',

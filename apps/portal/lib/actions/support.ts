@@ -496,13 +496,16 @@ export async function moveSupportTicket(ticketId: string, queueId: string): Prom
   const assignee = t.assignedToId ? null : await nextAssignee(t.organisationId, target.id).catch(() => null);
   const tags = t.assignedToId ? null : (await prisma.supportTicket.findUnique({ where: { id: t.id }, select: { tags: true } }))?.tags ?? [];
   claimed(await prisma.supportTicket.updateMany({
-    where: { id: t.id, queueId: t.queueId, assignedToId: t.assignedToId },
+    // Tags too: nothing added in between is overwritten.
+    where: { id: t.id, queueId: t.queueId, assignedToId: t.assignedToId, ...(tags ? { tags: { equals: tags } } : {}) },
     data: {
       queueId: target.id, ...(t.firstResponseAt ? {} : { dueFirstResponseAt: due.first, slaWarnedAt: null, slaBreachedAt: null }), dueResolutionAt: due.resolve,
       ...(assignee ? { assignedToId: assignee } : {}),
       ...(tags ? { tags: { set: tags.filter((x) => x !== 'nobody_free_alerted') } } : {}),
     },
   }));
+  // The round robin moves on, as when a request first arrives.
+  if (assignee) await prisma.supportQueueMember.updateMany({ where: { queueId: target.id, userId: assignee }, data: { lastAssignedAt: new Date() } }).catch(() => undefined);
   await writeAuditLog({ userId: me.id, organisationId: t.organisationId, action: 'support.queue_changed', entityType: 'SupportTicket', entityId: t.id, metadata: { number: t.number, from: t.queueId, to: target.id, queue: target.name, ...(assignee ? { assignedTo: assignee } : {}) } });
   if (!t.assignedToId && assignee !== me.id) announceLater(t.id);
 }

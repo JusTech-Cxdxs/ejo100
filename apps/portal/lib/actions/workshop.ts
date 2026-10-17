@@ -2,7 +2,7 @@
 import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
-import { emailColleagues } from '@/lib/workflow-notify';
+import { emailColleaguesLater } from '@/lib/workflow-notify';
 
 import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
@@ -1291,7 +1291,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
   // technician redoes the work. Never the person who made the move.
   if (priorStatus !== status && status === JobCardStatus.QUALITY_CHECK) {
     const managers = jobCard.supervisorId ? [] : (await listEligibleManagersForBranch(jobCard.branchId).catch(() => ({ supervisors: [] as { id: string }[] }))).supervisors.map((m: { id: string }) => m.id);
-    await emailColleagues({
+    emailColleaguesLater({
       branchId: jobCard.branchId,
       userIds: [jobCard.supervisorId, ...managers],
       exceptUserId: user.id,
@@ -1309,7 +1309,7 @@ export async function updateJobCardStatus(id: string, status: JobCardStatus, col
     });
   }
   if (priorStatus !== status && isReworkTransition) {
-    await emailColleagues({
+    emailColleaguesLater({
       branchId: jobCard.branchId,
       userIds: [jobCard.assignedTechnicianId],
       exceptUserId: user.id,
@@ -1553,7 +1553,7 @@ export async function reassignSupervisor(jobCardId: string, newSupervisorId: str
   });
   // The supervisor it was taken from hears that it is no longer theirs.
   if (jobCard.supervisorId && jobCard.supervisorId !== newSupervisorId) {
-    await emailColleagues({
+    emailColleaguesLater({
       branchId: jobCard.branchId,
       userIds: [jobCard.supervisorId],
       exceptUserId: user.id,
@@ -2638,7 +2638,7 @@ export async function returnEstimateForChanges(jobCardId: string, reason: string
   }), 'This estimate was just approved or changed by someone else — refresh the page.');
   await writeAuditLog({ userId: user.id, action: 'estimate.returned_for_changes', entityType: 'JobCard', entityId: jobCardId, metadata: { reason: why } });
   // The supervisor (who approves it again) and the technician (who edits it) hear at once.
-  await emailColleagues({
+  emailColleaguesLater({
     branchId: estimate.jobCard.branchId,
     userIds: [estimate.jobCard.supervisorId, estimate.jobCard.assignedTechnicianId],
     exceptUserId: user.id,

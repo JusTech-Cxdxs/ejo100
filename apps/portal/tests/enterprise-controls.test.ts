@@ -84,7 +84,10 @@ test('the person whose step it now is gets an email, end to end', () => {
   // Whoever raised a parts request or outside purchase hears every outcome; a Store rejection also tells the HOD.
   assert.match(src, /slip\?\.requestedById, kind === 'rejected' && slip\?\.rejectionStage === 'STORE' \? slip\.hodApprovedById/);
   assert.match(src, /jobCard\.assignedTechnicianId, req\?\.requestedById/);
+  // After the response: a slow mail server never delays approve, reject or rework.
+  assert.doesNotMatch(src, /await emailColleagues\(/);
   const ws = read('lib/actions/workshop.ts');
+  assert.doesNotMatch(ws, /await emailColleagues\(/);
   assert.match(ws, /where: 'job_card\.quality_check'/);
   assert.match(ws, /where: 'job_card\.rework'/);
   assert.match(body(ws, 'returnEstimateForChanges'), /where: 'estimate\.returned_for_changes'/);
@@ -96,6 +99,7 @@ test('the person whose step it now is gets an email, end to end', () => {
   assert.match(read('lib/actions/security.ts'), /Department Head authorised/);
   assert.match(read('lib/actions/users-admin.ts'), /if \(active\) after\(\(\) => tellReactivated\(user\.id\)\)/);
   assert.match(read('lib/auth.ts'), /onPasswordReset: async/);
+  assert.match(read('lib/auth.ts'), /ctx\.path === '\/change-password'[\s\S]*sendPasswordChangedNotice/);
   // One helper: never the person who acted, active colleagues of the same organisation only, never throws.
   const h = read('lib/workflow-notify.ts');
   assert.match(h, /x !== o\.exceptUserId/);

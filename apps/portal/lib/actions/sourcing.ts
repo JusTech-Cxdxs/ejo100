@@ -2,7 +2,7 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
-import { emailColleagues } from '@/lib/workflow-notify';
+import { emailColleaguesLater } from '@/lib/workflow-notify';
 
 import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService, refuseDuringAssist, refuse } from '@/lib/authz/server';
 
@@ -1798,7 +1798,7 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   // Finance pays it out next: tell the branch's Finance officers. Not the
   // person who raised it or the manager who approved it (they may not pay it out).
   const finance = await listEligibleFinanceOfficersForBranch(request.branchId).catch(() => ({ supervisors: [] as { id: string }[] }));
-  await emailColleagues({
+  emailColleaguesLater({
     branchId: request.branchId,
     userIds: finance.supervisors.map((f) => f.id).filter((id) => id !== request.requestedById),
     exceptUserId: user.id,
@@ -1931,7 +1931,7 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'rejected', undefined, reason.trim());
   // Turned down by the manager: the Finance colleague who reviewed it hears too.
   if (stage === 'MANAGER_APPROVAL') {
-    await emailColleagues({
+    emailColleaguesLater({
       branchId: request.branchId,
       userIds: [request.financeReviewedById],
       exceptUserId: user.id,

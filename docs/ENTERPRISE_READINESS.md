@@ -70,7 +70,9 @@ flowchart LR
 browser too) and sets the security headers and nonce CSP. The page or action reads the session, then
 `authorize(permission, record)` decides from the role grants and scope; the query carries the
 organisation fence. Changes are compare-and-set where two people could race. The change writes the audit
-row; notifications go out after the response (`after()`), so a slow mail server never delays the person.
+row. The workflow emails added in Stage 1 and the support emails go out after the response (`after()`),
+so a slow mail server never delays the person; older workflow emails are still sent inline (Stage 3:
+move them all to a queue with retries).
 If anything fails, the person sees a plain message with a reference; the reference is stored and logged
 with the request id.
 
@@ -85,6 +87,7 @@ returns only what the person could open on screen. Drafts are never submitted on
 |---|---|---|
 | Separation of duties, parts requests: the requester never gives the HOD approval; the requester or HOD approver never gives the Store approval. | `lib/actions/sourcing.ts` (`approvePartRequestSlipByHod`, `approvePartRequestSlipByStore`) | `tests/enterprise-controls.test.ts`; refusals are audited through `refuse()`; e2e lifecycle uses different people at each step and still passes. |
 | Separation of duties, outside purchases: nobody reviews their own request; the requester or reviewer never approves it; the requester or approver never pays it out. | same file (`sendExternalProcurementToManager`, `approveExternalProcurementRequest`, `disburseExternalProcurementRequest`) | same test; the refusal happens before any change. |
+| No override, on purpose — a Master Administrator is bound too: when the only eligible person raised the request, another eligible colleague (or an organisation-wide administrator) must act. Give a second person the role rather than bypass the rule. | same file | same test. |
 | The screens say who must act instead of offering a button the server would refuse. | `workshop/parts-requests/[id]`, `workshop/external-procurement/[id]` | `data-testid="sod-note"`. |
 | Integrity watch: the same Finance colleague reviewing and paying out is flagged (allowed, because a manager's approval sits between). | `lib/integrity/scan.ts` (`spa:epr-review-pay:`) | same test. |
 | Audit trail append-only in the database (UPDATE, DELETE and TRUNCATE refused) with a transaction-scoped maintenance switch for a recorded retention step. | `scripts/postdeploy/0005-audit-log-append-only.sql` | same test; `mvp-polish` test forbids any postdeploy file that drops, deletes, truncates or disables a trigger. |
@@ -152,7 +155,7 @@ then a director is given `executive` within the organisation.
 | Self-approval / collusion on money | Supervisor ≠ final approver (estimates); Stage 1 separation of duties on PRS and EPR; integrity watch | No amount limits. Stage 2. |
 | Password guessing | Per-address limits on sign-in and reset; failed sign-ins shown on the IT dashboard | No MFA, no lockout, limits per instance. Stage 2 (MFA, lockout) and Stage 3 (shared limiter / WAF). |
 | Session theft | HTTP-only cookies, nonce CSP, security headers, sessions revoked on reset/deactivation | MFA would limit the damage of a stolen password. |
-| Tampering with the audit trail | Append-only trigger (Stage 1) | A database owner can disable triggers. Stage 3: ship the trail to an external store. |
+| Tampering with the audit trail | Append-only trigger (Stage 1): stops accidental or buggy changes and deletions | It does not stop someone holding the app's database connection: they can set the maintenance switch or, as owner, disable the trigger. Stage 3: a non-owner app role, and the trail shipped to an external store. |
 | Prompt injection through Enyo | Tools re-check access themselves; Enyo is never an authorisation authority; drafts never auto-submit; web text treated as data | Keep red-team prompts in the e2e suite. |
 | Personal data leaking into AI training | Training exports carry no personal data (data inventory test lists every model) | — |
 | Secrets exposure | Secrets only in hosting settings; never in the repo or chat; gitleaks over the full history, client-bundle scan for secrets and env names on every pull request | — |
@@ -214,8 +217,10 @@ approvals). Email is the alert. Stage 1 audited every step that waits on a perso
 | **Account switched back on** | **The person** (new) |
 | **Password set or changed** | **The person — a security notice** (new) |
 
-Every new email goes through one helper (`lib/workflow-notify.ts`): never the person who acted, only
-active colleagues of the same organisation, and a failed email never stops the work.
+The new workflow emails go through one helper (`lib/workflow-notify.ts`, sent after the response): never
+the person who acted, only active colleagues of the same organisation, and a failed email never stops the
+work. Account and security notices (`lib/auth.ts`, `users-admin.ts`) go to the person themselves; support
+emails use `lib/support/notify.ts` with the same rules.
 
 ---
 
