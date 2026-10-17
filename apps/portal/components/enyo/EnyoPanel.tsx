@@ -559,7 +559,8 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
                           onRetry={() => {
                             // Ask the same question again: the failed answer and its question are replaced.
                             const prev = turns[i - 1];
-                            if (prev?.role !== 'user' || busy) return;
+                            // Only when a question can actually be sent now (otherwise nothing disappears).
+                            if (prev?.role !== 'user' || busy || !ready) return;
                             setTurns((list) => list.filter((x) => x.key !== t.key && x.key !== prev.key));
                             void ask(prev.text);
                           }}

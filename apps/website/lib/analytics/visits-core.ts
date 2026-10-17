@@ -1,6 +1,6 @@
 /**
  * The website's own visitor counting (pure, tested). Anonymous by design: no
- * name, no internet address, no query string; a path segment that looks like
+ * cookie, no name, no stored internet address, no query string; a path segment that looks like
  * a token or id (a tracking link, a customer record) is replaced with ":id"
  * so nothing personal lands in the report.
  */
@@ -23,7 +23,8 @@ export function deviceOf(ua: string | null | undefined): 'mobile' | 'tablet' | '
 export function cleanPath(raw: unknown): string | null {
   if (typeof raw !== 'string' || !raw.startsWith('/') || raw.startsWith('//')) return null;
   const path = raw.split(/[?#]/)[0]!.slice(0, 300);
-  if (/^\/(api|_next)(\/|$)/.test(path)) return null;
+  // Never the customer portal (signed-in customers), APIs or framework files.
+  if (/^\/(api|_next|customer-portal)(\/|$)/.test(path)) return null;
   const parts = path.split('/').map((seg) => {
     if (!seg) return seg;
     let s: string;
@@ -46,9 +47,20 @@ export function referrerHost(ref: unknown, ownHost: string | null): string | nul
   } catch { return null; }
 }
 
-/** A one-way keyed hash of the random visitor cookie: counts distinct visitors without keeping the cookie. */
-export function visitorHash(visitorKey: string, secret = process.env.SITE_VISIT_HASH_KEY || process.env.BETTER_AUTH_SECRET || 'site-visits-dev-only'): string {
-  return createHmac('sha256', secret).update(`site-visit:${visitorKey}`).digest('hex').slice(0, 32);
+/**
+ * The visitor, without a cookie: a keyed hash of the internet address, the
+ * browser and the Lagos day. It changes every day and cannot be turned back
+ * into the address; nothing is stored on the visitor's device.
+ */
+export function visitorHash(ip: string, userAgent: string, day: Date, secret: string): string {
+  return createHmac('sha256', secret).update(`site-visit:${day.toISOString().slice(0, 10)}:${ip}:${userAgent}`).digest('hex').slice(0, 32);
+}
+
+/** The hashing key: a dedicated one, else the site's secret; production never uses a built-in key. */
+export function visitKey(env: Record<string, string | undefined> = process.env): string | null {
+  const k = env.SITE_VISIT_HASH_KEY || env.BETTER_AUTH_SECRET;
+  if (k) return k;
+  return env.NODE_ENV === 'production' ? null : 'site-visits-dev-only';
 }
 
 /** Seconds on a page as reported by the browser: whole, 0–30 minutes. */

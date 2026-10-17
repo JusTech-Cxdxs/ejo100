@@ -22,7 +22,7 @@ function Lines({ labels, series, caption }: { labels: string[]; series: Series[]
             <title>{s.name}</title>
           </polyline>
         ))}
-        {labels.map((l, i) => (i % 2 === labels.length % 2 || labels.length <= 8 ? <text key={l + i} x={x(i)} y={H + 12} textAnchor="middle" fontSize="9.5" fill="var(--ejo-text-muted)">{l}</text> : null))}
+        {labels.map((l, i) => ((labels.length - 1 - i) % 2 === 0 || labels.length <= 8 ? <text key={l + i} x={x(i)} y={H + 12} textAnchor="middle" fontSize="9.5" fill="var(--ejo-text-muted)">{l}</text> : null))}
       </svg>
       <figcaption className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--ejo-text-muted)]">
         {series.map((s) => <span key={s.name} className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-sm" style={{ background: s.color }} />{s.name} · {s.values.reduce((a, b) => a + b, 0)}</span>)}
@@ -81,7 +81,7 @@ export async function WebsiteSection() {
     <SectionCard
       icon="globe"
       title="Website visitors, last 14 days"
-      description="Anonymous: a random browser cookie, never a name or address; ids in page addresses are hidden. Visitors who ask not to be tracked are not counted."
+      description="Anonymous and cookie-less: a visitor is a daily one-way code, never a name or address; ids in page addresses are hidden; the customer portal is not counted, nor visitors who ask not to be tracked."
       actions={<AskEnyoButton send label="Explain the website figures" question="Explain our website visitors for the last 14 days: visitors per day and the trend, how many chatted with Enyo versus only browsed, time on page, the top pages and where visitors come from. End with two suggestions." />}
     >
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

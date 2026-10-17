@@ -5,14 +5,15 @@ import { useEffect } from 'react';
 
 /**
  * Counts page views for the website's own visitor report, and the time a page
- * is actually in view (hidden tabs do not count). Anonymous; nothing is sent
- * when the browser asks not to be tracked. Never affects the page.
+ * is actually in view (hidden tabs do not count). Anonymous and cookie-less;
+ * nothing is sent when the browser asks not to be tracked. Never affects the page.
  */
 export function VisitTracker() {
   const path = usePathname();
 
   useEffect(() => {
-    if (typeof window === 'undefined' || !path) return;
+    // Never the customer portal; nothing is stored on the device but a per-tab id.
+    if (typeof window === 'undefined' || !path || path.startsWith('/customer-portal')) return;
     const nav = navigator as Navigator & { globalPrivacyControl?: boolean };
     if (nav.doNotTrack === '1' || nav.globalPrivacyControl) return;
     let session = '';

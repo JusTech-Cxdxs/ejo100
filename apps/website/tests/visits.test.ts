@@ -7,13 +7,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { cleanPath, cleanSeconds, deviceOf, isBot, lagosDay, makeLimiter, referrerHost, visitorHash } from '../lib/analytics/visits-core';
+import { cleanPath, cleanSeconds, deviceOf, isBot, lagosDay, makeLimiter, referrerHost, visitKey, visitorHash } from '../lib/analytics/visits-core';
 import { nudgeFor } from '../lib/enyo/nudge';
 
 test('paths keep no query, no tokens and no ids', () => {
   assert.equal(cleanPath('/services?utm=x#top'), '/services');
   assert.equal(cleanPath('/track/8f2c9a71b3d44e0fa1c2'), '/track/:id');
-  assert.equal(cleanPath('/customer-portal/jobs/clx9abc12def'), '/customer-portal/jobs/:id');
+  assert.equal(cleanPath('/customer-portal/jobs/clx9abc12def'), null); // never the customer portal
+  assert.equal(cleanPath('/jobs/clx9abc12def'), '/jobs/:id');
   assert.equal(cleanPath('/news/2026'), '/news/2026');
   assert.equal(cleanPath('/x/1234567'), '/x/:id');
   assert.equal(cleanPath('/me/someone@mail.com'), '/me/:id');
@@ -50,12 +51,18 @@ test('time on page is whole seconds, 0–30 minutes', () => {
   assert.equal(cleanSeconds('abc'), 0);
 });
 
-test('the visitor is stored as a keyed hash, the day is Lagos', () => {
-  const a = visitorHash('v1.abc', 'k1');
+test('the visitor is a daily keyed hash — no cookie, no stored address; production needs a real key', () => {
+  const day = lagosDay(new Date('2026-10-17T12:00:00Z'));
+  const a = visitorHash('1.2.3.4', 'UA', day, 'k1');
   assert.equal(a.length, 32);
-  assert.equal(a, visitorHash('v1.abc', 'k1'));
-  assert.notEqual(a, visitorHash('v1.abc', 'k2'));
+  assert.equal(a, visitorHash('1.2.3.4', 'UA', day, 'k1'));
+  assert.notEqual(a, visitorHash('1.2.3.4', 'UA', day, 'k2'));
+  assert.notEqual(a, visitorHash('1.2.3.4', 'UA', lagosDay(new Date('2026-10-18T12:00:00Z')), 'k1'));
+  assert.ok(!a.includes('1.2.3.4'));
   assert.equal(lagosDay(new Date('2026-10-17T23:30:00Z')).toISOString(), '2026-10-18T00:00:00.000Z');
+  assert.equal(visitKey({ NODE_ENV: 'production' }), null);
+  assert.equal(visitKey({ NODE_ENV: 'production', SITE_VISIT_HASH_KEY: 'x' }), 'x');
+  assert.ok(visitKey({ NODE_ENV: 'development' }));
 });
 
 test('the limiter allows a burst per minute, then refuses', () => {
@@ -73,9 +80,11 @@ test('Enyo offers one page-fitting question, never on the customer portal', () =
 
 test('the beacon is same-site, rate-limited, ignores bots and Do Not Track, and never breaks a page', () => {
   const src = readFileSync(join(__dirname, '..', '..', 'app', 'api', 'visit', 'route.ts'), 'utf8');
-  for (const must of ['originAllowed(', 'isBot(ua)', "'dnt'", "'sec-gpc'", 'limit(', 'visitorHash(key)', 'cleanPath(', "SITE_VISITS === 'off'", 'return none();']) assert.ok(src.includes(must), must);
-  // The internet address is only used (hashed) for the limiter, never stored.
-  assert.doesNotMatch(src.slice(src.indexOf('prisma.siteVisit.create')), /ip/i);
+  for (const must of ['originAllowed(', 'isBot(ua)', "'dnt'", "'sec-gpc'", 'limit(', 'visitorHash(address', 'cleanPath(', "SITE_VISITS === 'off'", 'return none();', "VERCEL_ENV === 'production'"]) assert.ok(src.includes(must), must);
+  // No cookie is ever set by the visit counter.
+  assert.doesNotMatch(src, /cookies\.set/);
+  // The internet address is only hashed, never stored.
+  assert.doesNotMatch(src.slice(src.indexOf('prisma.siteVisit.create')), /address(?!\))|ip\b/i);
   const tracker = readFileSync(join(__dirname, '..', '..', 'components', 'site', 'VisitTracker.tsx'), 'utf8');
-  assert.ok(tracker.includes('doNotTrack') && tracker.includes("visibilityState === 'hidden'"));
+  assert.ok(tracker.includes('doNotTrack') && tracker.includes("visibilityState === 'hidden'") && tracker.includes("startsWith('/customer-portal')"));
 });

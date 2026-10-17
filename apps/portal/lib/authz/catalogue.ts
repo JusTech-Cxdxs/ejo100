@@ -304,6 +304,8 @@ export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string 
   // The short form ("Executive", "Front Desk"): it is shown inside brackets after a name.
   return best ? ROLE_LABELS[best]?.replace(/\s*\(.*\)\s*$/, '') ?? null : null;
 }
+/** Managers and headquarters people: their own passes and permits are decided above them (the Executive). */
+export const SENIOR_REQUESTER_SLUGS = ['workshop-manager', 'executive', 'administrator', 'it-administrator', 'branch-administrator', 'customer-care-lead'];
 /** Headquarters roles: they oversee every branch rather than belonging to one. */
 export const HQ_ROLE_SLUGS = ['executive', 'administrator', 'it-administrator'] as const;
 export const isHqRole = (slugs: string[]): boolean => HQ_ROLE_SLUGS.some((s) => slugs.includes(s));

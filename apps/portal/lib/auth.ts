@@ -57,7 +57,7 @@ export const auth = betterAuth({
       const org = await prisma.user.findUnique({ where: { id: user.id }, select: { organisation: { select: { name: true } } } }).catch(() => null);
       const companyName = org?.organisation?.name ?? portalConfig.organisationName;
       const message = renderPasswordResetEmail({ fullName: name, email: user.email, url, companyName, logoUrl: `${base}/images/logo/email-logo.png` });
-      await sendEmail(user.email, message.subject, message.html);
+      await sendEmail(user.email, message.subject, message.html, undefined, { observer: false });
     },
     // Afterwards: a notice that the password was set or changed, so someone
     // who did not do it knows at once (every session was already signed out).
@@ -85,6 +85,8 @@ export const auth = betterAuth({
           showLinkFallback: true,
           reason: 'You are receiving this because this address was used for an EJO 100 account.',
         }),
+        undefined,
+        { observer: false },
       );
     },
     sendOnSignUp: true,
@@ -235,7 +237,7 @@ async function sendPasswordChangedNotice(user: { id: string; email: string; name
       url: `${base}/sign-in`,
       ctaLabel: 'Sign in',
     });
-    await sendEmail(user.email, m.subject, m.html);
+    await sendEmail(user.email, m.subject, m.html, undefined, { observer: false });
   } catch {
     // A notice only: the change itself already went through.
   }

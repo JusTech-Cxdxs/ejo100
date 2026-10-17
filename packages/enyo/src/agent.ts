@@ -111,7 +111,12 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
         if (r.model) config = { ...config, model: r.model };
         const keep = r.keepMessages ?? 4;
         const rest = convo.slice(1);
-        convo.splice(1, convo.length - 1, ...rest.slice(-keep));
+        // The kept history starts with a question, never half a conversation.
+        let kept = rest.slice(-keep);
+        while (kept.length > 1 && kept[0]!.role !== 'user') kept = kept.slice(1);
+        convo.splice(1, convo.length - 1, ...kept);
+        // "Too many questions": a short pause first, so the per-minute budget can recover.
+        if (err instanceof LlmError && err.kind === 'rate_limited') await new Promise((ok) => setTimeout(ok, 1500));
         step -= 1;
         continue;
       }

@@ -50,7 +50,7 @@ export const peopleTools: StaffTool[] = [
         },
         orderBy: [{ isActive: 'desc' }, { fullName: 'asc' }],
         take: 15,
-        select: { fullName: true, email: true, isActive: true, lastLoginAt: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { slug: true, name: true, isSuperAdmin: true } } } } },
+        select: { fullName: true, email: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { slug: true, name: true, isSuperAdmin: true } } } } },
       });
       if (!people.length) return nothing(`Nobody in the staff directory matches${q ? ` "${q}"` : ''}${roleWord ? ` as ${roleWord}` : ''}${place ? ` at ${place}` : ''}. If they are a public figure, organisation_info or the web look-up may know them.`);
       return ok({
@@ -64,7 +64,6 @@ export const peopleTools: StaffTool[] = [
             where: isHqRole(roleSlugs) ? 'Headquarters (oversees all branches)' : [u.branch?.name, u.department?.name].filter(Boolean).join(' · ') || 'Not placed in a branch',
             workEmail: u.email,
             active: u.isActive,
-            lastSignIn: when(u.lastLoginAt),
           };
         }),
         note: 'Answer as "Name — Role, where". Do not share anything beyond these fields.',

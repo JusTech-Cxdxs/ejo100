@@ -398,12 +398,14 @@ test('agent: a request too large for the per-minute budget is tried once more, s
   const { impl, seen } = scripted([tooLarge, () => say('Hello Justice!')]);
   const events: EnyoEvent[] = [];
   const earlier = Array.from({ length: 10 }, (_, i) => ({ role: (i % 2 ? 'assistant' : 'user') as 'user', content: `turn ${i}` }));
-  const r = await runAgent({ config, system: 'sys', messages: [...earlier, { role: 'user', content: 'hi' }], tools: [takings], ctx: { role: 'finance' }, emit: (e) => events.push(e), fetchImpl: impl, retrySmaller: { tools: [], model: 'small-model', keepMessages: 2 } });
+  const r = await runAgent({ config, system: 'sys', messages: [...earlier, { role: 'user', content: 'hi' }], tools: [takings], ctx: { role: 'finance' }, emit: (e) => events.push(e), fetchImpl: impl, retrySmaller: { tools: [], model: 'small-model', keepMessages: 3 } });
   assert.equal(r.error, undefined);
   assert.equal(r.answer, 'Hello Justice!');
   assert.equal(seen.length, 2);
   assert.equal(seen[1]?.body.model, 'small-model');
-  assert.equal((seen[1]?.body.messages as unknown[]).length, 3, 'system + the last two turns');
+  const kept = seen[1]?.body.messages as { role: string }[];
+  assert.equal(kept.length, 4, 'system + the last three turns');
+  assert.equal(kept[1]!.role, 'user', 'the kept history starts with a question');
   assert.equal(seen[1]?.body.tools, undefined, 'no tools on the smaller try');
 });
 

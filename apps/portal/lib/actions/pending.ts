@@ -2,7 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { getPrincipal } from '@/lib/authz/server';
-import { nameWithRole } from '@/lib/authz/catalogue';
+import { SENIOR_REQUESTER_SLUGS, nameWithRole } from '@/lib/authz/catalogue';
 import { requireUser, listEligibleManagersForBranch, listEligibleFinanceOfficersForBranch } from './workshop';
 
 /**
@@ -23,7 +23,7 @@ export async function getMyPending(): Promise<PendingItem[]> {
   const me = await requireUser();
   const p = await getPrincipal();
   const mine = me.id;
-  const [jcs, svs, ests, svEsts, prs, eprs, passes, claims, closes, cancels, svCloses, svCancels, tests, help] = await Promise.all([
+  const [jcs, svs, ests, svEsts, prs, eprs, passes, claims, closes, cancels, svCloses, svCancels, tests, help, contractors] = await Promise.all([
     prisma.jobCard.findMany({ where: { createdById: mine, approvalStatus: 'PENDING', status: { notIn: [...JC_CLOSED] } }, take: 30, select: { id: true, jobNumber: true, createdAt: true, branchId: true, supervisor: { select: { id: true, fullName: true } } } }),
     prisma.vehicleService.findMany({ where: { createdById: mine, approvalStatus: 'PENDING', status: { notIn: [...SV_CLOSED] } }, take: 30, select: { id: true, serviceNumber: true, createdAt: true, branchId: true, supervisor: { select: { id: true, fullName: true } } } }),
     prisma.estimate.findMany({ where: { createdById: mine, status: { in: ['SUBMITTED', 'APPROVED'] }, jobCard: { status: { notIn: [...JC_CLOSED] } } }, take: 30, select: { status: true, submittedAt: true, approvedAt: true, updatedAt: true, jobCard: { select: { id: true, jobNumber: true, branchId: true, supervisor: { select: { id: true, fullName: true } } } } } }),
@@ -37,7 +37,8 @@ export async function getMyPending(): Promise<PendingItem[]> {
     prisma.vehicleServiceCloseRequest.findMany({ where: { requestedById: mine, status: 'PENDING' }, take: 20, select: { requestedAt: true, vehicleService: { select: { id: true, serviceNumber: true, branchId: true } } } }),
     prisma.vehicleServiceCancellationRequest.findMany({ where: { requestedById: mine, status: 'PENDING' }, take: 20, select: { requestedAt: true, vehicleService: { select: { id: true, serviceNumber: true, branchId: true } } } }),
     prisma.roadTestPermit.findMany({ where: { requestedById: mine, status: 'PENDING_MANAGER' }, take: 20, select: { id: true, permitNumber: true, createdAt: true, branchId: true } }),
-    p.organisationId ? prisma.supportTicket.findMany({ where: { organisationId: p.organisationId, requesterUserId: mine, status: { in: ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD'] } }, take: 20, select: { id: true, number: true, subject: true, createdAt: true, assignedToId: true } }).catch(() => []) : [],
+    p.organisationId ? prisma.supportTicket.findMany({ where: { organisationId: p.organisationId, requesterUserId: mine, status: { in: ['OPEN', 'WAITING_ON_CUSTOMER', 'ON_HOLD'] } }, take: 20, select: { id: true, number: true, subject: true, status: true, createdAt: true, assignedToId: true } }).catch(() => []) : [],
+    prisma.contractorPass.findMany({ where: { requestedById: mine, status: 'PENDING_MANAGER' }, take: 20, select: { id: true, passNumber: true, company: true, createdAt: true, branchId: true } }),
   ]);
 
   // Who is "the Manager" or "Finance" in each branch, by name and role (once per branch).
@@ -51,7 +52,9 @@ export async function getMyPending(): Promise<PendingItem[]> {
     if (!managers.has(branchId)) {
       const m = await listEligibleManagersForBranch(branchId).catch(() => ({ supervisors: [] as { id: string; fullName: string }[], usingFallback: true }));
       // No Manager in the branch yet (the fallback list is not Managers): say "the Manager", not someone else's name.
-      managers.set(branchId, m.usingFallback ? 'the Manager' : names(m.supervisors as { id: string; fullName: string }[], 'Manager', 'the Manager'));
+      const real = m.usingFallback ? [] : (m.supervisors as { id: string; fullName: string }[]).filter((x) => x.id !== mine);
+      // No (other) Manager in the branch: it goes above, as the approvals do.
+      managers.set(branchId, real.length ? names(real, 'Manager', 'the Manager') : await aboveMe());
     }
     return managers.get(branchId)!;
   };
@@ -60,13 +63,14 @@ export async function getMyPending(): Promise<PendingItem[]> {
     return finance.get(branchId)!;
   };
   // A manager's or headquarters person's own pass goes up to the executives (see security.ts managerApprovers).
-  const SENIOR = ['workshop-manager', 'executive', 'administrator', 'it-administrator', 'branch-administrator', 'customer-care-lead'];
-  const senior = SENIOR.some((x) => p.roleSlugs.includes(x));
+  const senior = SENIOR_REQUESTER_SLUGS.some((x) => p.roleSlugs.includes(x));
   let above: string | null = null;
   const aboveMe = async () => {
     if (above === null) {
       const execs = p.organisationId ? await prisma.user.findMany({ where: { organisationId: p.organisationId, isActive: true, id: { not: mine }, roles: { some: { role: { slug: 'executive' } } } }, take: 2, select: { fullName: true } }) : [];
-      above = execs.length ? execs.map((e) => `${e.fullName} (Executive)`).join(' or ') : 'the Executive';
+      // As security.ts seniorApprovers: executives, else administrators.
+      const admins = execs.length || !p.organisationId ? [] : await prisma.user.findMany({ where: { organisationId: p.organisationId, isActive: true, id: { not: mine }, roles: { some: { role: { slug: 'administrator' } } } }, take: 2, select: { fullName: true } });
+      above = execs.length ? execs.map((e) => `${e.fullName} (Executive)`).join(' or ') : admins.length ? admins.map((e) => `${e.fullName} (Administrator)`).join(' or ') : 'the Executive';
     }
     return above;
   };
@@ -100,7 +104,8 @@ export async function getMyPending(): Promise<PendingItem[]> {
   for (const c of cancels) out.push({ id: `cancel-${c.jobCard.id}`, area: 'Workshop', number: c.jobCard.jobNumber, title: 'Cancellation request waiting for approval', waitingOn: await managerOf(c.jobCard.branchId), since: c.requestedAt, url: `/workshop/job-cards/${c.jobCard.id}` });
   for (const c of svCloses) out.push({ id: `sclose-${c.vehicleService.id}`, area: 'Workshop', number: c.vehicleService.serviceNumber, title: 'Close request waiting for approval', waitingOn: await managerOf(c.vehicleService.branchId), since: c.requestedAt, url: `/workshop/vehicle-service/${c.vehicleService.id}` });
   for (const c of svCancels) out.push({ id: `scancel-${c.vehicleService.id}`, area: 'Workshop', number: c.vehicleService.serviceNumber, title: 'Cancellation request waiting for approval', waitingOn: await managerOf(c.vehicleService.branchId), since: c.requestedAt, url: `/workshop/vehicle-service/${c.vehicleService.id}` });
-  for (const t of tests) out.push({ id: `rt-${t.id}`, area: 'Security', number: t.permitNumber, title: 'Road test waiting for the Manager', waitingOn: await managerOf(t.branchId), since: t.createdAt, url: `/security/road-tests/${t.id}` });
-  for (const h of help) out.push({ id: `help-${h.id}`, area: 'Help', number: h.number, title: h.subject.slice(0, 80) || 'Help request', waitingOn: h.assignedToId && helpers.get(h.assignedToId) ? `${helpers.get(h.assignedToId)} (Support)` : 'the support team', since: h.createdAt, url: `/support/help/${h.id}` });
+  for (const t of tests) out.push({ id: `rt-${t.id}`, area: 'Security', number: t.permitNumber, title: 'Road test waiting for approval', waitingOn: senior ? await aboveMe() : await managerOf(t.branchId), since: t.createdAt, url: `/security/road-tests/${t.id}` });
+  for (const c of contractors) out.push({ id: `ctr-${c.id}`, area: 'Security', number: c.passNumber, title: `Contractor pass waiting for approval — ${c.company}`, waitingOn: senior ? await aboveMe() : await managerOf(c.branchId), since: c.createdAt, url: `/security/contractors/${c.id}` });
+  for (const h of help) out.push({ id: `help-${h.id}`, area: 'Help', number: h.number, title: h.subject.slice(0, 80) || 'Help request', waitingOn: h.status === 'WAITING_ON_CUSTOMER' ? 'you — support asked you for more information' : h.assignedToId && helpers.get(h.assignedToId) ? `${helpers.get(h.assignedToId)} (Support)` : 'the support team', since: h.createdAt, url: `/support/help/${h.id}` });
   return out.sort((a, b) => a.since.getTime() - b.since.getTime());
 }

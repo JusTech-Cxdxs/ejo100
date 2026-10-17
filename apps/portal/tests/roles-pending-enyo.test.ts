@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ROLE_LABELS, isHqRole, nameWithRole, primaryRoleLabel } from '../lib/authz/catalogue';
+import { ROLE_LABELS, SENIOR_REQUESTER_SLUGS, isHqRole, nameWithRole, primaryRoleLabel } from '../lib/authz/catalogue';
 import { CORE_TOOLS, selectToolNames, slimToolNames } from '../lib/enyo/tool-select';
 import { dayLabel, lastDays, perDay, secondsText, summariseVisits, trendOf, type VisitRow } from '../lib/it-trends-core';
 
@@ -40,9 +40,15 @@ test('activity and the audit trail show "Name (Role)"', () => {
 
 test('a manager\'s or IT\'s own exit pass goes up to the executive, never back to themselves', () => {
   const src = read('lib/actions/security.ts');
-  assert.match(src, /if \(excludeId && \(await isSeniorRequester\(excludeId\)\)\) return seniorApprovers\(excludeId\);/);
-  assert.match(src, /usersWithSlugs\(\['executive'\]\)\)\.filter\(\(x\) => x\.id !== excludeId\)/);
-  for (const s of ['workshop-manager', 'executive', 'it-administrator', 'administrator']) assert.ok(src.includes(`'${s}'`), s);
+  assert.match(src, /if \(excludeId && \(await isSeniorRequester\(excludeId\)\)\) return seniorApprovers\(excludeId, org\);/);
+  assert.match(src, /usersWithSlugs\(\['executive'\], org\)\)\.filter\(\(x\) => x\.id !== excludeId\)/);
+  for (const s of ['workshop-manager', 'executive', 'it-administrator', 'administrator']) assert.ok(SENIOR_REQUESTER_SLUGS.includes(s), s);
+  assert.match(src, /const SENIOR_SLUGS = SENIOR_REQUESTER_SLUGS;/);
+  // The executives are the RECORD's organisation's, and "is a Manager" never comes from the fallback list.
+  assert.match(src, /seniorApprovers\(excludeId, org\)/);
+  assert.match(src, /!branchManagers\.usingFallback/);
+  // Page, Approvals list and decision use one approver list.
+  assert.match(src, /finalDecidable\(rows, user\.id, roles\.isMaster\)/);
   // Executives first, then administrators, then the platform team.
   const body = src.slice(src.indexOf('async function seniorApprovers'));
   assert.ok(body.indexOf("'executive'") < body.indexOf("'administrator'") && body.indexOf("'administrator'") < body.indexOf('masterAdmins()'));
@@ -52,6 +58,11 @@ test('the master admin gets an observer copy of every email (switchable off), ne
   const src = read('lib/email.ts');
   assert.match(src, /bcc/i);
   assert.match(src, /MAIL_OBSERVER_BCC/);
+  // Staff workflow mail only: never sign-in links, password or account emails, never customers.
+  assert.match(src, /options\.observer === false \? \[\] : await staffOnly\(to\)/);
+  assert.match(src, /accountType: 'EMPLOYEE'/);
+  assert.equal((read('lib/auth.ts').match(/observer: false/g) ?? []).length, 3, 'reset, verification and password-changed emails');
+  for (const f of ['lib/staff-onboarding.ts', 'lib/customer-access.ts', 'lib/actions/users-admin.ts']) assert.match(read(f), /observer: false/, f);
   // The rule itself (copied from lib/email.ts to keep nodemailer out of the test).
   const fn = src.slice(src.indexOf('export function observerCopies'), src.indexOf('\n}\n', src.indexOf('export function observerCopies')) + 2);
   const observerCopies = new Function(`${fn.replace('export function', 'return function').replace(/: Record<string, string \| undefined> = process\.env\): string\[\]/, ')').replace(/\(to: string, env/, '(to, env')}`)() as (to: string, env: Record<string, string>) => string[];
@@ -79,7 +90,7 @@ test('only headquarters gets the overviews; a manager keeps the branch dashboard
 
 test('"Waiting on others" covers every workflow, names who has it, and is on Approvals, the dashboard, the brief and Enyo', () => {
   const src = read('lib/actions/pending.ts');
-  for (const m of ['jobCard', 'vehicleService', 'estimate', 'serviceEstimate', 'partRequestSlip', 'externalProcurementRequest', 'exitPass', 'warrantyClaim', 'closeRequest', 'cancellationRequest', 'vehicleServiceCloseRequest', 'vehicleServiceCancellationRequest', 'roadTestPermit', 'supportTicket']) {
+  for (const m of ['jobCard', 'vehicleService', 'estimate', 'serviceEstimate', 'partRequestSlip', 'externalProcurementRequest', 'exitPass', 'warrantyClaim', 'closeRequest', 'cancellationRequest', 'vehicleServiceCloseRequest', 'vehicleServiceCancellationRequest', 'roadTestPermit', 'supportTicket', 'contractorPass']) {
     assert.ok(src.includes(`prisma.${m}.findMany`), m);
   }
   // Only the person's own requests.

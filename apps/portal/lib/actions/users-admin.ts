@@ -349,7 +349,7 @@ async function tellReactivated(userId: string): Promise<void> {
       next: 'Sign in with your usual password. Forgotten it? Use "Forgot password" on the sign-in page.',
       status: { label: 'Account', tone: 'success' }, url: `${base}/sign-in`, ctaLabel: 'Sign in',
     });
-    await sendEmail(u.email, m.subject, m.html);
+    await sendEmail(u.email, m.subject, m.html, undefined, { observer: false });
   } catch (err) {
     logFailure('Could not tell a person their account is switched on again', userId, err);
   }

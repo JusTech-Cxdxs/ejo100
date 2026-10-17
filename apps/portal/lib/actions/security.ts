@@ -10,7 +10,7 @@ import { cache } from 'react';
 import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { actingOrgWhere, allows, authorize, branchOwnedByMyOrganisation, canSeeRecord, firstReach, getPrincipal, orgWhere, reachWhere, refuse, seeBranchAnyOf, NOT_AVAILABLE, refuseDuringAssist, currentAssist } from '@/lib/authz/server';
-import { decide, type PermissionKey } from '@/lib/authz/catalogue';
+import { decide, type PermissionKey , SENIOR_REQUESTER_SLUGS } from '@/lib/authz/catalogue';
 import { jobCardInside, serviceInside } from '@/lib/custody';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { listEligibleStoreManagersForBranch, listEligibleStoreOfficersForBranch } from './store';
@@ -52,7 +52,9 @@ async function getSecurityRolesUncached(): Promise<SecurityRoles> {
   const isOfficer = slugs.includes('security-officer');
   const isReceptionist = slugs.includes('receptionist');
   const isGate = decide(principal, 'security.gate.operate', here).allowed;
-  const isManager = (await managerApprovers(null)).some((m) => m.id === user.id);
+  // A real Manager of this branch only — never someone on the fallback list (executives, the platform team).
+  const branchManagers = await listEligibleManagersForBranch(await getWorkshopBranchId()).catch(() => ({ supervisors: [] as Person[], usingFallback: true }));
+  const isManager = !branchManagers.usingFallback && (branchManagers.supervisors as Person[]).some((m) => m.id === user.id);
   return { userId: user.id, isMaster, isCso, isOfficer, isReceptionist, isManager, isGate, isFrontDesk: isGate || decide(principal, 'security.reception.operate', here).allowed };
 }
 
@@ -431,24 +433,36 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
     const heads = (await usersWithSlugs(HEAD_SLUGS, { departmentId: me.departmentId })).filter((h) => h.id !== requesterId);
     if (heads.length) return heads;
   }
-  // Headquarters people (IT, administrators) and managers: decided above them.
-  if (await isSeniorRequester(requesterId)) return seniorApprovers(requesterId);
-  const any = (await usersWithSlugs(['department-head'])).filter((h) => h.id !== requesterId);
-  return any.length ? any : seniorApprovers(requesterId);
+  // Headquarters people (IT, administrators) and managers: decided above them — in the requester's own organisation.
+  const org = (await prisma.user.findUnique({ where: { id: requesterId }, select: { organisationId: true } }))?.organisationId ?? null;
+  if (await isSeniorRequester(requesterId)) return seniorApprovers(requesterId, org);
+  const any = (await usersWithSlugs(['department-head'], org ? { organisationId: org } : {})).filter((h) => h.id !== requesterId);
+  return any.length ? any : seniorApprovers(requesterId, org);
 }
 /** The branch's Managers (the same people Warranty uses as Branch Manager).
  * Uses the record's branch when given: a pass or permit is decided by its
  * own branch's Manager. Falls back quietly so a pass is never stuck. */
 async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
+  const branch = branchId ?? (await getWorkshopBranchId());
+  const org = await orgOfBranch(branch);
   // A manager's own pass (or a headquarters person's) goes up, to the executives — never back to themselves.
-  if (excludeId && (await isSeniorRequester(excludeId))) return seniorApprovers(excludeId);
-  const m = await listEligibleManagersForBranch(branchId ?? (await getWorkshopBranchId()));
+  if (excludeId && (await isSeniorRequester(excludeId))) return seniorApprovers(excludeId, org);
+  const m = await listEligibleManagersForBranch(branch);
   const list = (m.usingFallback ? [] : (m.supervisors as Person[])).filter((x) => x.id !== excludeId);
-  return list.length ? list : seniorApprovers(excludeId);
+  return list.length ? list : seniorApprovers(excludeId, org);
+}
+const branchOrg = new Map<string, string | null>();
+async function orgOfBranch(branchId: string): Promise<string | null> {
+  if (!branchOrg.has(branchId)) {
+    const b = await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } });
+    if (branchOrg.size > 500) branchOrg.clear();
+    branchOrg.set(branchId, b?.businessUnit?.organisationId ?? null);
+  }
+  return branchOrg.get(branchId) ?? null;
 }
 
 /** Headquarters and managers: their passes are decided above them. */
-const SENIOR_SLUGS = ['workshop-manager', 'executive', 'administrator', 'it-administrator', 'branch-administrator', 'customer-care-lead'];
+const SENIOR_SLUGS = SENIOR_REQUESTER_SLUGS;
 async function isSeniorRequester(userId: string): Promise<boolean> {
   const { slugs } = await slugsOf(userId);
   return SENIOR_SLUGS.some((s) => slugs.includes(s));
@@ -458,17 +472,22 @@ async function isSeniorRequester(userId: string): Promise<boolean> {
  * the IT administrator's pass); with none, its administrators; only then the
  * platform team. Never the person who asked.
  */
-async function seniorApprovers(excludeId: string | null): Promise<Person[]> {
-  const exec = (await usersWithSlugs(['executive'])).filter((x) => x.id !== excludeId);
+async function seniorApprovers(excludeId: string | null, organisationId?: string | null): Promise<Person[]> {
+  // The record's own organisation (not the viewer's — the platform team may be working in another one).
+  const org = organisationId ? { organisationId } : {};
+  const exec = (await usersWithSlugs(['executive'], org)).filter((x) => x.id !== excludeId);
   if (exec.length) return exec;
-  const admins = (await usersWithSlugs(['administrator'])).filter((x) => x.id !== excludeId);
+  const admins = (await usersWithSlugs(['administrator'], org)).filter((x) => x.id !== excludeId);
   if (admins.length) return admins;
   return (await masterAdmins()).filter((x) => x.id !== excludeId);
 }
 
+const FINAL_SLUGS = ['workshop-manager', 'executive', 'administrator'];
 /** Which of these records waiting for the final decision this person may decide (their own approvers: see managerApprovers). */
 async function finalDecidable(rows: { id: string; status: string; requestedById: string | null; branchId: string | null }[], userId: string, isMaster: boolean): Promise<Set<string>> {
   const out = new Set<string>();
+  // Only Managers, executives, administrators and the platform team are ever on a final-approver list.
+  if (!isMaster && !(await slugsOf(userId)).slugs.some((s) => FINAL_SLUGS.includes(s))) return out;
   const memo = new Map<string, boolean>();
   for (const r of rows) {
     if (r.status !== 'PENDING_MANAGER' || (r.requestedById === userId && !isMaster)) continue;
@@ -801,12 +820,10 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
   const out: typeof rows = [];
   // The final step belongs to the pass's own approvers: its branch's Managers, or — for a
   // manager's or headquarters person's own pass — the executives above them.
-  const finalFor = new Map<string, boolean>();
+  const finals = await finalDecidable(rows, user.id, roles.isMaster);
   for (const p of rows) {
     if (p.status === 'PENDING_MANAGER') {
-      const key = `${p.requestedById}|${p.branchId}`;
-      if (!finalFor.has(key)) finalFor.set(key, roles.isMaster || (await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id));
-      if (finalFor.get(key)) out.push(p);
+      if (finals.has(p.id)) out.push(p);
     }
     else if (p.status === 'PENDING_HEAD' && (roles.isMaster || (await headApproversFor(p.requestedById)).some((h) => h.id === user.id))) out.push(p);
   }
