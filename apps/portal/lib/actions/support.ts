@@ -27,6 +27,8 @@ import { senderContext } from '@/lib/support/context';
 import { senderView, type SenderView } from '@/lib/support/context-core';
 import { PLATFORM } from '@/lib/brand';
 import { fenceStaffHelp } from '@/lib/support/reach';
+import { after } from 'next/server';
+import { announceRouted, emailAssignee } from '@/lib/support/notify';
 
 /**
  * The Support centre for colleagues: customers and visitors handed over by
@@ -438,6 +440,8 @@ export async function assignSupportTicket(ticketId: string, assigneeId: string):
     userId: me.id, organisationId: t.organisationId, action: 'support.assigned', entityType: 'SupportTicket', entityId: t.id,
     metadata: { number: t.number, from: t.assignedToId, to: target, ...(targetName ? { toName: targetName } : {}) },
   });
+  // The colleague it was given to hears by email too (not when they took it themselves).
+  if (target && target !== me.id) announceLater(t.id, me.id);
 }
 
 /** Urgent, high, normal or low. Before the first answer, the target moves with it. */
@@ -557,5 +561,12 @@ export async function createSupportTicket(input: { customerId?: string; contactN
   await prisma.supportReply.create({ data: { ticketId: created.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body } });
   await prisma.supportReply.create({ data: { ticketId: created.id, authorUserId: me.id, kind: 'NOTE', visibility: 'INTERNAL', body: `Opened by a colleague for ${name}${phone ? ` (${phone})` : ''}.` } });
   await supportEvent({ organisationId, ticketId: created.id, userId: me.id, action: 'support.ticket_opened', metadata: { actor: 'staff', number: created.number, channel: 'STAFF', queue: queue.name, priority } });
+  announceLater(created.id);
   return { id: created.id, number: created.number };
+}
+
+/** Email the owner (or the leads) once the response has gone; outside a request, straight away. */
+function announceLater(ticketId: string, by: string | null = null): void {
+  const run = () => (by ? emailAssignee(ticketId, by) : announceRouted(ticketId)).then(() => undefined).catch(() => undefined);
+  try { after(run); } catch { void run(); }
 }

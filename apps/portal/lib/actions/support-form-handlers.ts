@@ -152,8 +152,9 @@ const SETUP = '/settings/support';
 /** Each set-up page is its own address; a safe id only (never a redirect elsewhere). */
 const teamPage = (id: string) => (/^[A-Za-z0-9_-]{1,40}$/.test(id) ? `${SETUP}/teams/${id}` : `${SETUP}/teams`);
 const SECTION_PAGE: Record<string, string> = { hours: `${SETUP}/hours`, holidays: `${SETUP}/hours`, enyo: `${SETUP}/enyo`, followups: `${SETUP}/follow-ups` };
-function setupBack(err: unknown, fallback: string, page = SETUP, hash = ''): never {
-  redirect(`${page}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}${hash}`);
+/** Back to the page with the message — and, for a form that failed, still open (?edit=) so nothing typed is lost from view. */
+function setupBack(err: unknown, fallback: string, page = SETUP, hash = '', edit = ''): never {
+  redirect(`${page}?error=${encodeURIComponent(friendlyError(err, fallback, 'support-form-handlers'))}${edit ? `&edit=${edit}` : ''}${hash}`);
 }
 function setupDone(status: string, page = SETUP, hash = ''): never {
   revalidatePath(SETUP, 'layout');
@@ -174,9 +175,10 @@ export async function saveSupportQueueAction(f: FormData): Promise<void> {
     id = (await saveSupportQueue({
       id: id || undefined, name: str(f, 'name'), kind: str(f, 'kind'), description: str(f, 'description'), branchId: str(f, 'branchId'), aiMode: str(f, 'aiMode') || 'SUGGEST',
       autoAcknowledge: f.get('autoAcknowledge') === 'on', isDefault: f.get('isDefault') === 'on', active: f.get('active') !== 'off', signature: str(f, 'signature'), targets,
+      ...(f.has('ackMessage') ? { ackMessage: String(f.get('ackMessage') ?? '') } : {}),
     })).id;
   } catch (err) {
-    setupBack(err, 'Could not save the team.', id ? teamPage(id) : `${SETUP}/teams`, id ? '#details' : '#new-queue');
+    setupBack(err, 'Could not save the team.', id ? teamPage(id) : `${SETUP}/teams`, id ? '#details' : '#new-queue', id ? 'details' : 'new');
   }
   setupDone('queue_saved', teamPage(id));
 }
@@ -184,10 +186,11 @@ export async function saveSupportQueueAction(f: FormData): Promise<void> {
 export async function setSupportQueueMembersAction(f: FormData): Promise<void> {
   const queueId = str(f, 'queueId');
   try {
-    const members = f.getAll('member').map(String).map((userId) => ({ userId, capacity: Number(str(f, `capacity_${userId}`)) || 15 }));
+    const leads = new Set(f.getAll('lead').map(String));
+    const members = f.getAll('member').map(String).map((userId) => ({ userId, capacity: Number(str(f, `capacity_${userId}`)) || 15, isLead: leads.has(userId) }));
     await setSupportQueueMembers(queueId, members);
   } catch (err) {
-    setupBack(err, 'Could not save who works this team.', teamPage(queueId), '#people');
+    setupBack(err, 'Could not save who works this team.', teamPage(queueId), '#people', 'people');
   }
   setupDone('members_saved', teamPage(queueId), '#people');
 }
@@ -200,7 +203,7 @@ export async function connectSupportMailboxAction(f: FormData): Promise<void> {
       smtpHost: str(f, 'smtpHost'), smtpPort: str(f, 'smtpPort'), smtpSecurity: str(f, 'smtpSecurity'), username: str(f, 'username'), password: String(f.get('password') ?? ''),
     });
   } catch (err) {
-    setupBack(err, 'Could not connect the mailbox.', teamPage(queueId), '#addresses');
+    setupBack(err, 'Could not connect the mailbox.', teamPage(queueId), '#addresses', 'address');
   }
   setupDone('mailbox_connected', teamPage(queueId), '#addresses');
 }
@@ -242,7 +245,7 @@ export async function saveSupportSettingsAction(f: FormData): Promise<void> {
       throw new Error('Nothing to save.');
     }
   } catch (err) {
-    setupBack(err, 'Could not save the settings.', page);
+    setupBack(err, 'Could not save the settings.', page, `#${section}`, section);
   }
   setupDone(`${section}_saved`, page);
 }

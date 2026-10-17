@@ -3,7 +3,7 @@ import { getSupportSetup } from '@/lib/actions/support-admin';
 import { saveSupportSettingsAction } from '@/lib/actions/support-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
-import { Icon, SectionCard, StatusChip } from '@/components/ui';
+import { EditableSection, Icon, SectionCard, StatusChip } from '@/components/ui';
 import { AI_MODES, AI_MODE_LABEL } from '@/lib/support/core';
 import { SaveRow, SupportSetupFrame, btn, input, label } from '../shared';
 
@@ -11,21 +11,23 @@ export const metadata = { title: 'Enyo in the Support centre' };
 export const dynamic = 'force-dynamic';
 
 /** Enyo's part in support: how sure it must be, what each team lets it do, and what it never does. */
-export default async function SupportEnyoPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
+export default async function SupportEnyoPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
   await guardPage('support.manage', '/settings/support');
   const sp = await searchParams;
   const s = await getSupportSetup();
   return (
     <SupportSetupFrame active="/settings/support/enyo" icon="sparkles" title="Enyo’s part" sp={sp}
       description="What the AI assistant may do in each team, how sure it must be, and what always stays with people.">
-      <SectionCard icon="sliders" title="How sure Enyo must be to answer by itself" description="Only in teams set to “Enyo answers general questions”. Below this, it drafts for a colleague instead.">
+      <EditableSection id="enyo" icon="sliders" title="How sure Enyo must be to answer by itself" description="Only in teams set to “Enyo answers general questions”. Below this, it drafts for a colleague instead."
+        editing={sp.edit === 'enyo'} editHref="/settings/support/enyo?edit=enyo#enyo" cancelHref="/settings/support/enyo#enyo"
+        view={<p className="text-sm text-[var(--ejo-text)]"><span className="text-2xl font-semibold text-[var(--ejo-primary)]">{Math.round(s.settings.aiThreshold * 100)}%</span> <span className="text-[var(--ejo-text-muted)]">— Enyo sends an answer by itself only when at least this sure, and only from answers people approved.</span></p>}>
         <form action={saveSupportSettingsAction} className="space-y-4">
           <input type="hidden" name="section" value="enyo" />
           <div className="max-w-xs"><label className={label} htmlFor="support-threshold">At least (%)</label><input id="support-threshold" name="aiThreshold" type="number" min={50} max={99} required defaultValue={Math.round(s.settings.aiThreshold * 100)} className={input} /></div>
           <p className="text-xs text-[var(--ejo-text-muted)]">75–85% suits most organisations. Higher means fewer automatic answers and more drafts for people.</p>
           <SaveRow><SubmitButton label="Save" pendingLabel="Saving…" className={btn} /></SaveRow>
         </form>
-      </SectionCard>
+      </EditableSection>
 
       <SectionCard icon="users" title="What each team lets Enyo do" description="Change it on the team’s page." flush>
         <ul className="divide-y divide-[var(--ejo-border)]">

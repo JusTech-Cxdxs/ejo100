@@ -69,7 +69,7 @@ export function TargetsFields({ t }: { t: Targets }) {
   );
 }
 
-export type QueueForForm = { id: string; name: string; kind: string; description: string | null; branchId: string | null; aiMode: string; autoAcknowledge: boolean; isDefault: boolean; active: boolean; signature: string | null; targets: Targets };
+export type QueueForForm = { id: string; name: string; kind: string; description: string | null; branchId: string | null; aiMode: string; autoAcknowledge: boolean; isDefault: boolean; active: boolean; signature: string | null; ackMessage?: string | null; targets: Targets };
 
 export function QueueFields({ q, branches }: { q?: QueueForForm; branches: { id: string; name: string }[] }) {
   const k = q?.id ?? 'new';
@@ -89,6 +89,11 @@ export function QueueFields({ q, branches }: { q?: QueueForForm; branches: { id:
       <ul className="space-y-1 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] p-3 text-xs text-[var(--ejo-text-muted)]">{AI_MODES.map((m) => <li key={m}><span className="font-medium text-[var(--ejo-text)]">{AI_MODE_LABEL[m].label}:</span> {AI_MODE_LABEL[m].help}</li>)}</ul>
       <div><label className={label} htmlFor={`qd-${k}`}>Description (optional)</label><input id={`qd-${k}`} name="description" maxLength={300} defaultValue={q?.description ?? ''} className={input} /></div>
       <div><label className={label} htmlFor={`qs-${k}`}>Signature under replies (optional)</label><textarea id={`qs-${k}`} name="signature" rows={2} maxLength={300} defaultValue={q?.signature ?? ''} className={input} /></div>
+      <div>
+        <label className={label} htmlFor={`qack-${k}`}>Automatic reply: the team’s own words (optional)</label>
+        <textarea id={`qack-${k}`} name="ackMessage" rows={3} maxLength={600} defaultValue={q?.ackMessage ?? ''} className={input} />
+        <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Sent to everyone who emails this team, above the reference number and when to expect an answer — for example opening times, what to include (plate number, photos) or an emergency line. Plain words only.</p>
+      </div>
       <TargetsFields t={q?.targets ?? DEFAULT_TARGETS} />
       <div className="flex flex-col gap-2 text-sm text-[var(--ejo-text)]">
         <label className="inline-flex min-h-10 items-start gap-2"><input type="checkbox" name="autoAcknowledge" defaultChecked={q?.autoAcknowledge ?? true} className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--ejo-primary)]" />Send an acknowledgement with the reference and when to expect an answer</label>
@@ -98,5 +103,16 @@ export function QueueFields({ q, branches }: { q?: QueueForForm; branches: { id:
         ) : null}
       </div>
     </>
+  );
+}
+
+/** Targets as a small read-only table (first answer and solved within, per priority). */
+export function TargetsView({ t }: { t: Targets }) {
+  const show = (m: number) => (m < 60 ? `${m} min` : m % 60 === 0 ? `${m / 60} h` : `${Math.floor(m / 60)} h ${m % 60} min`);
+  return (
+    <table className="w-full text-left text-sm">
+      <thead><tr className="text-xs text-[var(--ejo-text-muted)]"><th className="py-1 font-medium">Priority</th><th className="py-1 font-medium">First answer</th><th className="py-1 font-medium">Solved within</th></tr></thead>
+      <tbody>{PRIORITIES.map((p) => <tr key={p} className="border-t border-[var(--ejo-border)]"><td className="py-1.5 font-medium text-[var(--ejo-text)]">{PRIORITY_LABEL[p]}</td><td className="py-1.5 text-[var(--ejo-text)]">{show(t[p].first)}</td><td className="py-1.5 text-[var(--ejo-text)]">{show(t[p].resolve)}</td></tr>)}</tbody>
+    </table>
   );
 }

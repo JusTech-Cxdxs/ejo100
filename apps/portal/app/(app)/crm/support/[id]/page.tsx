@@ -14,7 +14,7 @@ import { SupportNoteForm } from '@/components/support/SupportNoteForm';
 import { SupportSenderCard } from '@/components/support/SupportSenderCard';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { SUPPORT_STATUSES, SUPPORT_STATUS_LABEL, type SupportStatus } from '@/lib/support-rules';
-import { CHANNEL_LABEL, PRIORITIES, PRIORITY_LABEL } from '@/lib/support/core';
+import { CHANNEL_LABEL, PRIORITIES, PRIORITY_LABEL, intlDigits } from '@/lib/support/core';
 import { formatSize } from '@/lib/mail/parse-core';
 
 export const metadata = { title: 'Support request' };
@@ -124,6 +124,7 @@ export default async function SupportTicketPage({ params, searchParams }: { para
               <p className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] p-3 text-sm text-[var(--ejo-text-muted)]">This request is closed. If the customer writes again, a follow-up request opens. To reply now, set it back to Open.</p>
             ) : (
               <div className="space-y-6">
+                <div id="reply" className="scroll-mt-24" />
                 <SupportReplyForm ticketId={t.id} emailTo={t.emailTo} phone={t.contactPhone} seenAt={t.seenAt} draft={t.draft?.body ?? null} viaEmail={t.channel === 'EMAIL'} />
                 <details className="group rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] p-3">
                   <summary className="flex min-h-10 cursor-pointer list-none items-center gap-2 text-sm font-medium text-[var(--ejo-text)] [&::-webkit-details-marker]:hidden"><Icon name="lock" size={15} /> Add an internal note</summary>
@@ -155,6 +156,15 @@ export default async function SupportTicketPage({ params, searchParams }: { para
         <aside className="min-w-0 space-y-6">
           {t.sender ? <SupportSenderCard s={t.sender} /> : null}
           <SectionCard icon="user" title={t.colleagueRequest ? 'Colleague' : 'Contact'}>
+            {t.status !== 'CLOSED' && (t.emailTo || t.contactPhone) ? (
+              <div className="mb-4 grid grid-cols-2 gap-2" aria-label="Reach them">
+                {t.emailTo ? <a href="#reply" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 text-sm font-medium text-white hover:brightness-110"><Icon name="mail" size={15} />Reply by email</a> : null}
+                {intlDigits(t.contactPhone) ? <a href={`tel:+${intlDigits(t.contactPhone)}`} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50"><Icon name="phone" size={15} />Call</a> : null}
+                {intlDigits(t.contactPhone) && !t.colleagueRequest ? <a href={`https://wa.me/${intlDigits(t.contactPhone)}`} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50"><Icon name="chat" size={15} />WhatsApp</a> : null}
+                {t.emailTo ? <a href={`mailto:${t.emailTo}?subject=${encodeURIComponent(`[#${t.number}] ${t.subject}`)}`} className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50"><Icon name="file" size={15} />Own mail app</a> : null}
+                <p className="col-span-2 text-[11px] text-[var(--ejo-text-muted)]">Reply here so it is kept on the request and in their portal; after a call or WhatsApp, add a short internal note of what was agreed.</p>
+              </div>
+            ) : null}
             <dl className="space-y-2 text-sm">
               <div><dt className="text-xs text-[var(--ejo-text-muted)]">Name</dt><dd className="font-medium text-[var(--ejo-text)]">{t.customerId ? <CustomerLink id={t.customerId} name={t.customerName ?? t.contactName} canView={t.canCrm} /> : t.contactName}</dd></div>
               {t.contactPhone ? <div><dt className="text-xs text-[var(--ejo-text-muted)]">Phone</dt><dd><a className="font-medium text-[var(--ejo-primary)] underline" href={`tel:${t.contactPhone.replace(/[^\d+]/g, '')}`}>{t.contactPhone}</a></dd></div> : null}

@@ -3640,6 +3640,9 @@ model SupportQueue {
   // general questions itself when it is confident; everything else goes to people.
   aiMode         String   @default("SUGGEST")
   autoAcknowledge Boolean @default(true)
+  // v38 — the team's own words in its automatic reply (opening times, what
+  // to include, an emergency number), shown above the reference and target.
+  ackMessage     String?
   // Minutes per priority: { URGENT: { first, resolve }, … } (defaults when null).
   targets        Json?
   signature      String?
@@ -3662,6 +3665,9 @@ model SupportQueueMember {
   organisationId String
   capacity       Int      @default(15)
   away           Boolean  @default(false)
+  // v38 — a team lead is emailed when nobody on the team can take a new
+  // request (all away or full) and when a request misses its target.
+  isLead         Boolean  @default(false)
   lastAssignedAt DateTime?
   createdAt      DateTime @default(now())
 

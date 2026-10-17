@@ -3,7 +3,7 @@ import { getSupportSetup } from '@/lib/actions/support-admin';
 import { saveSupportQueueAction } from '@/lib/actions/support-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
 import { SubmitButton } from '@/components/SubmitButton';
-import { Icon, SectionCard, StatusChip } from '@/components/ui';
+import { EditableSection, Icon, SectionCard, StatusChip } from '@/components/ui';
 import { AI_MODE_LABEL, QUEUE_KIND_LABEL } from '@/lib/support/core';
 import { QueueFields, SaveRow, SupportSetupFrame, btn } from '../shared';
 
@@ -11,7 +11,7 @@ export const metadata = { title: 'Support teams' };
 export const dynamic = 'force-dynamic';
 
 /** The support teams (queues): one row each, opening its own page; and adding a team. */
-export default async function SupportTeamsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
+export default async function SupportTeamsPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
   await guardPage('support.manage', '/settings/support');
   const sp = await searchParams;
   const s = await getSupportSetup();
@@ -37,12 +37,14 @@ export default async function SupportTeamsPage({ searchParams }: { searchParams:
         ) : <p className="p-4 text-sm text-[var(--ejo-text-muted)]">No team yet.</p>}
       </SectionCard>
 
-      <SectionCard id="new-queue" icon="plus" title="Add a team" description="For example: General support (support@), Customer care & complaints (customercare@), Warranty & recalls (warranty@), Technical (technical@), Parts (parts@), Staff help (colleagues’ own requests).">
+      <EditableSection id="new-queue" icon="plus" title="Add a team" description="For example: General support (support@), Customer care & complaints (customercare@), Warranty & recalls (warranty@), Technical (technical@), Parts (parts@), HR & people, Staff help."
+        editing={sp.edit === 'new'} editHref="/settings/support/teams?edit=new#new-queue" cancelHref="/settings/support/teams" editLabel="Add a team"
+        view={<p className="text-sm text-[var(--ejo-text-muted)]">Each team gets its own page to connect its address, choose who works it and who leads it, and change its targets and automatic reply.</p>}>
         <form action={saveSupportQueueAction} className="space-y-4">
           <QueueFields branches={s.branches} />
           <SaveRow note="You can connect its address and choose who works it on the team's page next."><SubmitButton label="Add the team" pendingLabel="Adding…" className={btn} /></SaveRow>
         </form>
-      </SectionCard>
+      </EditableSection>
     </SupportSetupFrame>
   );
 }

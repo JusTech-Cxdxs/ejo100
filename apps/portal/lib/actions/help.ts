@@ -9,6 +9,8 @@ import { cleanReply, REPLY_MAX, SUPPORT_STATUS_FOR_CUSTOMER, type SupportStatus 
 import { openTicket, supportEvent, type QueueRow } from '@/lib/support/server';
 import { asAiMode, priorityFromText, readTargets } from '@/lib/support/core';
 import { PLATFORM } from '@/lib/brand';
+import { after } from 'next/server';
+import { announceRouted, emailAssignee } from '@/lib/support/notify';
 
 /**
  * Get help — a colleague's own requests to the people who support the
@@ -146,6 +148,7 @@ export async function openHelpRequest(input: { subject?: string; body?: string; 
     return t;
   });
   await supportEvent({ organisationId: m.organisationId, ticketId: created.id, userId: m.id, action: 'support.help_requested', metadata: { number: created.number, to, about, team: queue.name, ...(ref ? { ref } : {}) } });
+  announceLater(created.id);
   return { id: created.id, number: created.number };
 }
 
@@ -186,4 +189,10 @@ export async function answerMyHelpRequest(id: string, choice: string): Promise<'
   await prisma.supportTicket.updateMany({ where: { id: t.id, status: t.status }, data: { status: 'OPEN', pendingSince: null, lastCustomerAt: now, handoverReason: reasons, ...(t.aiOutcome === 'ANSWERED' || t.aiOutcome === 'ASSUMED' ? { aiOutcome: 'ESCALATED' } : {}) } });
   await supportEvent({ organisationId: m.organisationId, ticketId: t.id, userId: m.id, action: 'support.customer_asked_person', metadata: { number: t.number, actor: 'colleague' } });
   return 'person';
+}
+
+/** Email the owner (or the leads) once the response has gone; outside a request, straight away. */
+function announceLater(ticketId: string, by: string | null = null): void {
+  const run = () => (by ? emailAssignee(ticketId, by) : announceRouted(ticketId)).then(() => undefined).catch(() => undefined);
+  try { after(run); } catch { void run(); }
 }

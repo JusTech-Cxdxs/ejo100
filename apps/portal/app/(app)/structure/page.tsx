@@ -122,11 +122,14 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
                     ))}
                     {b.departments.filter((d) => d.isActive).length === 0 ? <li className="text-xs text-[var(--ejo-text-muted)]">No departments yet.</li> : null}
                   </ul>
-                  <form action={createDepartmentFormAction} className="mt-3 flex gap-2">
-                    <input type="hidden" name="branchId" value={b.id} /><input type="hidden" name="returnTo" value="/structure" />
-                    <input name="name" required minLength={2} maxLength={80} placeholder="Add a department…" aria-label={`New department in ${b.name}`} className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-1.5 text-xs text-[var(--ejo-text)]" />
-                    <SubmitButton label="Add" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]" />
-                  </form>
+                  <details className="mt-3">
+                    <summary className="inline-flex min-h-9 cursor-pointer list-none items-center gap-1 rounded-full px-2 text-xs font-medium text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10 [&::-webkit-details-marker]:hidden">+ Add a department</summary>
+                    <form action={createDepartmentFormAction} className="mt-2 flex gap-2">
+                      <input type="hidden" name="branchId" value={b.id} /><input type="hidden" name="returnTo" value="/structure" />
+                      <input name="name" required minLength={2} maxLength={80} placeholder="Department name" aria-label={`New department in ${b.name}`} className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-1.5 text-xs text-[var(--ejo-text)]" />
+                      <SubmitButton label="Add" pendingLabel="…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]" />
+                    </form>
+                  </details>
                 </article>
               ))}
             </div>

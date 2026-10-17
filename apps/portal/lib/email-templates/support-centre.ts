@@ -34,11 +34,12 @@ function buttons(rows: { label: string; url: string; tone: 'primary' | 'plain' }
 }
 
 /** "We've got your message" — the reference, the team, and when to expect an answer. */
-export function renderSupportAcknowledgement(o: Common & { promise: string; open: boolean }): { subject: string; html: string } {
+export function renderSupportAcknowledgement(o: Common & { promise: string; open: boolean; teamMessage?: string | null }): { subject: string; html: string } {
   const bodyHtml = html`
     ${marker()}
     ${greeting(o.customerName)}
     ${para(`Thank you for writing to ${o.companyName}. Your message has reached our ${o.queueName} team and has the reference ${o.number}.`)}
+    ${o.teamMessage ? textBlocks(o.teamMessage) : ''}
     ${callout(`A colleague will answer ${o.promise}.${o.open ? '' : ' We are closed right now; we start with the oldest messages when we open.'}`, 'info', 'When to expect an answer')}
     ${details([['Reference', o.number], ['About', o.subject], ['Team', o.queueName]])}
     ${para('To add anything (photos, your plate number, a better time to call), simply reply to this email. Please keep the reference in the subject.', 'small')}
