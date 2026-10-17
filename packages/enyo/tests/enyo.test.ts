@@ -316,7 +316,8 @@ test('agent: a lookup that hangs never holds the answer past the deadline', asyn
 });
 
 test('web look-up: a general search engine when a key is set, relevant results only, no citation marks', async () => {
-  assert.equal(searchProvider({}), null);
+  assert.equal(searchProvider({})?.name, 'duckduckgo', 'free search without a key');
+  assert.equal(searchProvider({ ENYO_FREE_WEB_SEARCH: 'off' }), null);
   assert.equal(searchProvider({ SERPER_API_KEY: ' k1 ', BRAVE_SEARCH_API_KEY: 'k2' })?.name, 'serper');
   assert.equal(searchProvider({ BRAVE_SEARCH_API_KEY: 'k2' })?.label, 'Brave Search');
   assert.equal(searchProvider({ TAVILY_API_KEY: 'k3' })?.name, 'tavily');
@@ -358,7 +359,7 @@ test('web look-up: a general search engine when a key is set, relevant results o
   assert.doesNotMatch(data, /secret-key/);
   assert.ok(out.ok && out.sources?.[0]?.href === 'https://ng.linkedin.com/in/ada-obi');
   // Without a key: Wikipedia only, and nothing relevant → a plain "not found".
-  const wikiOnly = webLookupTool<object>({ fetchImpl: fake, env: {} });
+  const wikiOnly = webLookupTool<object>({ fetchImpl: fake, env: { ENYO_FREE_WEB_SEARCH: 'off' } });
   const none = await wikiOnly.run({ query: 'Ada Obi Example Group' }, {});
   assert.equal(none.ok, false);
   assert.match(none.ok ? '' : none.message, /could not find public information/);
@@ -367,4 +368,27 @@ test('web look-up: a general search engine when a key is set, relevant results o
   assert.equal(stripCitationMarks('Done 【3†L1-L4】 and more [web_lookup] here'), 'Done and more here');
   assert.equal(stripCitationMarks('Half way 【web_look'), 'Half way');
   assert.equal(stripCitationMarks('A [link](/x) stays'), 'A [link](/x) stays');
+});
+
+test('free web search: DuckDuckGo results parsed, ads and its own links skipped, redirect links unwrapped', async () => {
+  const { parseDuckDuckGo, webSearch } = await import('../src/web');
+  const html = `<html><body>
+  <div class="result results_links results_links_deep web-result result--ad"><a class="result__a" href="https://duckduckgo.com/y.js?ad=1">Buy cars</a><a class="result__snippet">Ad text here for cars and more</a></div>
+  <div class="result results_links results_links_deep web-result "><h2><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fng.linkedin.com%2Fin%2Fada-obi&amp;rut=x">Ada Obi - Director - <b>Example Group</b> | LinkedIn</a></h2>
+  <a class="result__snippet" href="x">Ada Obi is Director of the Automobile Division at <b>Example Group</b>, Lagos.</a></div>
+  <div class="result results_links web-result "><a class="result__a" href="http://insecure.example/x">Old page</a><a class="result__snippet">Not https so skipped entirely by the parser.</a></div>
+  </body></html>`;
+  const rows = parseDuckDuckGo(html);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0]!.url, 'https://ng.linkedin.com/in/ada-obi');
+  const fetchImpl = async (url: string, init?: { method?: string; body?: string }) => {
+    assert.equal(url, 'https://html.duckduckgo.com/html/');
+    assert.equal(init?.method, 'POST');
+    assert.match(String(init?.body), /^q=Ada%20Obi%20Example%20Group/);
+    return { ok: true, status: 200, json: async () => ({}), text: async () => html };
+  };
+  const r = await webSearch('Ada Obi Example Group', { provider: { name: 'duckduckgo', label: 'DuckDuckGo', key: '' }, fetchImpl });
+  assert.equal(r.source, 'DuckDuckGo');
+  assert.equal(r.pages.length, 1);
+  assert.match(r.pages[0]!.title, /Ada Obi - Director - Example Group \| LinkedIn/);
 });
