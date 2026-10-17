@@ -26,6 +26,7 @@ export async function ItOverview() {
           <p className="text-xs text-[var(--ejo-text-muted)]">As of {formatDateTime(p.asOf)}</p>
         </div>
         <div className="flex flex-wrap gap-3 text-sm">
+          <LoadingLink href="/it" className="font-medium text-[var(--ejo-primary)] hover:underline">IT control room →</LoadingLink>
           <LoadingLink href="/settings#health" className="font-medium text-[var(--ejo-primary)] hover:underline">System health →</LoadingLink>
           <LoadingLink href="/audit-logs" className="font-medium text-[var(--ejo-primary)] hover:underline">Audit trail →</LoadingLink>
         </div>

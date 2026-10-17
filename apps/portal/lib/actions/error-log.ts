@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { authorize, getPrincipal, orgWhere } from '@/lib/authz/server';
+import { authorize, getPrincipal, lensPeopleWhere, orgWhere } from '@/lib/authz/server';
 import { ERROR_KINDS, isErrorKind, KIND_LABEL, KIND_TODO, normaliseRef, type ErrorKind } from '@/lib/error-events-core';
 
 /**
@@ -33,7 +33,8 @@ export async function getErrorLogPage(f: { ref?: string; app?: string; kind?: st
   const rows = await prisma.errorEvent.findMany({
     where: {
       ...(await orgWhere()),
-      ...(ref ? { ref } : {}),
+      // A quoted reference is always found; otherwise the branch lens applies (errors met by that branch's people).
+      ...(ref ? { ref } : await lensPeopleWhere()),
       ...(app ? { app } : {}),
       ...(kind ? { kind } : {}),
       ...(route ? { OR: [{ route: { contains: route, mode: 'insensitive' as const } }, { path: { contains: route, mode: 'insensitive' as const } }] } : {}),

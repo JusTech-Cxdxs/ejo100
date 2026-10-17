@@ -15,6 +15,8 @@ import { decide } from '@/lib/authz/catalogue';
 import { EnyoPanel } from '@/components/enyo/EnyoPanel';
 import { NavProgress } from '@/components/NavProgress';
 import { SelectSearch } from '@/components/SelectSearch';
+import { BranchLensBar } from '@/components/BranchLensBar';
+import { getBranchLensOptions } from '@/lib/actions/branch-lens';
 
 /**
  * Signed-in shell. The user's name and role come from Prisma (`fullName`),
@@ -51,6 +53,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   const assist = assistResult.status === 'fulfilled' ? assistResult.value : null;
 
 
+  // Headquarters roles: the branch bar (all branches, or one) — not while working for a colleague.
+  const lens = assist ? null : await getBranchLensOptions().catch(() => null);
+
   // The menu folded to icons (desktop), remembered on this browser — read here so it never flickers.
   const collapsed = (await cookies()).get('ejo-sidebar')?.value === 'collapsed';
 
@@ -63,6 +68,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
         initialCollapsed={collapsed}
         banner={assist ? <AssistBanner colleague={assist.subject.name} role={assist.subject.roleLabel} expiresAt={assist.expiresAt.toISOString()} /> : null}
+        lensBar={lens && lens.branches.length ? <BranchLensBar options={lens} /> : null}
       >
         {children}
       </AppShell>

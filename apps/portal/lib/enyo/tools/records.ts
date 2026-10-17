@@ -250,7 +250,7 @@ export const recordTools: StaffTool[] = [
         select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true, mileage: true, engineType: true, customer: { select: { fullName: true } } },
       });
       if (!vehicle) return nothing('No vehicle of this organisation has that plate or VIN.');
-      const reach = await reachWhere('workshop.job_card.view');
+      const reach = await reachWhere('workshop.job_card.view', { lens: false });
       const [jcs, svs, fitted] = await Promise.all([
         prisma.jobCard.findMany({
           where: { vehicleId: vehicle.id, ...reach },

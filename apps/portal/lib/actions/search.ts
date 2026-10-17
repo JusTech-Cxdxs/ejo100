@@ -101,7 +101,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const reachAny = async (keys: PermissionKey[]): Promise<Where | null> => {
     const open = keys.filter(allowed);
     if (!open.length) return null;
-    const reaches = await Promise.all(open.map((k) => reachWhere(k)));
+    const reaches = await Promise.all(open.map((k) => reachWhere(k, { lens: false })));
     return reaches.some((r) => r.branchId === undefined) ? {} : { OR: reaches };
   };
   const canWorkshop = allowed('workshop.view');
@@ -138,7 +138,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const canWarranty = allowed('warranty.view');
   const canStructure = allowed('admin.structure.manage');
   // Support tickets: the inbox's own fence (organisation + branch reach; website enquiries are the organisation's).
-  const supportReach: Where | null = allowed('support.tickets.manage') ? (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId()))) : null;
+  const supportReach: Where | null = allowed('support.tickets.manage') ? (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage', { lens: false }), await myOrganisationId()))) : null;
 
   // At most 4 lookups at once: one search never takes every database connection from the pages around it.
   let running = 0;

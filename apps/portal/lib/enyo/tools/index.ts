@@ -29,6 +29,7 @@ import { learningTools } from './learning';
 import { supportTools } from './support';
 import { integrityTools } from './integrity';
 import { organisationTools } from './organisation';
+import { leadershipTools } from './leadership';
 
 export function staffTools(): StaffTool[] {
   return [
@@ -47,6 +48,7 @@ export function staffTools(): StaffTool[] {
     ...supportTools,
     ...integrityTools,
     ...organisationTools,
+    ...leadershipTools,
     ...(webLookupEnabled() ? [webLookupTool<StaffCtx>()] : []),
   ];
 }

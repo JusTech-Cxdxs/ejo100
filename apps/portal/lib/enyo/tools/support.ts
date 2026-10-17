@@ -50,7 +50,7 @@ export const supportTools: StaffTool[] = [
       if (!(await allows('support.tickets.manage'))) return NOT_PERMITTED;
       const number = String(args.number ?? '').trim().toUpperCase();
       if (!/^SUP-\d{4}-\d{6}$/.test(number)) return nothing('That is not a support number (they look like SUP-2026-000123). Ask for the number.');
-      const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId())));
+      const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage', { lens: false }), await myOrganisationId())));
       const t = await prisma.supportTicket.findFirst({
         where: { AND: [{ number }, reach as object] },
         select: {

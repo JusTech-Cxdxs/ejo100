@@ -230,7 +230,17 @@ export const PLATFORM_ONLY: string[] = [
  * fence. No scope (not even ALL) reaches a record in another organisation's
  * branch. Absent for the platform team (and for an account not yet placed
  * in an organisation, which sees nothing of substance anyway). */
-export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; organisationId?: string | null; orgBranchIds?: string[]; extraGrants?: Partial<Record<PermissionKey, Scope>> };
+export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: string[]; branchId: string | null; departmentId: string | null; organisationId?: string | null; orgBranchIds?: string[]; extraGrants?: Partial<Record<PermissionKey, Scope>>;
+  /** The branch lens: an organisation-wide viewer looking at ONE branch for now (lists and analytics). Narrows, never widens; never used to decide a permission. */
+  lensBranchId?: string | null };
+
+/** The permissions whose organisation-wide holders get the branch lens (headquarters roles). */
+export const LENS_KEYS: PermissionKey[] = ['analytics.business.view', 'workshop.view', 'crm.view', 'store.view', 'warranty.view', 'security.view', 'admin.users.manage', 'audit.view'];
+
+/** Does this person see the whole organisation in any area, so the branch lens applies? */
+export function hasBranchLens(p: Principal): boolean {
+  return p.isSuperAdmin || LENS_KEYS.some((k) => scopeFor(p, k) === 'ALL');
+}
 /** homeBranch: for approvals and money — a branch-scoped person must BELONG to
  * the record's branch (someone with no branch on their profile is refused,
  * not treated as organisation-wide). */

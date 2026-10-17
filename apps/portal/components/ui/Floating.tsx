@@ -41,12 +41,10 @@ export function Floating({
       const el = anchor.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
-      // The field scrolled away (out of the window, or under the header or a
-      // scroll area's edge): hide the list rather than float it over the page.
-      const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
-      const cy = r.top + r.height / 2;
-      const hit = cy >= 0 && cy < window.innerHeight ? document.elementFromPoint(cx, cy) : null;
-      if (!hit || !(el === hit || el.contains(hit) || hit.contains(el) || el.parentElement?.contains(hit))) { setPlace(null); return; }
+      // The field scrolled right out of the window: hide the list rather than
+      // float it over the page. (Not a hit test: a list that hides while the
+      // page settles would flicker under the pointer.)
+      if (r.bottom < 0 || r.top > window.innerHeight || r.width === 0) { setPlace(null); return; }
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const width = Math.min(Math.max(r.width, Math.min(minWidth, vw - 16)), vw - 16);

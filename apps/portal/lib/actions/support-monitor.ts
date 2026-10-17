@@ -135,7 +135,7 @@ export async function getEnyoMonitor(input: { filter?: string; days?: number } =
 export async function reviewEnyoReply(input: { replyId?: string; verdict?: string; reason?: string; note?: string; corrected?: string }): Promise<{ learned: boolean }> {
   await authorize(PERM, undefined, 'reviewEnyoReply');
   const me = await requireUser();
-  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM), await myOrganisationId()))) as TicketWhere;
+  const reach = (await fenceStaffHelp(ticketReachWhere(await reachWhere(PERM, { lens: false }), await myOrganisationId()))) as TicketWhere;
   const verdict = asVerdict(input.verdict);
   if (!verdict) throw new MonitorError('Choose Good, Corrected or Wrong.');
   const reason = verdict === 'GOOD' ? null : asFailureReason(input.reason);

@@ -55,6 +55,8 @@ export function navigationFor(p: Principal): NavItem[] {
   out.push({ key: 'mail', name: 'Mail', href: '/mail', status: 'LIVE' });
   // Everyone in an organisation can ask for help (the platform team answers, it does not ask).
   if (!p.isSuperAdmin) out.push({ key: 'get-help', name: 'Get help', href: '/support/help', status: 'LIVE' });
+  // IT: the control room, for those who read the audit trail across the organisation.
+  if (p.isSuperAdmin || scopeFor(p, 'audit.view') === 'ALL') out.push({ key: 'it', name: 'IT control room', href: '/it', status: 'LIVE' });
   // The integrity watch: reviewers only.
   if (can('integrity.review')) out.push({ key: 'integrity', name: 'Integrity watch', href: '/integrity', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.

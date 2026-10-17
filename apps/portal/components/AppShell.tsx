@@ -23,6 +23,7 @@ export function AppShell({
   roleName,
   initialCollapsed,
   banner,
+  lensBar,
   children,
 }: {
   items: NavItem[];
@@ -32,6 +33,8 @@ export function AppShell({
   initialCollapsed: boolean;
   /** Shown under the header on every page (the assisted-session banner). */
   banner?: ReactNode;
+  /** The branch bar for headquarters roles (under the header, every page). */
+  lensBar?: ReactNode;
   children: ReactNode;
 }) {
   const [collapsed, setCollapsed] = useState(initialCollapsed);
@@ -111,6 +114,7 @@ export function AppShell({
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <Topbar userName={userName} roleName={roleName} organisationName={organisationName} onMenu={openDrawer} menuOpen={drawer} assisting={Boolean(banner)} />
         {banner}
+        {lensBar}
         <Marquee />
         {/* The working area. Loading and saving overlays cover only this box
             (see CONTENT_AREA_ATTR), so the menu, header and ticker never disappear. */}

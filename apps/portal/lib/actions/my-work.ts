@@ -31,7 +31,7 @@ function monthStart(): Date {
  * and their own approved exit pass to show at the gate. */
 export async function getMyWorkItems(): Promise<MyWorkItem[]> {
   const user = await requireUser();
-  const [work, mine] = await Promise.all([reachWhere('workshop.job_card.view'), reachWhere('security.exit_pass.request')]);
+  const [work, mine] = await Promise.all([reachWhere('workshop.job_card.view', { lens: false }), reachWhere('security.exit_pass.request', { lens: false })]);
   const [jcs, svs, tests, passes, reminders] = await Promise.all([
     prisma.jobCard.findMany({ where: { ...work, supervisorId: user.id, approvalStatus: 'APPROVED', assignedTechnicianId: null, status: { in: [...JC_OPEN] } }, take: 20, select: { id: true, jobNumber: true, updatedAt: true } }),
     prisma.vehicleService.findMany({ where: { ...work, supervisorId: user.id, approvalStatus: 'APPROVED', assignedTechnicianId: null, escalatedToJobCardId: null, status: { in: [...SV_OPEN] } }, take: 20, select: { id: true, serviceNumber: true, createdAt: true } }),
@@ -58,7 +58,7 @@ export async function getMyWorkItems(): Promise<MyWorkItem[]> {
  */
 async function supportItems(userId: string): Promise<MyWorkItem[]> {
   if (!(await allows('support.tickets.manage'))) return [];
-  const fence = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage'), await myOrganisationId())));
+  const fence = (await fenceStaffHelp(ticketReachWhere(await reachWhere('support.tickets.manage', { lens: false }), await myOrganisationId())));
   const rows = await prisma.supportTicket.findMany({
     where: { AND: [fence, { status: 'OPEN' }, { OR: [{ assignedToId: userId }, { assignedToId: null }] }] },
     orderBy: { createdAt: 'asc' },
@@ -78,7 +78,7 @@ async function supportItems(userId: string): Promise<MyWorkItem[]> {
 /** Open jobs where this person is the technician or the supervisor. */
 export async function getMyJobs(): Promise<MyJob[]> {
   const user = await requireUser();
-  const work = await reachWhere('workshop.job_card.view');
+  const work = await reachWhere('workshop.job_card.view', { lens: false });
   const veh = { select: { plateNumber: true, make: true, model: true } } as const;
   const [jcs, svs] = await Promise.all([
     prisma.jobCard.findMany({ where: { ...work, status: { in: [...JC_OPEN, 'COMPLETED', 'READY_FOR_COLLECTION'] }, OR: [{ assignedTechnicianId: user.id }, { supervisorId: user.id }] }, orderBy: { updatedAt: 'desc' }, take: 12, select: { id: true, jobNumber: true, status: true, supervisorId: true, updatedAt: true, vehicle: veh } }),
@@ -101,7 +101,7 @@ export async function getMyNumbers(): Promise<MyNumber[]> {
     allows('workshop.job.work'), allows('workshop.job.supervise'), allows('sourcing.request'), allows('workshop.job_card.create'), allows('workshop.close.approve'),
     allows('store.prs.release'), allows('workshop.payment.record'), allows('procurement.epr.review'), allows('warranty.manage'), allows('security.gate.operate'),
   ]);
-  const [work, store, desk, mine] = await Promise.all([reachWhere('workshop.job_card.view'), reachWhere('store.view'), reachWhere('security.view'), reachWhere('security.exit_pass.request')]);
+  const [work, store, desk, mine] = await Promise.all([reachWhere('workshop.job_card.view', { lens: false }), reachWhere('store.view', { lens: false }), reachWhere('security.view', { lens: false }), reachWhere('security.exit_pass.request', { lens: false })]);
   const n = (p: Promise<number>) => p.catch(() => 0);
   const out: MyNumber[] = [];
 

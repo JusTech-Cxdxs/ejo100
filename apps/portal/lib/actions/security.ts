@@ -1021,7 +1021,7 @@ function netPaid(payments: { amount: unknown }[], refunds: { amount: unknown }[]
 /** One released vehicle, for its release (confirm exit) page. */
 export async function getClearedVehicle(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', id: string) {
   await requireUser();
-  const reach = await reachWhere('security.view');
+  const reach = await reachWhere('security.view', { lens: false });
   if (kind === 'JOB_CARD') {
     const j = await prisma.jobCard.findFirst({
       where: { id, ...reach },

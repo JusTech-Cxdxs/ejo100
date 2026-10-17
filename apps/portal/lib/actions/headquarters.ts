@@ -29,6 +29,8 @@ export type Headquarters = {
   totals: { staff: number; staffAtHeadOffice: number | null; staffNew: number; customersNew: number | null; opened: number; finished: number; collected: number; inWorkshop: number; ready: number; waiting: number; supportOpen: number; supportLate: number; branchesToAct: number };
   broadcasts: { id: string; number: string; title: string; category: string; audience: string; state: string; startsAt: Date }[] | null;
   canBroadcast: boolean;
+  /** The branch lens: the one branch being looked at, if any. */
+  lensBranch: string | null;
 };
 
 export async function getHeadquarters(periodKey?: string): Promise<Headquarters> {
@@ -152,5 +154,6 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
       state: BROADCAST_STATE_LABEL[broadcastState(b)], startsAt: b.startsAt,
     })) : null,
     canBroadcast,
+    lensBranch: p.lensBranchId ? branches.find((b) => b.id === p.lensBranchId)?.name ?? null : null,
   };
 }

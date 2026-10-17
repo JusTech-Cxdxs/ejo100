@@ -99,7 +99,7 @@ test('the actions: authorise, fence, audit; staff replies are compare-and-set an
     assert.ok(i !== -1, fn);
     const body = src.slice(i, src.indexOf('\nexport ', i + 10) === -1 ? undefined : src.indexOf('\nexport ', i + 10));
     assert.match(body, /await authorize\('support\.tickets\.manage'|await authorize\(PERM/, `${fn} authorises`);
-    assert.match(body, /ticketReachWhere\(await reachWhere\(PERM\), await myOrganisationId\(\)\)/, `${fn} is fenced`);
+    assert.match(body, /ticketReachWhere\(await reachWhere\(PERM(, \{ lens: false \})?\), await myOrganisationId\(\)\)/, `${fn} is fenced`);
   }
   for (const action of ['support.replied', 'support.status_changed', 'support.assigned']) assert.ok(src.includes(`action: '${action}'`), action);
   assert.doesNotMatch(src, /metadata: \{[^}]*\bbody\b/, 'the reply text is never put in the audit trail');

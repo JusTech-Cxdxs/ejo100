@@ -1,6 +1,7 @@
 import { getLeadershipPulse } from '@/lib/actions/leadership';
 import { getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { LoadingLink } from '@/components/LoadingLink';
+import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
 import { Icon, SectionCard, StatTile, StatusChip } from '@/components/ui';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -25,10 +26,11 @@ export async function LeadershipOverview() {
     <section aria-labelledby="leadership-title" className="mb-6 space-y-4" data-testid="leadership-overview">
       <div className="flex flex-wrap items-end justify-between gap-2">
         <div>
-          <h2 id="leadership-title" className="flex items-center gap-2 text-base font-semibold text-[var(--ejo-text)]"><Icon name="chart" size={18} />{p.scope === 'branch' ? 'Your branch at a glance' : 'The business at a glance'}</h2>
+          <h2 id="leadership-title" className="flex items-center gap-2 text-base font-semibold text-[var(--ejo-text)]"><Icon name="chart" size={18} />{p.scope === 'branch' ? `${p.branches.length === 1 ? p.branches[0]!.name : 'Your branch'} at a glance` : 'The business at a glance'}</h2>
           <p className="text-xs text-[var(--ejo-text-muted)]">This month to date · figures as of {formatDateTime(p.asOf)} · read-only</p>
         </div>
-        <div className="flex flex-wrap gap-3 text-sm">
+        <div className="flex flex-wrap items-center gap-3 text-sm">
+          <AskEnyoButton send speak icon="speaker" label="Brief me" question={`Give me a short spoken briefing on ${p.scope === 'branch' && p.branches.length === 1 ? p.branches[0]!.name : 'the business'} today (use branch_briefing): the verdict, money, the workshop, decisions waiting and what I should do first.`} />
           {p.scope === 'organisation' ? <LoadingLink href="/headquarters" className="font-medium text-[var(--ejo-primary)] hover:underline">Headquarters: every branch →</LoadingLink> : null}
           <LoadingLink href="/analytics" className="font-medium text-[var(--ejo-primary)] hover:underline">Full business analytics →</LoadingLink>
         </div>
