@@ -203,6 +203,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'crm.view': A,
     'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
+    // Leadership speaks to the organisation: notices to staff (and customers).
+    'notifications.broadcast.send': A,
   },
   // Group IT: people and their roles, settings and system health, the audit
   // trail and error log, and Enyo (AI), across the organisation — but none of
@@ -211,6 +213,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'it-administrator': {
     'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'admin.structure.manage': A, 'audit.view': A,
     'enyo.manage': A, 'schedule.view': 'OWN',
+    // System notices: planned downtime, a security warning, a password reminder.
+    'notifications.broadcast.send': A,
   },
 };
 
@@ -307,8 +311,8 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'branch-assistant': 'IT support at the branch. Helps colleagues who are not comfortable with computers: with the colleague\'s own password, works on their tasks for a limited time. Every action is recorded as done for that colleague, with the assistant named. Cannot help managers, supervisors, finance or administrators, and approves nothing.',
   'customer-care': 'The support department. Works the Support centre for their branch: customers\' emails, website and portal hand-overs, complaints and colleagues\' Get help requests — answers, uses Enyo\'s drafts, hands over and resolves. Can look up customers, jobs and warranties to answer, but changes nothing there and cannot open the Support centre\'s set-up.',
   'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
-  executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Approves nothing; decisions stay with the managers who own them. Authorises exit passes for their own department.',
-  'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, and looks after Enyo (AI), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
+  executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Approves nothing; decisions stay with the managers who own them. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
+  'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, looks after Enyo (AI) and sends system notices (broadcasts), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
 };
 
 /** Permissions that DECIDE something (approve, authorise, release, pay) —

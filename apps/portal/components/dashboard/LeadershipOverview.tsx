@@ -28,7 +28,10 @@ export async function LeadershipOverview() {
           <h2 id="leadership-title" className="flex items-center gap-2 text-base font-semibold text-[var(--ejo-text)]"><Icon name="chart" size={18} />{p.scope === 'branch' ? 'Your branch at a glance' : 'The business at a glance'}</h2>
           <p className="text-xs text-[var(--ejo-text-muted)]">This month to date · figures as of {formatDateTime(p.asOf)} · read-only</p>
         </div>
-        <LoadingLink href="/analytics" className="text-sm font-medium text-[var(--ejo-primary)] hover:underline">Full business analytics →</LoadingLink>
+        <div className="flex flex-wrap gap-3 text-sm">
+          {p.scope === 'organisation' ? <LoadingLink href="/headquarters" className="font-medium text-[var(--ejo-primary)] hover:underline">Headquarters: every branch →</LoadingLink> : null}
+          <LoadingLink href="/analytics" className="font-medium text-[var(--ejo-primary)] hover:underline">Full business analytics →</LoadingLink>
+        </div>
       </div>
 
       {a ? (

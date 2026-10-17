@@ -18,7 +18,7 @@ import { renderWorkflowNoticeEmail } from '@/lib/email-templates/workflow-notice
 import { portalConfig } from '@/lib/site-config';
 
 export type AdminUserRow = { id: string; fullName: string; email: string; employeeId: string | null; isActive: boolean; branch: string | null; department: string | null; roles: { id: string; name: string; isPlatform: boolean }[] };
-export type AssignableRole = { id: string; name: string; isPlatform: boolean };
+export type AssignableRole = { id: string; name: string; isPlatform: boolean; slug: string };
 
 async function actorOrg() {
   const p = await getPrincipal();
@@ -55,7 +55,7 @@ export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): 
       take: 300,
       select: { id: true, fullName: true, email: true, employeeId: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { id: true, name: true, isSuperAdmin: true } } } } },
     }),
-    prisma.role.findMany({ where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, isSuperAdmin: true } }),
+    prisma.role.findMany({ where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, isSuperAdmin: true } }),
     prisma.user.groupBy({ by: ['isActive'], where: scope, _count: { _all: true } }),
     prisma.user.count({ where: { ...scope, employeeId: null, branchId: { not: null } } }),
   ]);
@@ -67,7 +67,7 @@ export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): 
     counts: { total: active + off, active, off, withoutId },
     users: users.map((u: (typeof users)[number]) => ({ id: u.id, fullName: u.fullName, email: u.email, employeeId: u.employeeId, isActive: u.isActive, branch: u.branch?.name ?? null, department: u.department?.name ?? null, roles: u.roles.map((r: { role: { id: string; name: string; isSuperAdmin: boolean } }) => ({ id: r.role.id, name: r.role.name, isPlatform: r.role.isSuperAdmin })) })),
     // Organisation administrators never see the platform role as an option.
-    roles: roles.filter((r: { isSuperAdmin: boolean }) => p.isSuperAdmin || !r.isSuperAdmin).map((r: { id: string; name: string; isSuperAdmin: boolean }) => ({ id: r.id, name: r.name, isPlatform: r.isSuperAdmin })),
+    roles: roles.filter((r: { isSuperAdmin: boolean }) => p.isSuperAdmin || !r.isSuperAdmin).map((r: { id: string; name: string; slug: string; isSuperAdmin: boolean }) => ({ id: r.id, name: r.name, slug: r.slug, isPlatform: r.isSuperAdmin })),
   };
 }
 

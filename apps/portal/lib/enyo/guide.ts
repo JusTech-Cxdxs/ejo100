@@ -452,10 +452,19 @@ export const GUIDE: GuideEntry[] = [
     steps: ['Go to the Recycle bin.', 'Find the item and press "Restore". Items are kept for a limited time before being removed for good.', 'Records are moved there from their own page with "Move to Recycle bin".'],
   },
   {
-    id: 'users', title: 'Add a member of staff and give them a role', page: '/users', needs: ['admin.users.manage'],
+    id: 'headquarters', title: 'See every branch side by side (Headquarters)', page: '/headquarters', needs: ['analytics.business.view'],
+    keywords: ['headquarters', 'hq', 'all branches', 'branch performance', 'group', 'compare branches', 'director', 'export'],
+    steps: [
+      'Open Headquarters (in the menu for leadership): this month by default; choose Last month, This quarter or This year.',
+      'Each branch shows jobs opened and finished, money collected, vehicles in and ready, decisions waiting (and the oldest), customer requests, turnaround and its health.',
+      'Press "Export (CSV)" for the same table as a spreadsheet, or "Send a notice" to broadcast to staff or customers.',
+    ],
+  },
+  {
+    id: 'users', title: 'Add a member of staff and give them a role', page: '/users/new', needs: ['admin.users.manage'],
     keywords: ['user', 'staff', 'employee', 'add staff', 'role', 'new user', 'account', 'switch off'],
     steps: [
-      'Go to People and fill in the add form (name, email, branch, department and first role).',
+      'Go to Users and press "Add staff member": who they are (name, work email), where they work (branch, then a department of that branch) and their first role — the page shows what the role allows before you give it.',
       'Press "Add and send the welcome email". They set their own password from the email.',
       'To give another role, choose it next to their name and press "Give".',
     ],
@@ -463,7 +472,7 @@ export const GUIDE: GuideEntry[] = [
   {
     id: 'roles', title: 'Change what a role can do', page: '/roles', needs: ['admin.roles.manage'],
     keywords: ['role', 'permission', 'access', 'grant', 'rights'],
-    steps: ['Go to Roles and open the role.', 'Pick a permission and press "Add". Everyone holding the role is emailed their new access.'],
+    steps: ['Go to Roles and open the role: what it can do and approve, and who holds it.', 'Press "Change permissions", pick a permission and press "Add permission". Everyone holding the role is emailed their new access.'],
   },
   {
     id: 'structure', title: 'Add a branch or department', page: '/structure', needs: ['admin.structure.manage'],

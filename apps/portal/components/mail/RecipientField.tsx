@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { searchMailRecipients, type Recipient } from '@/lib/actions/mail';
+import { Floating } from '@/components/ui/Floating';
 
 /**
  * To / Cc with a people finder: type a name, a branch or a department and
@@ -64,8 +65,8 @@ export function RecipientField({ id, name, label, defaultValue, required, placeh
         aria-controls={listId}
         aria-activedescendant={open && items[active] ? `${listId}-${active}` : undefined}
       />
-      {open && items.length ? (
-        <ul id={listId} role="listbox" aria-label="People" className="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-1 shadow-xl">
+      <Floating anchor={input} open={open && items.length > 0} maxHeight={288} className="py-1">
+        <ul id={listId} role="listbox" aria-label="People">
           {items.map((r, i) => (
             <li key={r.email} id={`${listId}-${i}`} role="option" aria-selected={i === active}>
               <button type="button" tabIndex={-1} onMouseDown={(e) => e.preventDefault()} onClick={() => pick(r)} className={`flex min-h-11 w-full items-center gap-3 px-3 py-1.5 text-left text-sm ${i === active ? 'bg-[var(--ejo-primary)]/10' : 'hover:bg-[var(--ejo-surface)]'}`}>
@@ -78,7 +79,7 @@ export function RecipientField({ id, name, label, defaultValue, required, placeh
             </li>
           ))}
         </ul>
-      ) : null}
+      </Floating>
     </div>
   );
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, getPrincipal } from '@/lib/authz/server';
+import { authorize, getPrincipal, inMyOrganisation } from '@/lib/authz/server';
 import { PERMISSIONS, ROLE_GRANTS, scopeFor, type PermissionKey } from '@/lib/authz/catalogue';
 
 export type RoleForEditor = { id: string; name: string; slug: string; isPlatform: boolean; users: number; defaults: PermissionKey[]; added: PermissionKey[] };
@@ -70,4 +70,23 @@ export async function revokeRolePermission(roleId: string, key: string): Promise
   await writeAuditLog({ userId: p.userId, action: 'role.permission_revoked', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey]?.label ?? key } });
   revalidatePath('/roles');
   revalidatePath('/permissions');
+}
+
+export type RoleHolder = { id: string; fullName: string; branch: string | null; isActive: boolean };
+
+/** Who holds a role (this organisation only), for the role's own page. At most 200. */
+export async function listRoleHolders(roleId: string): Promise<RoleHolder[]> {
+  await authorize('admin.roles.manage', undefined, 'roles.holders');
+  const p = await getPrincipal();
+  // The role itself must be this organisation's (out of reach behaves like none).
+  const role = await prisma.role.findUnique({ where: { id: String(roleId ?? '') }, select: { id: true, organisationId: true, isSuperAdmin: true } });
+  if (!role || (!p.isSuperAdmin && (role.isSuperAdmin || !(await inMyOrganisation(role.organisationId))))) return [];
+  const me = await prisma.user.findUnique({ where: { id: p.userId }, select: { organisationId: true } });
+  const rows = await prisma.userRole.findMany({
+    where: { roleId: role.id, user: me?.organisationId ? { organisationId: me.organisationId } : {} },
+    orderBy: { user: { fullName: 'asc' } },
+    take: 200,
+    select: { user: { select: { id: true, fullName: true, isActive: true, branch: { select: { name: true } } } } },
+  });
+  return rows.map((r: (typeof rows)[number]) => ({ id: r.user.id, fullName: r.user.fullName, isActive: r.user.isActive, branch: r.user.branch?.name ?? null }));
 }

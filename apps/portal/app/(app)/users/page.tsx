@@ -5,7 +5,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FilterSelect } from '@/components/FilterSelect';
 import { Avatar } from '@/components/Avatar';
-import { AddStaffForm } from '@/components/AddStaffForm';
+import { redirect } from 'next/navigation';
 import { PageTitle } from '@/components/ui';
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
@@ -40,6 +40,8 @@ function Stat({ label, value, tone }: { label: string; value: number; tone?: str
 export default async function UsersPage({ searchParams }: { searchParams: Promise<{ q?: string; error?: string; status?: string; id?: string; show?: string; branch?: string; role?: string; add?: string }> }) {
   await guardPage('admin.users.manage', '/users');
   const sp = await searchParams;
+  // Adding a person has its own page (old links still work).
+  if (sp.add === '1') redirect('/users/new');
   const { q, error, status } = sp;
   // Only something shaped like an employee ID is ever shown back.
   const id = sp.id && /^[A-Z0-9-]{3,24}$/.test(sp.id) ? sp.id : undefined;
@@ -47,7 +49,6 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     listUsersForAdmin(q, { status: sp.show, branchId: sp.branch, roleId: sp.role }),
     staffPlacementOptions(),
   ]);
-  const branchName = new Map(placement.branches.map((b) => [b.id, b.name]));
   const idsGiven = status?.startsWith('ids_') ? Number(status.slice(4)) : null;
   const filtered = Boolean(q || sp.show || sp.branch || sp.role);
 
@@ -67,7 +68,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <PageTitle icon="users">Users</PageTitle>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">Everyone in your organisation{placement.branchLocked ? ' branch' : ''}, the branch and department they work in, and the roles that decide what they can see and do. People are emailed whenever their access changes; every change is in the audit trail.{isPlatformTeam ? ' As the platform team you can also grant the Master Administrator role.' : ''}</p>
         </div>
-        <a href="#add-staff" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
+        <a href="/users/new" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
           <span aria-hidden="true" className="text-base leading-none">+</span> Add staff member
         </a>
       </div>
@@ -80,24 +81,6 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
         <Stat label="Switched off" value={counts.off} tone={counts.off ? 'var(--ejo-text-muted)' : undefined} />
         <Stat label="Without employee ID" value={counts.withoutId} tone={counts.withoutId ? 'var(--ejo-warning)' : undefined} />
       </div>
-
-      {/* Add a staff member */}
-      <details id="add-staff" open={sp.add === '1' || undefined} className="group mt-6 scroll-mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]">
-        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
-          <span>
-            <span className="block text-sm font-semibold text-[var(--ejo-text)]">Add a staff member</span>
-            <span className="block text-xs text-[var(--ejo-text-muted)]">Employee ID issued automatically · welcome email with how to sign in, their access and the rules{placement.branchLocked ? ' · your branch' : ''}</span>
-          </span>
-          <span className="text-[var(--ejo-text-muted)] transition-transform group-open:rotate-45" aria-hidden="true">＋</span>
-        </summary>
-        <AddStaffForm
-          branchLocked={placement.branchLocked}
-          lockedBranchName={placement.branchLocked ? branchName.get(placement.branchLocked) : undefined}
-          branches={placement.branches.map((b) => ({ value: b.id, label: b.name }))}
-          departments={placement.departments.map((d) => ({ value: d.id, label: d.name, group: placement.branches.length > 1 ? branchName.get(d.branchId) ?? '' : undefined }))}
-          roles={roles.filter((r) => !r.isPlatform).map((r) => ({ value: r.id, label: r.name }))}
-        />
-      </details>
 
       {/* Find people */}
       <form className="mt-6 flex flex-wrap items-end gap-3 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4" role="search">
@@ -141,7 +124,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
       {users.length === 0 ? (
         <div className="mt-3 rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)] p-10 text-center">
           <p className="text-sm font-medium text-[var(--ejo-text)]">{filtered ? 'Nobody matches those filters.' : 'No staff yet.'}</p>
-          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{filtered ? 'Try a different search, or clear the filters.' : 'Add the first staff member above.'}</p>
+          <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">{filtered ? 'Try a different search, or clear the filters.' : <a href="/users/new" className="font-medium text-[var(--ejo-primary)] hover:underline">Add the first staff member</a>}</p>
         </div>
       ) : (
         <ul className="mt-3 grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
