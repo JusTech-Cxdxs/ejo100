@@ -409,7 +409,7 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
                   type="button"
                   onClick={() => voice.start()}
                   disabled={busy}
-                  aria-label="Speak your message"
+                  aria-label="Record a voice note"
                   title="Speak — then send, pause, or edit the words first"
                   data-testid="enyo-mic"
                   className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] bg-[var(--ejo-bg)] text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50 hover:text-[var(--ejo-primary)] disabled:opacity-40"
