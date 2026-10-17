@@ -79,9 +79,9 @@ test('adding a person has its own page; the department list follows the branch',
   await open(page, '/users?add=1');
   await expect(page).toHaveURL(/\/users\/new$/);
   const form = page.locator('#add-staff');
-  await expect(form.getByText('Who they are')).toBeVisible();
-  await expect(form.getByText('Where they work')).toBeVisible();
-  await expect(form.getByText('What they may do')).toBeVisible();
+  await expect(form.getByRole('heading', { name: 'Who they are' })).toBeVisible();
+  await expect(form.getByRole('heading', { name: 'Where they work' })).toBeVisible();
+  await expect(form.getByRole('heading', { name: 'What they may do' })).toBeVisible();
   await expect(form.getByRole('textbox', { name: 'Department' })).toHaveAttribute('placeholder', 'Choose the branch first');
   await form.getByRole('textbox', { name: 'First role' }).fill('Technician');
   await page.getByRole('option', { name: 'Technician' }).first().click();
