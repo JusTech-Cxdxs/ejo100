@@ -80,7 +80,10 @@ export const getPrincipal = cache(async (): Promise<Principal> => {
   // The branch lens (headquarters roles): one branch of their own organisation, for now.
   const lens = await readBranchLens();
   if (!lens || !hasBranchLens(p)) return p;
-  if (p.isSuperAdmin ? await prisma.branch.count({ where: { id: lens } }) : (p.orgBranchIds ?? []).includes(lens)) return { ...p, lensBranchId: lens };
+  // Not while working for a colleague (their view is theirs), and only an active branch of the person's own organisation.
+  if (await signedInContext().then((c) => Boolean(c?.assist)).catch(() => true)) return p;
+  if (!p.isSuperAdmin && !(p.orgBranchIds ?? []).includes(lens)) return p;
+  if (await prisma.branch.count({ where: { id: lens, isActive: true } })) return { ...p, lensBranchId: lens };
   return p;
 });
 
@@ -104,7 +107,7 @@ async function readBranchLens(): Promise<string | null> {
   try {
     const { cookies } = await import('next/headers');
     const v = (await cookies()).get(LENS_COOKIE)?.value ?? '';
-    return /^[a-z0-9]{8,40}$/i.test(v) ? v : null;
+    return /^[A-Za-z0-9_-]{1,64}$/.test(v) ? v : null;
   } catch {
     return null;
   }
@@ -226,13 +229,18 @@ export async function canSeeRecord(key: PermissionKey, record: RecordContext, wh
  * so a list can never show more than the record pages would. Branch-scoped
  * people get their branch; organisation-wide people get no extra filter.
  */
-export async function reachWhere(key: PermissionKey): Promise<{ branchId?: string | { in: string[] } }> {
+/**
+ * `lens: false` for one record, a write, or a person's own work: the branch
+ * lens is a way of LOOKING at lists and analytics, so a record opened from a
+ * link (or acted on) is never hidden by it.
+ */
+export async function reachWhere(key: PermissionKey, opts: { lens?: boolean } = {}): Promise<{ branchId?: string | { in: string[] } }> {
   const p = await getPrincipal();
   const d = decide(p, key);
   if (!d.allowed) return { branchId: '__no_access__' };
   if (d.scope === 'BRANCH' && p.branchId) return { branchId: p.branchId };
   // Organisation-wide, looking at one branch for now (the branch lens): that branch only.
-  if (d.scope === 'ALL' && p.lensBranchId) return { branchId: p.lensBranchId };
+  if (d.scope === 'ALL' && p.lensBranchId && opts.lens !== false) return { branchId: p.lensBranchId };
   // Organisation-wide (or a person with no branch): every branch of THEIR
   // organisation — never another organisation's. The platform team: all.
   return p.orgBranchIds ? { branchId: { in: p.orgBranchIds } } : {};

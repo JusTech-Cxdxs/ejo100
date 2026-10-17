@@ -62,7 +62,7 @@ export default async function ItControlRoomPage() {
       <PageHeader
         hero
         icon="shield"
-        eyebrow={it.lensBranch ? `${it.lensBranch} only` : 'Whole organisation'}
+        eyebrow={it.lensBranch ? `${it.lensBranch}: people, errors, refused attempts and support · the rest organisation-wide` : 'Whole organisation'}
         title="IT control room"
         description={`Systems, people, access, errors and support — as of ${formatDateTime(it.asOf)}. Read-only: each section opens the page where it is managed.`}
         actions={<AskEnyoButton variant="solid" send speak icon="speaker" label="Brief me on IT" question={`Give me a spoken IT briefing${it.lensBranch ? ` for ${it.lensBranch}` : ''}: health checks, sign-ins and failed sign-ins, accounts never used, access changes, refused attempts, the latest errors grouped by cause (use explain_error), the Support centre and scheduled jobs. End with the three things IT should do first.`} />}

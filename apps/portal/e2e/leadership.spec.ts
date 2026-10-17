@@ -29,6 +29,13 @@ test('an executive chooses a branch in the bar; every page follows; All branches
   await visitHealthy(page, '/analytics');
   await visitHealthy(page, '/workshop');
 
+  // Every branch in the bar can be chosen (whatever its id looks like).
+  const chips = page.getByTestId('branch-lens').getByRole('button');
+  const n = await chips.count();
+  for (let i = 1; i < Math.min(n, 5); i += 1) {
+    await chips.nth(i).click();
+    await expect(chips.nth(i)).toHaveAttribute('aria-pressed', 'true');
+  }
   await page.getByTestId('branch-lens').getByRole('button', { name: /All branches/ }).click();
   await expect(page.getByTestId('branch-lens').getByRole('button', { name: /All branches/ })).toHaveAttribute('aria-pressed', 'true');
   await open(page, '/headquarters');

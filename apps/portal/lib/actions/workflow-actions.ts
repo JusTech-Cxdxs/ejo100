@@ -21,7 +21,7 @@ export async function getWorkflowActionItems(): Promise<WorkflowAction[]> {
   // Queried for this person (their jobs, their organisation's branches), not
   // "the newest N platform-wide, then filtered", which drops items on a busy day.
   const T = 300;
-  const reach = await reachWhere('workshop.job_card.view');
+  const reach = await reachWhere('workshop.job_card.view', { lens: false });
   const me = (field: 'supervisorId' | 'createdById') => (isMaster ? {} : { [field]: user.id });
   const jc = { select: { id: true, jobNumber: true, branchId: true, supervisorId: true, createdById: true } } as const;
   const sv = { select: { id: true, serviceNumber: true, branchId: true, supervisorId: true, createdById: true } } as const;

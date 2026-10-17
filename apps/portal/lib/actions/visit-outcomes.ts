@@ -15,7 +15,7 @@ export async function getJobCardOutcomes(ids: string[]): Promise<Record<string, 
   if (ids.length === 0) return {};
   const rows = await prisma.jobCard.findMany({
     // Only records within reach — ids from the browser are never trusted.
-    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view')) },
+    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view', { lens: false })) },
     select: {
       id: true, status: true, checkedOutAt: true,
       cancellationRequests: { where: { status: 'APPROVED' }, select: { id: true } },
@@ -38,7 +38,7 @@ export async function getVehicleServiceOutcomes(ids: string[]): Promise<Record<s
   if (ids.length === 0) return {};
   const rows = await prisma.vehicleService.findMany({
     // Only records within reach — ids from the browser are never trusted.
-    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view')) },
+    where: { id: { in: ids }, ...(await reachWhere('workshop.job_card.view', { lens: false })) },
     select: { id: true, status: true, collectedAt: true, escalatedToJobCardId: true, payments: { select: { amount: true } }, refunds: { select: { amount: true } } },
   });
   const out: Record<string, OutcomeInfo> = {};

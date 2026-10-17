@@ -1,8 +1,8 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { authorize, getPrincipal, lensPeopleWhere, myOrganisationId } from '@/lib/authz/server';
-import { ROLE_LABELS } from '@/lib/authz/catalogue';
+import { authorize, getPrincipal, lensPeopleWhere, myOrganisationId, refuse } from '@/lib/authz/server';
+import { ROLE_LABELS, scopeFor } from '@/lib/authz/catalogue';
 import { KIND_LABEL, isErrorKind } from '@/lib/error-events-core';
 import { jobIsLate, jobStatuses } from '@/lib/job-runs';
 import { lagosYmd } from '@/lib/nigeria-calendar';
@@ -37,6 +37,9 @@ const ACTION_LABEL: Record<string, string> = {
 
 export async function getItControlRoom(): Promise<ItControlRoom> {
   await authorize('audit.view', undefined, 'getItControlRoom', 'The IT control room is for IT and administrators.');
+  const me = await getPrincipal();
+  // Organisation-wide IT only (a branch-level audit grant does not open it).
+  if (!me.isSuperAdmin && scopeFor(me, 'audit.view') !== 'ALL') await refuse('audit.view', 'getItControlRoom', 'The IT control room is for organisation-wide IT and administrators.');
   const [org, p, people, pulse] = await Promise.all([myOrganisationId(), getPrincipal(), lensPeopleWhere(), getItPulse()]);
   const o = org ?? '__none__';
   const now = Date.now();
@@ -49,11 +52,11 @@ export async function getItControlRoom(): Promise<ItControlRoom> {
   const [branchRows, staff, signIns, failedIns, sessions, roleRows, changes, deniedRows, errKinds, errRoutes, errLatest, queues, jobs] = await Promise.all([
     prisma.branch.findMany({ where: branchWhere, orderBy: { name: 'asc' }, select: { id: true, name: true } }),
     prisma.user.findMany({ where: { ...usersIn, isActive: true }, select: { branchId: true, lastLoginAt: true }, take: 20_000 }),
-    prisma.auditLog.findMany({ where: { organisationId: o, action: 'user.signed_in', createdAt: { gte: d7 }, ...people }, select: { createdAt: true }, take: 50_000 }),
+    prisma.auditLog.findMany({ where: { organisationId: o, action: 'user.signed_in', createdAt: { gte: d7 } }, select: { createdAt: true }, take: 50_000 }),
     prisma.auditLog.findMany({ where: { organisationId: o, action: 'user.sign_in_failed', createdAt: { gte: d7 } }, select: { createdAt: true }, take: 50_000 }),
     prisma.session.count({ where: { expiresAt: { gt: new Date(now) }, user: usersIn } }),
     prisma.role.findMany({ where: { organisationId: o, isSuperAdmin: false }, select: { name: true, slug: true, _count: { select: { users: { where: { user: { ...usersIn, isActive: true } } } } } } }),
-    prisma.auditLog.findMany({ where: { organisationId: o, action: { in: ACCESS_ACTIONS }, ...people }, orderBy: { createdAt: 'desc' }, take: 12, select: { createdAt: true, action: true, userId: true, metadata: true } }),
+    prisma.auditLog.findMany({ where: { organisationId: o, action: { in: ACCESS_ACTIONS } }, orderBy: { createdAt: 'desc' }, take: 12, select: { createdAt: true, action: true, userId: true, metadata: true } }),
     prisma.auditLog.findMany({ where: { organisationId: o, action: 'access.denied', createdAt: { gte: d7 }, ...people }, select: { metadata: true }, take: 20_000 }),
     prisma.errorEvent.groupBy({ by: ['kind'], where: { organisationId: o, createdAt: { gte: d7 }, ...people }, _count: { _all: true } }),
     prisma.errorEvent.groupBy({ by: ['route'], where: { organisationId: o, createdAt: { gte: d7 }, ...people }, _count: { _all: true }, orderBy: { _count: { route: 'desc' } }, take: 6 }),

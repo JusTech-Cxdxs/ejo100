@@ -235,7 +235,7 @@ export async function getCustomer360(customerId: string) {
   });
   if (!customer) return null;
   const me = await getPrincipal();
-  const reach = await reachWhere('crm.view');
+  const reach = await reachWhere('crm.view', { lens: false });
   const branchId = typeof reach.branchId === 'string' ? reach.branchId : null;
   const jobWhere = { customerId: customer.id, ...reach };
   const pay = { select: { id: true, amount: true, method: true, notes: true, recordedAt: true, recordedBy: { select: { fullName: true } } } } as const;
@@ -352,7 +352,7 @@ export type CustomerActivityEntry = { id: string; at: Date; action: string; enti
 export async function getCustomerActivity(customerId: string, take = 150): Promise<CustomerActivityEntry[]> {
   await authorize('crm.view', undefined, 'getCustomerActivity');
   const customer = await fencedCustomer(customerId);
-  const reach = await reachWhere('crm.view');
+  const reach = await reachWhere('crm.view', { lens: false });
   const [jcIds, svIds] = await Promise.all([
     prisma.jobCard.findMany({ where: { customerId: customer.id, ...reach }, select: { id: true }, take: 300 }),
     prisma.vehicleService.findMany({ where: { customerId: customer.id, ...reach }, select: { id: true }, take: 300 }),

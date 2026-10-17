@@ -69,7 +69,7 @@ export async function getTeamPerformance(periodKey?: string): Promise<TeamPerfor
 
   const open = new Map<string, number>();
   for (const r of [...openJc, ...openVs]) if (r.assignedTechnicianId) open.set(r.assignedTechnicianId, (open.get(r.assignedTechnicianId) ?? 0) + r._count._all);
-  // The people: everyone who handled something, and every active member of staff in reach with an open job.
+  // The people: everyone who handled something in the period, and everyone with a job open now.
   const userIds = [...new Set([...items.map((h) => h.userId), ...open.keys()].filter((v): v is string => Boolean(v)))];
   const users = userIds.length && org ? await prisma.user.findMany({
     where: { id: { in: userIds }, organisationId: org },
@@ -80,7 +80,8 @@ export async function getTeamPerformance(periodKey?: string): Promise<TeamPerfor
     id: u.id, name: u.fullName, branch: u.branch?.name ?? null,
     roles: u.roles.map((r) => ROLE_LABELS[r.role.slug] ?? r.role.name).join(', ') || 'No role',
   }));
-  const rows = summariseTeam(items.filter((h) => people.some((x) => x.id === h.userId)), people, open);
+  const known = new Set(people.map((x) => x.id));
+  const rows = summariseTeam(items.filter((h) => h.userId !== null && known.has(h.userId)), people, open);
   const timed = rows.reduce((n, r) => n + r.steps.reduce((m, s) => m + (s.withinPct === null ? 0 : s.count), 0), 0);
   const within = rows.reduce((n, r) => n + r.steps.reduce((m, s) => m + (s.withinPct === null ? 0 : Math.round((s.withinPct / 100) * s.count)), 0), 0);
   return {

@@ -20,7 +20,17 @@ test('the branch lens: headquarters roles get it; branch staff keep their own br
 test('the lens narrows, never widens, and is never a permission', () => {
   const server = read('lib/authz/server.ts');
   // Only for organisation-wide scope, and only a branch of the person's own organisation.
-  assert.match(server, /if \(d\.scope === 'ALL' && p\.lensBranchId\) return \{ branchId: p\.lensBranchId \};/);
+  assert.match(server, /if \(d\.scope === 'ALL' && p\.lensBranchId && opts\.lens !== false\) return \{ branchId: p\.lensBranchId \};/);
+  // Only an active branch, never while working for a colleague.
+  assert.match(server, /where: \{ id: lens, isActive: true \}/);
+  assert.match(server, /signedInContext\(\)\.then\(\(c\) => Boolean\(c\?\.assist\)\)/);
+  // One record, a write, or a person's own work: never hidden by the lens.
+  const support = read('lib/actions/support.ts');
+  for (const fn of ['getSupportTicket', 'replyToSupportTicket', 'assignSupportTicket', 'moveSupportTicket', 'setSupportTicketStatus']) {
+    const body = support.split(`export async function ${fn}(`)[1]!.split('\nexport ')[0]!;
+    assert.match(body, /reachWhere\([^)]*\{ lens: false \}\)/, fn);
+  }
+  for (const f of ['lib/actions/search.ts', 'lib/actions/my-work.ts', 'lib/actions/workflow-actions.ts', 'lib/reminders.ts', 'lib/enyo/tools/records.ts']) assert.match(read(f), /\{ lens: false \}/, f);
   assert.match(server, /\(p\.orgBranchIds \?\? \[\]\)\.includes\(lens\)/);
   // decide() never reads it.
   assert.doesNotMatch(read('lib/authz/catalogue.ts').split('export function decide')[1]!.split('\nexport ')[0]!, /lensBranchId/);

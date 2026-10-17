@@ -27,7 +27,7 @@ export async function GET(request: Request) {
     const p = await getPrincipal();
     const organisationId = p.organisationId ?? (await myOrganisationId());
     if (!organisationId) return NextResponse.json({ error: 'No organisation to export.' }, { status: 400, headers: NO_STORE });
-    const reach = await reachWhere('enyo.manage');
+    const reach = await reachWhere('enyo.manage', { lens: false });
     const b = reach.branchId;
     const branchIds = b === undefined ? null : typeof b === 'string' ? [b] : b.in;
     const { rows, report } = await buildTrainingSet({ organisationId, branchIds });

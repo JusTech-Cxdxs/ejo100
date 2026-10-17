@@ -92,7 +92,7 @@ export async function recordVisibleToMe(type: ReminderRecordType, id: string): P
       case 'CustomerVehicle':
         return (await allows('workshop.view')) && Boolean(await prisma.customerVehicle.findFirst({ where: { id, customer: await orgWhere() }, select: { id: true } }));
       case 'Part':
-        return (await allows('store.view')) && Boolean(await prisma.part.findFirst({ where: { id, ...(await reachWhere('store.view')) }, select: { id: true } }));
+        return (await allows('store.view')) && Boolean(await prisma.part.findFirst({ where: { id, ...(await reachWhere('store.view', { lens: false })) }, select: { id: true } }));
       case 'Warranty':
         return (await allows('warranty.view')) && Boolean(await prisma.warranty.findFirst({ where: { id, customer: await orgWhere() }, select: { id: true } }));
       case 'WarrantyClaim':
