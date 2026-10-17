@@ -5,6 +5,7 @@ import { formatDateTime } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LoadingLink } from '@/components/LoadingLink';
 import { CopyButton } from '@/components/CopyButton';
+import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
 import { PageTitle } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
 
@@ -38,6 +39,10 @@ function Row({ r, open }: { r: ErrorLogRow; open: boolean }) {
         <div className="mt-3 grid gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-xs sm:grid-cols-2">
           <dl className="space-y-1.5">
             <div className="flex flex-wrap items-center gap-1"><dt className="text-[var(--ejo-text-muted)]">Reference:</dt><dd className="font-mono text-[var(--ejo-text)]">{r.ref}</dd><CopyButton value={r.ref} label="Copy reference" /></div>
+            <div className="flex flex-wrap gap-2 pb-1">
+              <AskEnyoButton send question={`Explain error ${r.ref} in plain words: what happened, the likely cause, whether any data could be affected, and what IT should check next.`} label="Explain with Enyo" />
+              <AskEnyoButton send speak icon="speaker" question={`Explain error ${r.ref} aloud, briefly: what happened, the likely cause and what to check next.`} label="Explain aloud" />
+            </div>
             <div><dt className="inline text-[var(--ejo-text-muted)]">When: </dt><dd className="inline text-[var(--ejo-text)]">{formatDateTime(r.at)} (Lagos time)</dd></div>
             <div><dt className="inline text-[var(--ejo-text-muted)]">Who: </dt><dd className="inline text-[var(--ejo-text)]">{r.who.href ? <LoadingLink href={r.who.href} className="text-[var(--ejo-primary)] hover:underline">{r.who.label}</LoadingLink> : r.who.label}{r.who.type === 'customer' ? ' (customer)' : ''}</dd></div>
             <div><dt className="inline text-[var(--ejo-text-muted)]">Where: </dt><dd className="inline break-all text-[var(--ejo-text)]">{[r.method, r.path].filter(Boolean).join(' ') || '—'}{r.route && r.route !== r.path ? ` (${r.route})` : ''}</dd></div>

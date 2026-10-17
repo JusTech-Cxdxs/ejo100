@@ -7,10 +7,15 @@ import { ThemeSwitch } from './ThemeSwitch';
 import { Icon, type IconName } from './Icon';
 
 const HIGHLIGHTS: { title: string; text: string; icon: IconName }[] = [
-  { title: 'Follow every step', text: 'See your Job Cards and services move from check-in to collection, as it happens.', icon: 'route' },
-  { title: 'Estimates & payments', text: 'Review your estimate, see what is due and keep every receipt in one place.', icon: 'wallet' },
-  { title: 'Warranties & reminders', text: 'Know what is covered, when it ends and when your next service is due.', icon: 'shield' },
+  { title: 'Follow every step', text: 'Job Cards and services, from check-in to collection, as it happens.', icon: 'route' },
+  { title: 'Estimates & payments', text: 'Approve estimates, see what is due, keep every receipt.', icon: 'wallet' },
+  { title: 'Warranties', text: 'What is covered, for how long, and how to claim.', icon: 'shield' },
+  { title: 'Service reminders', text: 'When your next service is due, before it is late.', icon: 'calendarCheck' },
+  { title: 'Ask Enyo, any time', text: 'Our assistant answers about your own vehicles, day or night.', icon: 'sparkles' },
+  { title: 'Talk to a person', text: 'Open a request or complaint; our customer care replies by email or phone.', icon: 'chat' },
 ];
+
+const STEPS = ['Checked in', 'Estimate approved', 'Work in progress', 'Quality check', 'Ready to collect'];
 
 /**
  * The frame of every customer sign-in page (sign in, forgot password, set a
@@ -36,19 +41,36 @@ export function CustomerAuthShell({ title, subtitle, children, footer }: { title
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ejo-accent)]">Customer portal</p>
           <h2 className="mt-3 text-[2rem] font-bold leading-tight xl:text-4xl">Your vehicle, every step of the way.</h2>
           <p className="mt-3 text-sm leading-relaxed text-white/70">Track your repairs and services, approve estimates, see what you owe and when your car is ready to collect — any time, from any device.</p>
-          <ul className="mt-8 space-y-5">
+          <ul className="mt-7 grid grid-cols-2 gap-x-5 gap-y-4">
             {HIGHLIGHTS.map((h, i) => (
-              <li key={h.title} className="ejo-rise flex gap-4" style={{ animationDelay: `${160 + i * 70}ms` }}>
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--ejo-accent)]">
-                  <Icon name={h.icon} size={18} />
+              <li key={h.title} className="ejo-rise flex gap-3" style={{ animationDelay: `${160 + i * 50}ms` }}>
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-[var(--ejo-accent)]">
+                  <Icon name={h.icon} size={16} />
                 </span>
-                <span>
+                <span className="min-w-0">
                   <span className="block text-sm font-semibold">{h.title}</span>
-                  <span className="mt-0.5 block text-sm text-white/65">{h.text}</span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-white/60">{h.text}</span>
                 </span>
               </li>
             ))}
           </ul>
+          {/* How a visit moves along (the same steps the portal shows on each Job Card). */}
+          <div className="mt-8 rounded-2xl border border-white/10 bg-white/[0.04] p-4 [@media(max-height:820px)]:hidden" aria-label="How your visit moves along">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-white/50">Your visit, step by step</p>
+            <ol className="mt-3 flex items-center gap-1.5">
+              {STEPS.map((s, i) => (
+                <li key={s} className="flex min-w-0 flex-1 flex-col items-center gap-1.5 text-center">
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold ${i < 3 ? 'bg-[var(--ejo-accent)] text-[var(--ejo-secondary)]' : 'border border-white/25 text-white/60'}`}>{i + 1}</span>
+                  <span className="text-[10px] leading-tight text-white/65">{s}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="mt-6 flex flex-wrap gap-x-4 gap-y-1 text-xs text-white/55">
+            <span className="inline-flex items-center gap-1.5"><Icon name="lock" size={12} />Your records are private to you</span>
+            <span className="inline-flex items-center gap-1.5"><Icon name="mail" size={12} />Updates by email too</span>
+            {siteConfig.contact?.phone ? <span className="inline-flex items-center gap-1.5"><Icon name="phone" size={12} />{siteConfig.contact.phone}</span> : null}
+          </p>
         </div>
 
         <div className="ejo-rise relative flex items-end justify-between gap-6" style={{ animationDelay: '240ms' }}>

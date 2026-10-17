@@ -3,7 +3,7 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
-import { allows, getPrincipal, orgWhere } from '@/lib/authz/server';
+import { allows, getPrincipal, lensPeopleWhere, orgWhere } from '@/lib/authz/server';
 import { JOBS } from '@/lib/job-runs';
 import { securityActionLabel, securityActionDetail } from '@/lib/security-labels';
 import { recordUrl, describeApiEntry, areaOf, AREA_LABEL } from '@/lib/notification-rules';
@@ -62,7 +62,7 @@ export async function getAuditLogPage(f: { kind?: string; q?: string; userId?: s
         { entityType: { notIn: ['db:NotificationRead', 'db:NotificationPreference', 'db:CustomerNotificationRead'] } },
         integrityFence,
       ],
-      ...(f.userId ? { userId: f.userId } : {}),
+      ...(f.userId ? { userId: f.userId } : await lensPeopleWhere()),
       ...(createdAt.gte || createdAt.lt ? { createdAt } : {}),
       ...(refId ? { entityId: refId } : q ? { OR: [{ action: { contains: q.replace(/\s+/g, '_'), mode: 'insensitive' as const } }, { action: { contains: q, mode: 'insensitive' as const } }, { entityType: { contains: q.replace(/\s+/g, ''), mode: 'insensitive' as const } }, { entityId: { contains: q } }] } : {}),
     },

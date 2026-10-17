@@ -176,6 +176,8 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
   }, [cancelSpeech]);
 
   const visible = ready || (status !== null && canManage);
+  // The latest ask(), for briefing buttons that send straight away (ask is defined further down).
+  const askRef = useRef<((q: string, o?: { speak?: boolean }) => Promise<void>) | null>(null);
 
   // "Ask Enyo" buttons anywhere on a page (AskEnyoButton) open the chat with
   // the question in the box, ready to send or change — never sent by itself.
@@ -183,10 +185,14 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
     if (!visible) return;
     document.documentElement.dataset.enyo = 'ready';
     const onAsk = (e: Event) => {
-      const q = (e as CustomEvent<{ question?: unknown }>).detail?.question;
+      const d = (e as CustomEvent<{ question?: unknown; send?: unknown; speak?: unknown }>).detail;
+      const q = d?.question;
       setView('chat');
       openPanel();
-      if (typeof q === 'string' && q.trim()) setInput(q.trim().slice(0, MAX_LEN));
+      if (typeof q !== 'string' || !q.trim()) return;
+      // A briefing button asks straight away (and may read the answer aloud); others leave the question to send or change.
+      if (d?.send === true) setTimeout(() => { void askRef.current?.(q.trim().slice(0, MAX_LEN), { speak: d?.speak === true }); }, 0);
+      else setInput(q.trim().slice(0, MAX_LEN));
     };
     window.addEventListener(ENYO_ASK_EVENT, onAsk);
     return () => { window.removeEventListener(ENYO_ASK_EVENT, onAsk); delete document.documentElement.dataset.enyo; };
@@ -263,7 +269,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
     setTurns((list) => list.map((t) => (t.key === key ? fn(t) : t)));
   }, []);
 
-  const ask = useCallback(async (raw: string) => {
+  const ask = useCallback(async (raw: string, opts: { speak?: boolean } = {}) => {
     const message = raw.replace(/\s+$/g, '').trim().slice(0, MAX_LEN);
     if (!message || busy || !ready) return;
     cancelSpeech();
@@ -315,8 +321,9 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
       if (controller.signal.aborted) patchTurn(key, (t) => ({ ...t, state: 'stopped', status: undefined }));
       else if (!finished) patchTurn(key, (t) => ({ ...t, state: t.text ? 'done' : 'error', status: undefined, error: t.text ? undefined : { message: 'No answer came back. Please ask again.' } }));
     }
-    if (finished && !controller.signal.aborted && answer && prefsRef.current.speak) speakAloud(plainText(answer));
+    if (finished && !controller.signal.aborted && answer && (prefsRef.current.speak || opts.speak)) speakAloud(plainText(answer));
   }, [busy, ready, conversationId, pathname, patchTurn, mouth, cancelSpeech, speakAloud]);
+  askRef.current = ask;
 
   const stop = useCallback(() => { abortRef.current?.abort(); }, []);
 

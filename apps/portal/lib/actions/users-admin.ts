@@ -45,7 +45,9 @@ export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): 
   // Everyone this administrator manages (the platform team is invisible to organisations).
   const scope = { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { branchId: branchOnly } : {}), ...(p.isSuperAdmin ? {} : { NOT: { roles: { some: { role: { isSuperAdmin: true } } } } }) };
   const status = filters.status === 'active' ? { isActive: true } : filters.status === 'off' ? { isActive: false } : {};
-  const branch = filters.branchId && !branchOnly ? { branchId: filters.branchId.slice(0, 40) } : {};
+  // A branch asked for, or the branch lens (headquarters looking at one branch).
+  const wanted = filters.branchId || p.lensBranchId || '';
+  const branch = wanted && !branchOnly ? { branchId: wanted.slice(0, 40) } : {};
   const role = filters.roleId ? { roles: { some: { roleId: filters.roleId.slice(0, 40) } } } : {};
   const [users, roles, byActive, withoutId] = await Promise.all([
     prisma.user.findMany({

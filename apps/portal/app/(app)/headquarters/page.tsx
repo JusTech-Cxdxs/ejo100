@@ -4,6 +4,8 @@ import { getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { getLeadershipPulse } from '@/lib/actions/leadership';
 import { HQ_PERIODS } from '@/lib/hq-core';
 import { LoadingLink } from '@/components/LoadingLink';
+import { HqTabs } from '@/components/HqTabs';
+import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
 import { Icon, PageHeader, SectionCard, StatTile, StatusChip } from '@/components/ui';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -108,12 +110,15 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
         description={`${hq.period.label} · ${pluralize(hq.branches.length, 'branch', 'branches')} · figures as of ${formatDateTime(hq.asOf)}. Read-only: each figure opens the page where it is dealt with.`}
         actions={(
           <div className="flex flex-wrap gap-2">
+            <AskEnyoButton variant="solid" send speak icon="speaker" label="Brief me" question={`Give me a spoken briefing on ${hq.lensBranch ?? (hq.scope === 'branch' ? 'my branch' : 'the whole organisation, branch by branch')} this month (use branch_briefing, then stock_alerts and warranty_watch): the one-line verdict, money and what makes it, the workshop — Job Cards and Vehicle Services — decisions waiting, inventory, warranty, the team, customers and support, and the three things I should do first.`} />
             <a href={`/headquarters/export?period=${hq.period.key}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={15} />Export (CSV)</a>
             {hq.canBroadcast ? <LoadingLink href="/notifications/broadcasts/new" className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 text-sm font-semibold text-white hover:brightness-110"><Icon name="megaphone" size={15} />Send a notice</LoadingLink> : null}
           </div>
         )}
       />
 
+      <HqTabs active="/headquarters" period={hq.period.key} />
+      {hq.lensBranch ? <p role="status" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/[0.06] px-4 py-2.5 text-sm text-[var(--ejo-text)]">Showing <b>{hq.lensBranch}</b> only. Choose <b>All branches</b> in the bar at the top to compare every branch.</p> : null}
       <nav aria-label="Period" className="flex flex-wrap gap-2">
         {HQ_PERIODS.map((p) => (
           <LoadingLink key={p.key} href={periodLink(p.key)} aria-current={hq.period.key === p.key ? 'page' : undefined} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${hq.period.key === p.key ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] bg-[var(--ejo-surface)] text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]'}`}>{p.label}</LoadingLink>

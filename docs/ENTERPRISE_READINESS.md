@@ -224,6 +224,15 @@ emails use `lib/support/notify.ts` with the same rules.
 
 ---
 
+## 6b. Headquarters roles: the branch bar, team performance, the IT control room, Enyo briefings
+
+- **Branch bar** (every page, headquarters roles only — anyone whose reach is the whole organisation in some area: directors, administrators, IT). "All branches" or one branch; every module's lists and analytics follow it, because the server narrows the reach (`reachWhere`) to that branch. It never widens access and is never used to decide a permission; a record opened from a link still opens. Logs (audit trail, error log) follow it by *who acted*; a quoted error reference is always found. Branch staff do not get the bar: they see their own branch as before.
+- **Team performance** (`/headquarters/team`): each person who handled a step — jobs finished, estimates checked and approved, parts and outside purchases approved, released and paid — how many, the median time from when it reached them, the share within the standard (72 h for a job; 24 h for approvals and payment; 8 h for parts steps), the money involved, rework and open jobs; a rating (strong / steady / needs attention).
+- **IT control room** (`/it`, audit trail access, organisation-wide): health checks, sign-ins and failures for seven days, sessions, people per branch, roles in use, access changes, refused attempts by permission, errors by kind and page (each with **Explain with Enyo**), the Support centre's teams and every scheduled job.
+- **Enyo briefings**: `branch_briefing` (Business analytics) and `explain_error` (audit trail), run as the signed-in person. "Brief me" buttons ask straight away and read the answer aloud with the browser's own voice; nothing is sent elsewhere.
+
+---
+
 ## 7. Hierarchy and migration plan (Stage 2)
 
 1. **Add, never rename.** New tables `groups`, `companies`, `regions`; nullable `companyId` on

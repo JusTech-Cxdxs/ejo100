@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { requireUser } from '@/lib/actions/workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { decide, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
+import { decide, hasBranchLens, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
 import { signedInContext, type ActiveAssist } from '@/lib/assist/server';
 
 /**
@@ -76,8 +76,39 @@ export async function colleaguePrincipal(userId: string): Promise<Principal> {
  */
 export const getPrincipal = cache(async (): Promise<Principal> => {
   const user = await requireUser();
-  return principalFor(user.id);
+  const p = await principalFor(user.id);
+  // The branch lens (headquarters roles): one branch of their own organisation, for now.
+  const lens = await readBranchLens();
+  if (!lens || !hasBranchLens(p)) return p;
+  if (p.isSuperAdmin ? await prisma.branch.count({ where: { id: lens } }) : (p.orgBranchIds ?? []).includes(lens)) return { ...p, lensBranchId: lens };
+  return p;
 });
+
+/**
+ * Logs follow the branch lens by WHO acted: with one branch chosen, only the
+ * entries of that branch's people (logs have no branch of their own).
+ * Organisation-wide view: no filter.
+ */
+export async function lensPeopleWhere(): Promise<{ userId?: { in: string[] } }> {
+  const p = await getPrincipal();
+  if (!p.lensBranchId) return {};
+  const people = await prisma.user.findMany({ where: { branchId: p.lensBranchId, ...(p.organisationId ? { organisationId: p.organisationId } : {}) }, select: { id: true }, take: 5000 });
+  return { userId: { in: people.map((u: { id: string }) => u.id) } };
+}
+
+/** The cookie holding the branch lens (a branch id; empty = all branches). */
+export const LENS_COOKIE = 'ejo-branch-lens';
+
+/** The lens cookie for this request; none outside a request (scheduled jobs, after()). */
+async function readBranchLens(): Promise<string | null> {
+  try {
+    const { cookies } = await import('next/headers');
+    const v = (await cookies()).get(LENS_COOKIE)?.value ?? '';
+    return /^[a-z0-9]{8,40}$/i.test(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * The person who actually signed in — the assistant during an assisted
@@ -200,6 +231,8 @@ export async function reachWhere(key: PermissionKey): Promise<{ branchId?: strin
   const d = decide(p, key);
   if (!d.allowed) return { branchId: '__no_access__' };
   if (d.scope === 'BRANCH' && p.branchId) return { branchId: p.branchId };
+  // Organisation-wide, looking at one branch for now (the branch lens): that branch only.
+  if (d.scope === 'ALL' && p.lensBranchId) return { branchId: p.lensBranchId };
   // Organisation-wide (or a person with no branch): every branch of THEIR
   // organisation — never another organisation's. The platform team: all.
   return p.orgBranchIds ? { branchId: { in: p.orgBranchIds } } : {};
