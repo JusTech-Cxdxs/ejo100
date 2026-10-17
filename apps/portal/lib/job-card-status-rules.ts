@@ -28,7 +28,7 @@ export type JobCardRoleContext = {
   isSupervisor: boolean;
   /** This Job Card's assigned technician. */
   isAssignedTechnician: boolean;
-  /** Holds the branch-wide Workshop Manager role. */
+  /** Holds the branch-wide Manager role. */
   isEligibleManager: boolean;
 };
 

@@ -27,7 +27,7 @@ export const aftercareTools: StaffTool[] = [
       additionalProperties: false,
     },
     run: async (args) => {
-      if (!(await allows('warranty.view'))) return refused('warranties and claims are for Warranty staff, the Workshop Manager and administrators.');
+      if (!(await allows('warranty.view'))) return refused('warranties and claims are for Warranty staff, the Manager and administrators.');
       const days = typeof args.days === 'number' ? args.days : 30;
       const now = new Date();
       const customer = await orgWhere();

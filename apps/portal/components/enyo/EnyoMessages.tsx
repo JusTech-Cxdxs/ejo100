@@ -165,7 +165,7 @@ function CopyAnswer({ text }: { text: string }) {
   );
 }
 
-function ErrorBox({ error }: { error: { message: string; ref?: string } }) {
+function ErrorBox({ error, onRetry, onNewChat }: { error: { message: string; ref?: string }; onRetry?: () => void; onNewChat?: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
     <div role="alert" className="mt-2 rounded-[var(--ejo-radius-md)] border border-[color-mix(in_srgb,var(--ejo-error)_35%,transparent)] bg-[color-mix(in_srgb,var(--ejo-error)_7%,var(--ejo-bg))] p-3 text-sm text-[var(--ejo-text)]">
@@ -178,11 +178,25 @@ function ErrorBox({ error }: { error: { message: string; ref?: string } }) {
           </button>
         </p>
       ) : null}
+      {onRetry || onNewChat ? (
+        <p className="mt-2 flex flex-wrap gap-2 pl-6">
+          {onRetry ? (
+            <button type="button" onClick={onRetry} className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[var(--ejo-primary)] px-3 text-xs font-semibold text-[var(--ejo-on-primary,#fff)] hover:opacity-90">
+              <EIcon name="history" size={14} />Try again
+            </button>
+          ) : null}
+          {onNewChat ? (
+            <button type="button" onClick={onNewChat} className="inline-flex min-h-9 items-center gap-1.5 rounded-full border border-[var(--ejo-border)] px-3 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">
+              <EIcon name="plus" size={14} />New chat
+            </button>
+          ) : null}
+        </p>
+      ) : null}
     </div>
   );
 }
 
-export function AssistantTurn({ turn, last, onRated, onNavigate, onListen, speaking }: { turn: Turn; last: boolean; onRated: (r: 1 | -1 | undefined) => void; onNavigate?: () => void; onListen?: () => void; speaking?: boolean }) {
+export function AssistantTurn({ turn, last, onRated, onNavigate, onListen, speaking, onRetry, onNewChat }: { turn: Turn; last: boolean; onRated: (r: 1 | -1 | undefined) => void; onNavigate?: () => void; onListen?: () => void; speaking?: boolean; onRetry?: () => void; onNewChat?: () => void }) {
   const live = turn.state === 'waiting' || turn.state === 'streaming';
   return (
     <div className="text-sm leading-relaxed text-[var(--ejo-text)]">
@@ -207,7 +221,7 @@ export function AssistantTurn({ turn, last, onRated, onNavigate, onListen, speak
       ))}
       {turn.drafts.map((d, i) => <DraftCard key={i} draft={d} onNavigate={onNavigate} />)}
       <Sources sources={turn.sources} onNavigate={onNavigate} />
-      {turn.error ? <ErrorBox error={turn.error} /> : null}
+      {turn.error ? <ErrorBox error={turn.error} onRetry={last ? onRetry : undefined} onNewChat={last ? onNewChat : undefined} /> : null}
       {turn.state === 'stopped' ? <p className="mt-1.5 text-xs text-[var(--ejo-text-muted)]">Stopped.</p> : null}
       {turn.state === 'done' && turn.text ? (
         <div className="-ml-2.5 mt-1 flex flex-wrap items-center">

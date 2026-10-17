@@ -3,7 +3,7 @@ import { prisma, type Prisma } from '@ejo/database';
 import { clip, encodeEvent, redactForLog, routeModel, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
 import { requireUser } from '@/lib/actions/workshop';
 import { enyoReady } from '@/lib/enyo/settings';
-import { staffTools } from '@/lib/enyo/tools';
+import { staffToolsFor } from '@/lib/enyo/tools';
 import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
 import { logError } from '@/lib/errors';
 import { findLearned, noteLearnedUse } from '@/lib/enyo/learned';
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
     // How this person works here (their own actions), so answers fit their job — never during an assisted session.
     const profile = ctx.assisted ? null : await workProfile(userId, organisationId);
     const system = await staffSystemPrompt({ ctx, settings: ready.settings, organisationId, memory, assistantName, examples: learned.map((l) => ({ question: l.question, answer: l.answer })), workProfile: profile });
-    const turns: ChatMessage[] = [...trimHistory(history, 12_000, 16), { role: 'user', content: message }];
+    const turns: ChatMessage[] = [...trimHistory(history, 8_000, 12), { role: 'user', content: message }];
     // Cost: small talk and short how-to go to the fast model; records and figures to the main one.
     const route = routeModel(message, ready.config);
 
@@ -125,7 +125,15 @@ export async function POST(request: NextRequest) {
           return;
         }
         try {
-          const result = await runAgent({ config: { ...ready.config, model: route.model }, system, messages: turns, tools: staffTools(), ctx, emit, signal: request.signal, deadlineMs: Math.max(8_000, 52_000 - (Date.now() - requestStarted)) });
+          // Only the tools this question can need (each request stays small for the model's per-minute budget);
+          // too big or too frequent anyway → once more with fewer tools, fewer turns and the fast model.
+          const previous = [...history].reverse().find((m) => m.role === 'user')?.content ?? '';
+          const offer = staffToolsFor(message, previous);
+          const result = await runAgent({
+            config: { ...ready.config, model: route.model }, system, messages: turns, tools: offer.tools, ctx, emit, signal: request.signal,
+            deadlineMs: Math.max(8_000, 52_000 - (Date.now() - requestStarted)), maxToolChars: 6000,
+            retrySmaller: { tools: offer.slim, model: ready.config.fastModel && ready.config.fastModel !== route.model ? ready.config.fastModel : undefined, keepMessages: 4 },
+          });
           // Keep what was said: which tools ran and how they ended, and the answer.
           // Tool RESULTS are not kept: they can hold email text or records whose own
           // retention and consent rules (mail: 90 days, withdrawn consent) must win.

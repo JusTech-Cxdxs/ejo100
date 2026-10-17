@@ -334,9 +334,9 @@ const NEXT_STEP_LABEL: Record<string, string> = {
 const WAITING_ON: Record<string, string> = {
   IN_PROGRESS: "this Job Card's supervisor or technician",
   AWAITING_PARTS: "this Job Card's supervisor or technician",
-  QUALITY_CHECK: "this Job Card's supervisor or a Workshop Manager",
-  COMPLETED: "this Job Card's supervisor or a Workshop Manager",
-  CLOSED: "this Job Card's supervisor, technician or a Workshop Manager",
+  QUALITY_CHECK: "this Job Card's supervisor or a Manager",
+  COMPLETED: "this Job Card's supervisor or a Manager",
+  CLOSED: "this Job Card's supervisor, technician or a Manager",
 };
 
 export default async function JobCardDetailPage({
@@ -730,7 +730,7 @@ export default async function JobCardDetailPage({
                           : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
                     }`}
                   >
-                    {ESTIMATE_STATUS_LABEL[estimate.status]}
+                    {estimate.status === 'APPROVED' && isEligibleManager && estimate.approvedById !== viewerId && estimate.createdById !== viewerId ? 'Waiting for you (Manager)' : ESTIMATE_STATUS_LABEL[estimate.status]}
                   </span>
                   {estimate.status === 'MANAGER_APPROVED' ? (
                     <PrintMenu

@@ -10,7 +10,7 @@ import { day, lagosDayStart, lagosWeekStart, nothing, ok, r2, refused, text } fr
 import type { StaffTool } from '../types';
 
 const ymd = (d: Date) => d.toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
-const MONEY_WHO = 'business figures (takings, revenue, profit) are for Finance, the Workshop Manager and administrators.';
+const MONEY_WHO = 'business figures (takings, revenue, profit) are for Finance, the Manager and administrators.';
 
 async function scopeLabel(key: 'analytics.business.view' | 'workshop.close.approve'): Promise<{ where: Awaited<ReturnType<typeof reachWhere>>; label: string }> {
   const where = await reachWhere(key);
@@ -111,7 +111,7 @@ export const businessTools: StaffTool[] = [
     },
     run: async (args) => {
       const [money, manager] = await Promise.all([allows('analytics.business.view'), allows('workshop.close.approve')]);
-      if (!money && !manager) return refused('the technician ranking is for the Workshop Manager, Finance and administrators.');
+      if (!money && !manager) return refused('the technician ranking is for the Manager, Finance and administrators.');
       const { from, to, label } = rankingRange(text(args.period, 20) || 'this_month');
       const { where: reach, label: scope } = await scopeLabel(money ? 'analytics.business.view' : 'workshop.close.approve');
       const done = { completedAt: { gte: from, lt: to }, assignedTechnicianId: { not: null } };

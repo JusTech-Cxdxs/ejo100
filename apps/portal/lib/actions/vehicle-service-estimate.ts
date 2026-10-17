@@ -630,7 +630,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
     metadata: { serviceNumber: estimate.vehicleService.serviceNumber },
   });
 
-  // Supervisor approval is not final: the branch's Workshop Managers are
+  // Supervisor approval is not final: the branch's Managers are
   // notified and the first to act completes the review. Fail-soft.
   try {
     const managers = await listEligibleManagersForBranch(estimate.vehicleService.branchId);
@@ -662,7 +662,7 @@ export async function approveServiceEstimate(estimateId: string): Promise<void> 
   }
 }
 
-/** The Workshop Manager's sign-off. The service's creator is notified;
+/** The Manager's sign-off. The service's creator is notified;
  * sending to the customer is a separate step
  * (notifyCustomerOfApprovedServiceEstimate). */
 export async function approveServiceEstimateAsManager(estimateId: string): Promise<void> {

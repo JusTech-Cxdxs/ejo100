@@ -114,7 +114,7 @@ export function allowedLinks(d: BriefData): Set<string> {
 export const briefCount = (d: BriefData) => d.sections.reduce((n, s) => n + s.count, 0);
 
 /** What needs the person, in order: things they must decide or answer first, notifications last. */
-const ORDER = ['decisions', 'support', 'reminders', 'appointments', 'steps', 'mail', 'jobs', 'broadcasts', 'activity'];
+const ORDER = ['decisions', 'support', 'reminders', 'appointments', 'steps', 'mail', 'jobs', 'waiting', 'broadcasts', 'activity'];
 export function orderedSections(d: BriefData): BriefSection[] {
   const rank = (k: string) => { const i = ORDER.indexOf(k); return i < 0 ? ORDER.length : i; };
   return d.sections.filter((s) => s.count > 0).sort((a, b) => (b.overdue ? 1 : 0) - (a.overdue ? 1 : 0) || rank(a.key) - rank(b.key));

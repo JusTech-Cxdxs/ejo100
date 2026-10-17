@@ -4075,3 +4075,29 @@ model PublicProfile {
   @@index([organisationId, sortOrder])
   @@map("public_profiles")
 }
+
+/// One page view on the public website (v40): anonymous — a keyed hash of the
+/// random visitor cookie (no name, address or IP), the page path without its
+/// query, the referring site's host, the kind of device and the seconds spent.
+/// Feeds IT's website report (visitors per day, top pages, time on page, how
+/// many also chatted with Enyo). Page paths keep no tokens: long ids are
+/// replaced with ":id".
+model SiteVisit {
+  id             String   @id @default(cuid())
+  organisationId String
+  day            DateTime @db.Date
+  visitorHash    String
+  sessionId      String
+  path           String
+  referrerHost   String?
+  device         String
+  startedAt      DateTime @default(now())
+  durationSec    Int      @default(0)
+  /// The same visitor talked to Enyo that day (set when the page is left).
+  chatted        Boolean  @default(false)
+
+  @@index([organisationId, day])
+  @@index([organisationId, startedAt])
+  @@index([visitorHash, day])
+  @@map("site_visits")
+}

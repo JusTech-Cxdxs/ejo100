@@ -18,7 +18,7 @@ const publish = publishBroadcast;
 test('an administrator publishes one broadcast to everyone and one to Workshop Managers', async ({ page, request }) => {
   await as(page, 'administrator');
   S.allUrl = await publish(page, { category: /Security alert/, title: S.all, message: 'Assemble at the car park.', audience: 'ALL', email: false });
-  S.roleUrl = await publish(page, { category: /Important/, title: S.role, message: 'Bring the Q3 workshop figures.', audience: 'ROLE', role: 'Workshop Manager', email: true });
+  S.roleUrl = await publish(page, { category: /Important/, title: S.role, message: 'Bring the Q3 workshop figures.', audience: 'ROLE', role: 'Manager', email: true });
   const mail = await latestMail(request, who('workshop-manager').email, new RegExp(tag));
   expect(mail.html).toContain('Bring the Q3 workshop figures.');
   // Not emailed to someone it is not for.

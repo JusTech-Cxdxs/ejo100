@@ -83,12 +83,12 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
-    id: 'job-card-estimate-approve', title: 'Approve an estimate (supervisor, then Manager)', page: '/approvals', needs: EVERYONE, does: ['workshop.estimate.approve', 'workshop.estimate.final_approve'], who: 'The supervisor, then the Workshop Manager',
+    id: 'job-card-estimate-approve', title: 'Approve an estimate (supervisor, then Manager)', page: '/approvals', needs: EVERYONE, does: ['workshop.estimate.approve', 'workshop.estimate.final_approve'], who: 'The supervisor, then the Manager',
     keywords: ['approve estimate', 'final approval', 'manager', 'send back', 'validate', 'estimate'],
     steps: [
       'Open Approvals and choose the estimate.',
       'Supervisor: check the lines and press "Approve estimate", or "Send back" with a reason.',
-      'Workshop Manager: press "Approve as Manager" for the final approval.',
+      'Manager: press "Approve as Manager" for the final approval.',
     ],
   },
   {
@@ -120,21 +120,21 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
-    id: 'job-card-close', title: 'Close a Job Card and check the vehicle out', page: '/workshop/job-cards', needs: WORKSHOP, does: ['workshop.close.request', 'workshop.close.approve'], who: 'Front desk or supervisor asks; the Workshop Manager approves',
+    id: 'job-card-close', title: 'Close a Job Card and check the vehicle out', page: '/workshop/job-cards', needs: WORKSHOP, does: ['workshop.close.request', 'workshop.close.approve'], who: 'Front desk or supervisor asks; the Manager approves',
     keywords: ['close', 'check out', 'checkout', 'collect', 'collection', 'release vehicle', 'finish', 'done'],
     steps: [
       'When the customer has paid in full, open the Job Card and press "Request close".',
-      'The Workshop Manager presses "Approve close" (or "Decline" with a note).',
+      'The Manager presses "Approve close" (or "Decline" with a note).',
       'The front desk then checks the vehicle out in the Status section, entering the name of the person collecting it.',
       'Security confirms the vehicle leaving at the gate.',
     ],
   },
   {
-    id: 'job-card-cancel', title: 'Cancel a Job Card', page: '/workshop/job-cards', needs: WORKSHOP, does: ['workshop.close.request', 'workshop.close.approve'], who: 'Front desk or supervisor asks; the Workshop Manager approves',
+    id: 'job-card-cancel', title: 'Cancel a Job Card', page: '/workshop/job-cards', needs: WORKSHOP, does: ['workshop.close.request', 'workshop.close.approve'], who: 'Front desk or supervisor asks; the Manager approves',
     keywords: ['cancel', 'cancellation', 'stop job', 'customer withdrew', 'abandon'],
     steps: [
       'Open the Job Card, fill in "Request cancellation" with the reason and press "Request cancellation".',
-      'The Workshop Manager presses "Approve cancellation" or "Decline".',
+      'The Manager presses "Approve cancellation" or "Decline".',
       'If the customer paid anything, Finance records the refund before the vehicle is handed back.',
     ],
   },
@@ -154,7 +154,7 @@ export const GUIDE: GuideEntry[] = [
       'Make sure the Store Part lines on the estimate are matched by the Store.',
       'Open the Job Card (or Vehicle Service) and press "+ Request Store Parts" in Sourcing.',
       'Check the quantities and press "Raise Parts Request".',
-      'The Workshop Manager approves it, then the Store presses "Approve & Reserve" and finally "Release" when handing the parts over.',
+      'The Manager approves it, then the Store presses "Approve & Reserve" and finally "Release" when handing the parts over.',
     ],
   },
   {
@@ -176,7 +176,7 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
-    id: 'who-pays', title: 'Charge an estimate line to warranty, goodwill or internal', page: '/workshop/job-cards', needs: WORKSHOP, does: ['warranty.claim.approve'], who: 'The Warranty HOD or the Workshop Manager',
+    id: 'who-pays', title: 'Charge an estimate line to warranty, goodwill or internal', page: '/workshop/job-cards', needs: WORKSHOP, does: ['warranty.claim.approve'], who: 'The Warranty HOD or the Manager',
     keywords: ['who pays', 'warranty', 'goodwill', 'internal', 'not charged', 'bill to', 'free'],
     steps: [
       'Open the Job Card and find the "Who pays" panel next to the estimate.',
@@ -340,7 +340,7 @@ export const GUIDE: GuideEntry[] = [
     ],
   },
   {
-    id: 'warranty-policies', title: 'Manage warranty policies and providers', page: '/warranty/policies', needs: WARRANTY, does: ['warranty.claim.approve'], who: 'The Warranty HOD or the Workshop Manager',
+    id: 'warranty-policies', title: 'Manage warranty policies and providers', page: '/warranty/policies', needs: WARRANTY, does: ['warranty.claim.approve'], who: 'The Warranty HOD or the Manager',
     keywords: ['policy', 'provider', 'warranty policy', 'manufacturer', 'coverage terms'],
     steps: ['Go to Warranty → Policies (or Providers) and use "Add policy" ("Add provider").', 'Removing one needs a request and two approvals ("Request deletion", then "Approve").'],
   },

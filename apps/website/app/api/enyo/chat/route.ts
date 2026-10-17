@@ -200,6 +200,8 @@ export async function POST(req: NextRequest) {
             maxSteps: 5,
             maxToolCalls: 6,
             maxToolChars: 6000,
+            // Too big or too frequent for the model's per-minute budget: once more with the last turns only, on the fast model.
+            retrySmaller: { tools: (mode === 'CUSTOMER' ? customerTools : publicTools).slice(0, 6), model: ready.config.fastModel, keepMessages: 4 },
           });
           const messageId = await storeAgentResult(conversation.id, result, Date.now() - started);
           if (result.error) {

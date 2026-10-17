@@ -42,7 +42,7 @@ export function nextStep(s: JobState): string {
   if (s.technicianAccepted === 'PENDING') return 'Waiting for the technician to accept the job.';
   if (!s.estimateStatus || s.estimateStatus === 'DRAFT') return 'The technician and supervisor prepare the estimate and submit it.';
   if (s.estimateStatus === 'SUBMITTED') return 'Waiting for the supervisor to approve the estimate.';
-  if (s.estimateStatus === 'APPROVED') return 'Waiting for the Workshop Manager\'s final approval of the estimate.';
+  if (s.estimateStatus === 'APPROVED') return 'Waiting for the Manager\'s final approval of the estimate.';
   if (s.estimateStatus === 'MANAGER_APPROVED' && !s.customerNotified) return 'The front desk sends the approved estimate to the customer ("Notify customer").';
   const deposit = r2(s.total * s.depositFraction);
   if (s.status === 'AWAITING_CUSTOMER_APPROVAL' && s.paid < deposit - 0.004) return `Waiting for the customer's deposit: ${naira(deposit)} (${Math.round(s.depositFraction * 100)}% of ${naira(s.total)}); ${naira(s.paid)} paid so far.`;

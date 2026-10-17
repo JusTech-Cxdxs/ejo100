@@ -23,7 +23,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
   if (!(await canSeeMasterAnalytics())) {
     return (
       <div className="w-full p-4 sm:p-8">
-        <PageHeader hero icon="chart" title="Business analytics" description="This dashboard is for the Master Admin, Administrators, the Workshop Manager and Finance. Ask an administrator if you need access." />
+        <PageHeader hero icon="chart" title="Business analytics" description="This dashboard is for the Master Admin, Administrators, the Manager and Finance. Ask an administrator if you need access." />
       </div>
     );
   }

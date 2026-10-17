@@ -157,7 +157,8 @@ async function main() {
     await prisma.role.upsert({
       where: { organisationId_slug: { organisationId: organisation.id, slug: slugify(name) } },
       update: {},
-      create: { organisationId: organisation.id, name, slug: slugify(name), isSystem: true },
+      // A Manager runs a branch (the role keeps its stable slug).
+      create: { organisationId: organisation.id, name: name === 'Workshop Manager' ? 'Manager' : name, slug: slugify(name), isSystem: true },
     });
   }
 

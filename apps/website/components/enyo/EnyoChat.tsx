@@ -6,6 +6,8 @@ import { readEvents, type EnyoEvent } from '@ejo/enyo/src/protocol';
 import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
 import { joinSpoken, useSpeechInput } from '@ejo/enyo/src/ui/speechInput';
 import { EnyoMarkdown } from './EnyoMarkdown';
+import { usePathname } from 'next/navigation';
+import { NUDGE_AFTER_MS, nudgeFor } from '@/lib/enyo/nudge';
 
 /**
  * Enyo's chat on the website: a floating button that opens a chat panel.
@@ -128,6 +130,19 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
   const name = status?.displayName || 'Enyo';
   // Phones: the chat fits the visible screen above the keyboard, header always in view.
   const viewportBox = useChatViewport(open);
+  const pathname = usePathname();
+  // After a while on a page without asking anything, Enyo offers one question (once per visit).
+  const [nudge, setNudge] = useState<{ line: string; ask: string } | null>(null);
+  const nudgeSeen = () => { try { return sessionStorage.getItem('enyo:nudged') === '1'; } catch { return true; } };
+  const markNudged = () => { try { sessionStorage.setItem('enyo:nudged', '1'); } catch { /* private mode */ } };
+  useEffect(() => {
+    setNudge(null);
+    if (variant !== 'public' || !status?.ready || open || messages.length || nudgeSeen()) return;
+    const offer = nudgeFor(pathname);
+    if (!offer) return;
+    const t = setTimeout(() => { if (!nudgeSeen() && document.visibilityState === 'visible') { setNudge(offer); markNudged(); } }, NUDGE_AFTER_MS);
+    return () => clearTimeout(t);
+  }, [variant, status?.ready, open, messages.length, pathname]);
 
   // May the button show? (Also reopens this tab's conversation.)
   useEffect(() => {
@@ -269,6 +284,16 @@ export function EnyoChat({ variant }: { variant: 'portal' | 'public' }) {
 
   return (
     <>
+      {!open && nudge ? (
+        <div role="status" aria-live="polite" data-testid="enyo-nudge" className={`ejo-rise fixed right-[calc(env(safe-area-inset-right)+1rem)] z-[45] mb-16 w-[min(18rem,calc(100vw-2rem))] rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-3 text-sm text-[var(--ejo-text)] shadow-xl sm:right-6 ${variant === 'portal' ? '' : 'bottom-[calc(env(safe-area-inset-bottom)+1.25rem)] sm:bottom-6'}`}>
+          <p className="pr-6">{nudge.line}</p>
+          <button type="button" aria-label="No thanks" onClick={() => setNudge(null)} className="absolute right-1.5 top-1.5 flex h-8 w-8 items-center justify-center rounded-full text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">×</button>
+          <div className="mt-2 flex gap-2">
+            <button type="button" onClick={() => { const ask = nudge.ask; setNudge(null); setOpen(true); void send(ask); }} className="min-h-9 rounded-full bg-[var(--ejo-primary)] px-3 text-xs font-semibold text-white hover:brightness-110">Yes, ask {name}</button>
+            <button type="button" onClick={() => { setNudge(null); setOpen(true); }} className="min-h-9 rounded-full border border-[var(--ejo-border)] px-3 text-xs font-medium hover:bg-[var(--ejo-bg)]">Something else</button>
+          </div>
+        </div>
+      ) : null}
       {!open ? (
         <button
           ref={button}

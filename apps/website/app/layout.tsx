@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { SiteChrome } from '@/components/SiteChrome';
 import { EnyoChat } from '@/components/enyo/EnyoChat';
+import { VisitTracker } from '@/components/site/VisitTracker';
 import { ThemeProvider } from '@/lib/theme';
 import { I18nProvider } from '@/lib/i18n';
 import { siteConfig } from '@/lib/site-config';
@@ -62,6 +63,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
             <SiteChrome><Footer /></SiteChrome>
             {/* Enyo for visitors (the customer portal has its own, in PortalShell). */}
             <SiteChrome><EnyoChat variant="public" /></SiteChrome>
+            {/* Anonymous page views and time on page for IT's website report. */}
+            <VisitTracker />
           </I18nProvider>
         </ThemeProvider>
       </body>

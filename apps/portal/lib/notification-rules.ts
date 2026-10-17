@@ -38,6 +38,8 @@ export const HIDDEN_ACTIONS = [
   'mailbox.connected', 'mailbox.reconnected', 'mailbox.disconnected', 'mailbox.ai_consent_given', 'mailbox.ai_consent_declined', 'mailbox.ai_consent_withdrawn',
   // v37: sign-ins are security records, not news; integrity alerts are shown only on the Integrity page and to its reviewers (never to the person they are about).
   'user.signed_in', 'user.sign_in_failed', 'customer.sign_in_failed',
+  // Refused attempts are security records (IT control room, Audit Logs), never news.
+  'access.denied',
   'integrity.alert_raised', 'integrity.alert_reviewed', 'integrity.speak_up', 'integrity.scan',
 ];
 

@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
-import { allows } from '@/lib/authz/server';
+import { allows, getPrincipal } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
 import { getWorkshopDashboardCounts, requireUser } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
@@ -18,6 +18,8 @@ import { EnyoBriefCard } from '@/components/enyo/EnyoBriefCard';
 import { LeadershipOverview } from '@/components/dashboard/LeadershipOverview';
 import { ItOverview } from '@/components/dashboard/ItOverview';
 import { overviewsFor } from '@/lib/actions/leadership';
+import { getMyPending } from '@/lib/actions/pending';
+import { WaitingOnOthers } from '@/components/WaitingOnOthers';
 import { Suspense } from 'react';
 import { EmptyState, Icon, PageHeader, SectionCard, StatTile, type IconName, type Tone } from '@/components/ui';
 import { ACTION_ICON, CATEGORY_ICON, CATEGORY_TILE } from '@/components/ui/notify-icons';
@@ -81,8 +83,11 @@ export default async function DashboardPage() {
     Promise.all([allows('workshop.job.work'), allows('workshop.job.supervise')]).then((xs) => xs.some(Boolean)),
   ]);
   const approver = approverFlags.some(Boolean);
+  // Managers and others may look at support for their branch; logging calls is the support team's work.
+  const principal = await getPrincipal();
+  const doesSupport = principal.isSuperAdmin || ['customer-care', 'customer-care-lead'].some((s) => principal.roleSlugs.includes(s));
   const overviews = await overviewsFor();
-  const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs] = await Promise.all([
+  const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs, waiting] = await Promise.all([
     getWorkshopDashboardCounts(),
     getDashboardTrend(),
     getDashboardNotifications(),
@@ -92,10 +97,11 @@ export default async function DashboardPage() {
     prisma.user.findUnique({ where: { id: me.id }, select: { fullName: true } }).catch(() => null),
     getMyNumbers().catch(() => []),
     worksJobs ? getMyJobs().catch(() => []) : Promise.resolve([]),
+    getMyPending().catch(() => []),
   ]);
   const approvals = notifications.filter(isApproval);
   // Unique destinations, role-specific first, at most ten.
-  const allowedQuick = QUICK.filter((q, i) => quickAllowed[i] && QUICK.findIndex((x) => x.href === q.href) === i);
+  const allowedQuick = QUICK.filter((q, i) => quickAllowed[i] && QUICK.findIndex((x) => x.href === q.href) === i && (doesSupport || q.href !== '/crm/support/new'));
   const forEveryone = (q: (typeof QUICK)[number]) => q.href === '/support/help' || q.href === '/support/features';
   const quick = [...allowedQuick.filter((q) => !forEveryone(q)).slice(0, 8), ...allowedQuick.filter(forEveryone)];
   const firstName = person?.fullName?.trim().split(/\s+/)[0];
@@ -151,6 +157,8 @@ export default async function DashboardPage() {
           <span className="shrink-0 text-sm font-medium text-[var(--ejo-primary)]">Open Approvals →</span>
         </LoadingLink>
       ) : null}
+
+      {waiting.length ? <WaitingOnOthers items={waiting} limit={5} compact /> : null}
 
       {myNumbers.length ? (
         <div className="mb-6">
@@ -244,7 +252,7 @@ export default async function DashboardPage() {
 
       {glance.length > 0 ? (
         <div className="mb-6">
-          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="globe" size={13} />{seesWorkshop ? 'The whole business at a glance' : 'Your areas at a glance'}</h2>
+          <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="globe" size={13} />{overviews.leadership ? 'The whole business at a glance' : seesWorkshop ? 'Your branch at a glance' : 'Your areas at a glance'}</h2>
           <div className="ejo-stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
             {glance.map((t) => (
               <StatTile key={t.label} icon={GLANCE_ICON[t.href] ?? 'grid'} label={t.label} value={t.value} hint={t.hint} href={t.href} tone={GLANCE_TONE[t.tone] ?? 'brand'} emphasis={t.tone === 'warning' || t.tone === 'error'} />

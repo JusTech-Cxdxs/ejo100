@@ -42,7 +42,7 @@ export function RecycleBinPanel({ offer, entity, id, className = '' }: { offer: 
         </summary>
         <p className="mt-2 text-xs leading-relaxed text-[var(--ejo-text-muted)]">
           Only for {what} by mistake. It goes to the Recycle bin, where an administrator can restore it for {pluralize(offer.days, 'day')}. After that it is removed for good.
-          {offer.creatorWindow ? ' You can do this yourself for 24 hours after opening it; after that, ask a Workshop Manager.' : ''}
+          {offer.creatorWindow ? ' You can do this yourself for 24 hours after opening it; after that, ask a Manager.' : ''}
         </p>
         <form action={moveToRecycleBinFormAction} className="mt-3 space-y-2">
           <FormPendingOverlay />

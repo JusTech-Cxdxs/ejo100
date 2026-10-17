@@ -505,7 +505,7 @@ export default async function VehicleServiceDetailPage({
         </div>
       ) : null}
       {status === 'cancellation_requested' ? (
-        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation requested — every Workshop Manager has been notified." /></div>
+        <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation requested — every Manager has been notified." /></div>
       ) : null}
       {status === 'cancellation_approved' ? (
         <div className="mb-6 max-w-xl"><FormFeedbackBanner kind="success" message="Cancellation approved — the customer and team have been notified." /></div>
@@ -523,7 +523,7 @@ export default async function VehicleServiceDetailPage({
       ) : null}
       {status === 'close_requested' ? (
         <div className="mb-6 max-w-xl">
-          <FormFeedbackBanner kind="success" message="Close requested — every Workshop Manager has been notified." />
+          <FormFeedbackBanner kind="success" message="Close requested — every Manager has been notified." />
         </div>
       ) : null}
       {status === 'close_approved' ? (
@@ -820,7 +820,7 @@ export default async function VehicleServiceDetailPage({
                             : 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]'
                       }`}
                     >
-                      {SERVICE_ESTIMATE_STATUS_LABEL[serviceEstimate.status] ?? serviceEstimate.status}
+                      {serviceEstimate.status === 'APPROVED' && isEligibleManager && serviceEstimate.approvedById !== viewerId && serviceEstimate.createdById !== viewerId ? 'Waiting for you (Manager)' : SERVICE_ESTIMATE_STATUS_LABEL[serviceEstimate.status] ?? serviceEstimate.status}
                     </span>
                     {serviceEstimate.status === 'MANAGER_APPROVED' ? (
                       <PrintMenu
@@ -1144,7 +1144,7 @@ export default async function VehicleServiceDetailPage({
                   {serviceEstimate.status === 'APPROVED' ? (
                     <p className="mt-4 border-t border-[var(--ejo-border)] pt-4 text-xs text-[var(--ejo-text-muted)]">
                       Approved by {serviceEstimate.approvedBy?.fullName ?? '—'}
-                      {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''} — awaiting the Workshop Manager&apos;s own final sign-off.
+                      {serviceEstimate.approvedAt ? ` on ${formatDateOnly(serviceEstimate.approvedAt)}` : ''} — awaiting the Manager&apos;s own final sign-off.
                     </p>
                   ) : null}
 
@@ -1663,7 +1663,7 @@ export default async function VehicleServiceDetailPage({
                   </form>
                 </div>
               ) : (
-                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Waiting on a Workshop Manager to approve or decline.</p>
+                <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Waiting on a Manager to approve or decline.</p>
               )}
             </div>
           ) : canRequestCancellation ? (
@@ -1675,7 +1675,7 @@ export default async function VehicleServiceDetailPage({
                 <textarea id="vs-cancel-reason" name="reason" required rows={2} placeholder="Why should this Vehicle Service be cancelled?" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
                 <RefineTextButton targetId="vs-cancel-reason" />
                 <p className="text-[11px] text-[var(--ejo-text-muted)]">
-                  A Workshop Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid; approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until its next completed service.
+                  A Manager approves or declines it.{paymentsTotal > 0 ? ` ${formatNaira(paymentsTotal)} has been paid; approval authorises a full refund.` : ''} Cancelling also stops this vehicle&apos;s service reminders until its next completed service.
                 </p>
                 <SubmitButton label="Request cancellation" pendingLabel="Requesting…" className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)] px-4 py-2 text-sm font-medium text-[var(--ejo-error)] hover:bg-[var(--ejo-error)]/10" />
               </form>

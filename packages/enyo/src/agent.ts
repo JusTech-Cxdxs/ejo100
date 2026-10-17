@@ -42,7 +42,22 @@ export type AgentOptions<Ctx> = {
   /** Total time for the whole answer, all steps included (default 55 s, under a 60 s function limit). */
   deadlineMs?: number;
   fetchImpl?: typeof fetch;
+  /**
+   * When the very first request is refused for its SIZE or for the rate
+   * (free tiers limit tokens per minute), try once more with fewer tools,
+   * fewer earlier turns and, optionally, another model — before telling the
+   * person anything went wrong.
+   */
+  retrySmaller?: { tools: Tool<Ctx>[]; model?: string; keepMessages?: number };
 };
+
+/** The model server refused the request because of its size or the per-minute budget. */
+export function isBudgetError(err: unknown): boolean {
+  if (!(err instanceof LlmError)) return false;
+  if (err.kind === 'rate_limited') return true;
+  if (err.status === 413) return true;
+  return err.kind === 'rejected' && /too large|tokens per minute|\bTPM\b|rate limit|context length|maximum context|reduce the length/i.test(`${err.detail ?? ''} ${err.code ?? ''}`);
+}
 
 const isDraft = (d: unknown): d is { draft: EnyoDraft } => !!d && typeof d === 'object' && 'draft' in (d as Record<string, unknown>);
 
@@ -50,9 +65,11 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
   const maxSteps = o.maxSteps ?? 6;
   const maxToolCalls = o.maxToolCalls ?? 10;
   const maxToolChars = o.maxToolChars ?? 8000;
-  const byName = new Map(o.tools.map((t) => [t.name, t]));
-  const specs = o.tools.map(toolSpec);
+  let byName = new Map(o.tools.map((t) => [t.name, t]));
+  let specs = o.tools.map(toolSpec);
   const convo: ChatMessage[] = [{ role: 'system', content: o.system }, ...o.messages];
+  let config = o.config;
+  let retried = false;
   const transcript: ChatMessage[] = [];
   const toolRuns: ToolRun[] = [];
   const evidence: unknown[] = [];
@@ -73,7 +90,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
     let text = '';
     let toolCalls: ToolCall[] = [];
     try {
-      for await (const piece of stream(o.config, { messages: convo, tools: lastStep ? undefined : specs, signal }, o.fetchImpl)) {
+      for await (const piece of stream(config, { messages: convo, tools: lastStep ? undefined : specs, signal }, o.fetchImpl)) {
         if (piece.type === 'text') {
           text += piece.text;
           o.emit({ type: 'text', text: piece.text });
@@ -85,6 +102,19 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
         }
       }
     } catch (err) {
+      // Too big or too often on the first try (nothing said yet): once more, smaller.
+      if (step === 0 && !text && !retried && o.retrySmaller && isBudgetError(err) && !outOfTime() && !o.signal?.aborted) {
+        retried = true;
+        const r = o.retrySmaller;
+        byName = new Map(r.tools.map((t) => [t.name, t]));
+        specs = r.tools.map(toolSpec);
+        if (r.model) config = { ...config, model: r.model };
+        const keep = r.keepMessages ?? 4;
+        const rest = convo.slice(1);
+        convo.splice(1, convo.length - 1, ...rest.slice(-keep));
+        step -= 1;
+        continue;
+      }
       const kind = outOfTime() ? 'timeout' : err instanceof LlmError ? err.kind : 'bad_response';
       const message = llmErrorMessage(kind as never);
       const extra = err instanceof LlmError ? { ...(err.detail ? { detail: err.detail } : {}), ...(err.status ? { status: err.status } : {}), ...(err.code ? { code: err.code } : {}) } : {};

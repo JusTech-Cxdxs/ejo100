@@ -11,7 +11,7 @@ import { AppShell } from '@/components/AppShell';
 import { NotificationProvider } from '@/components/NotificationProvider';
 import { OfflineNotice } from '@/components/OfflineNotice';
 import { portalConfig } from '@/lib/site-config';
-import { decide } from '@/lib/authz/catalogue';
+import { decide, primaryRoleLabel, isHqRole } from '@/lib/authz/catalogue';
 import { EnyoPanel } from '@/components/enyo/EnyoPanel';
 import { NavProgress } from '@/components/NavProgress';
 import { SelectSearch } from '@/components/SelectSearch';
@@ -39,7 +39,9 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       isActive: true,
       organisationId: true,
       organisation: { select: { name: true } },
-      roles: { select: { role: { select: { name: true } } }, take: 1 },
+      roles: { select: { role: { select: { name: true, slug: true, isSuperAdmin: true } } } },
+      branch: { select: { name: true } },
+      department: { select: { name: true } },
     },
   }), getPrincipal(), currentAssist()]);
   // Deactivated (or removed) while signed in: out, immediately.
@@ -56,6 +58,14 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   // Headquarters roles: the branch bar (all branches, or one) — not while working for a colleague.
   const lens = assist ? null : await getBranchLensOptions().catch(() => null);
 
+  // The role a person is shown with, and where: "Manager · Isolo" (a manager of the Isolo branch), "Store Manager · Store".
+  const roleSlugs = (user.roles ?? []).map((r: { role: { slug: string } }) => r.role.slug);
+  const isMaster = (user.roles ?? []).some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
+  const roleLabel = primaryRoleLabel(roleSlugs, isMaster) ?? user.roles[0]?.role.name ?? 'No role assigned';
+  const hq = isHqRole(roleSlugs);
+  const where = isMaster ? null : hq ? 'Headquarters' : user.department?.name && !/^(manager|branch administrator)$/i.test(roleLabel) ? user.department.name : user.branch?.name ?? null;
+  const roleName = where ? `${roleLabel} · ${where}` : roleLabel;
+
   // The menu folded to icons (desktop), remembered on this browser — read here so it never flickers.
   const collapsed = (await cookies()).get('ejo-sidebar')?.value === 'collapsed';
 
@@ -65,7 +75,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         items={assist ? navigationFor(principal).filter((i) => i.key !== 'mail') : navigationFor(principal)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}
         userName={user?.fullName ?? 'Unknown user'}
-        roleName={user?.roles[0]?.role.name ?? 'No role assigned'}
+        roleName={roleName}
         initialCollapsed={collapsed}
         banner={assist ? <AssistBanner colleague={assist.subject.name} role={assist.subject.roleLabel} expiresAt={assist.expiresAt.toISOString()} /> : null}
         lensBar={lens && lens.branches.length ? <BranchLensBar options={lens} /> : null}
@@ -76,7 +86,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
       <EnyoPanel
         userId={session.user.id}
         userName={user?.fullName ?? ''}
-        roleName={user?.roles[0]?.role.name ?? ''}
+        roleName={roleName}
         canManage={decide(principal, 'enyo.manage').allowed}
       />
       <OfflineNotice />

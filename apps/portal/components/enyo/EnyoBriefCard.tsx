@@ -15,7 +15,7 @@ const get = (k: string) => { try { return window.localStorage.getItem(k); } catc
 const set = (k: string, v: string) => { try { window.localStorage.setItem(k, v); } catch { /* private mode */ } };
 
 const ICON: Record<string, IconName> = {
-  decisions: 'check-circle', steps: 'list', support: 'inbox', reminders: 'clock', appointments: 'calendar', jobs: 'wrench', mail: 'mail', activity: 'bell', broadcasts: 'megaphone',
+  decisions: 'check-circle', steps: 'list', support: 'inbox', reminders: 'clock', appointments: 'calendar', jobs: 'wrench', waiting: 'arrow-right', mail: 'mail', activity: 'bell', broadcasts: 'megaphone',
 };
 
 /**
