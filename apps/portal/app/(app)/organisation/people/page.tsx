@@ -52,7 +52,7 @@ function ProfileForm({ row, areas }: { row?: PublicProfileRow; areas: string[] }
       </label>
       <div className="flex flex-wrap gap-2">
         <SubmitButton label={row ? 'Save changes' : 'Add person'} pendingLabel="Saving…" />
-        {row ? <LoadingLink href="/organisation/people" className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">Cancel</LoadingLink> : null}
+        {<LoadingLink href="/organisation/people" className="inline-flex items-center rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">Cancel</LoadingLink>}
       </div>
     </form>
   );
@@ -114,8 +114,13 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
           )}
         </SectionCard>
 
-        <SectionCard icon={editing ? 'user' : 'plus'} title={editing ? `Edit ${editing.name}` : 'Add a person'} description={editing ? 'Changes reach Enyo straight away.' : 'Name, title and the part of the business they lead.'} id="person-form">
-          {editing ? <ProfileForm row={editing} areas={areas} /> : <ProfileForm key={add ? 'again' : 'new'} areas={areas} />}
+        <SectionCard icon={editing ? 'user' : 'plus'} title={editing ? `Edit ${editing.name}` : 'Add a person'} description={editing ? 'Changes reach Enyo straight away.' : add ? 'Name, title and the part of the business they lead.' : undefined} id="person-form">
+          {editing ? <ProfileForm row={editing} areas={areas} /> : add ? <ProfileForm key="new" areas={areas} /> : (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--ejo-text-muted)]">Add the directors, general managers and heads of department you want Enyo to introduce.</p>
+              <LoadingLink href="/organisation/people?add=1#person-form" className="inline-flex min-h-10 items-center rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 text-sm font-medium text-white hover:brightness-110">+ Add a person</LoadingLink>
+            </div>
+          )}
           <div className="mt-5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-xs text-[var(--ejo-text-muted)]">
             <p className="font-medium text-[var(--ejo-text)]">Privacy</p>
             <p className="mt-1">Only professional, public details belong here. Enyo never gives out anyone&apos;s personal phone number, email or address, and for anyone not on this list it only repeats what public sources say about their professional role.</p>

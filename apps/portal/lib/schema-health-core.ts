@@ -9,6 +9,8 @@ export const SCHEMA_MARKERS: { version: string; table: string; column: string; w
   { version: 'v37', table: 'support_tickets', column: 'requesterUserId', what: 'Get help, Enyo reply checks, integrity watch' },
   { version: 'v38', table: 'public_profiles', column: 'name', what: 'People we publish, automatic public holidays' },
   { version: 'v38', table: 'support_settings', column: 'holidayCalendar', what: 'Automatic public holidays' },
+  { version: 'v39', table: 'support_queues', column: 'ackMessage', what: "Each team's own automatic-reply text" },
+  { version: 'v39', table: 'support_queue_members', column: 'isLead', what: 'Team leads (told when nobody is free or a request is late)' },
 ];
 
 export type SchemaVerdict = { state: 'current' | 'behind' | 'unknown'; expected: string; at: string | null; missing: { version: string; what: string; column: string }[] };

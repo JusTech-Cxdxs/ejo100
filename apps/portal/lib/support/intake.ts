@@ -35,6 +35,7 @@ import {
   extractEntities, isOpen, loopGuard, newText, priorityFromText, promiseLabel, referencedIds, senderAuthenticated, ticketNumberIn, type HeaderBag,
 } from './core';
 import { letterheadFor, openTicket, queueById, responseUrl, sendFromSupport, subjectFor, supportConnection, supportEvent, supportSettings } from './server';
+import { announceRouted } from './notify';
 
 const FOLDER = 'INBOX';
 const FIRST_RUN_HOURS = 24;
@@ -228,6 +229,9 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
   await prisma.supportReply.create({ data: { ticketId: created.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body, emailMessageId: messageId, fromAddress, attachments: attachments.length ? attachments : undefined, intakeKey, createdAt: at } });
   await supportEvent({ organisationId: box.organisationId, ticketId: created.id, action: 'support.ticket_opened', metadata: { actor: 'email', number: created.number, channel: 'EMAIL', queue: queue.name, priority, ...(followUp ? { followUpOf: followUp.number } : {}), ...(customer ? { customerId: customer.id } : {}), ...(created.assignedToId ? { assignedTo: created.assignedToId } : {}) } });
 
+  // The owner hears by email (or, when nobody on the team is free, the team's leads).
+  await announceRouted(created.id);
+
   // ── The acknowledgement: reference, team, when to expect an answer.
   if (autoReply && queue.autoAcknowledge && fromAddress) {
     const acksToday = await prisma.supportReply.count({ where: { kind: 'SYSTEM', ticket: { organisationId: box.organisationId, contactEmail: fromAddress }, createdAt: { gte: new Date(Date.now() - 86_400_000) } } });
@@ -235,8 +239,10 @@ export async function takeIn(box: Mailbox, p: ParsedMail, ownAddresses: string[]
       try {
         const settings = await supportSettings(box.organisationId);
         const head = await letterheadFor(box.organisationId, null);
+        // The team's own words (v39); a database a version behind simply has none.
+        const own = await prisma.supportQueue.findUnique({ where: { id: queue.id }, select: { ackMessage: true } }).catch(() => null);
         const m = renderSupportAcknowledgement({
-          ...head, queueName: queue.name, number: created.number, subject: cleanSubject, customerName: customer?.fullName ?? from?.name ?? '',
+          ...head, queueName: queue.name, teamMessage: own?.ackMessage ?? null, number: created.number, subject: cleanSubject, customerName: customer?.fullName ?? from?.name ?? '',
           responseUrl: responseUrl(created.token), promise: promiseLabel(created.dueFirstResponseAt), open: isOpen(new Date(), settings.hours, settings.holidays),
         });
         const sent = await sendFromSupport({ organisationId: box.organisationId, ticketId: created.id, mailboxId: box.id, to: fromAddress, subject: subjectFor(created.number, `Re: ${cleanSubject}`), html: m.html, inReplyTo: messageId, references: refs, automatic: true, timeoutMs: 12_000 });

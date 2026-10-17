@@ -561,3 +561,18 @@ export function unknownSpecifics(reply: string, allowedUrls: string[], facts: st
   for (const r of extractEntities(reply).records) if (!known.has(r) && !factsUpper.includes(r)) out.push(r);
   return [...new Set(out)];
 }
+
+/**
+ * A phone number as international digits for tel: and WhatsApp links
+ * (Nigerian numbers written 0803… become 234803…). Null when it is not a
+ * plausible phone number.
+ */
+export function intlDigits(phone: string | null | undefined): string | null {
+  const raw = String(phone ?? '').trim();
+  let d = raw.replace(/[^\d]/g, '');
+  if (!d) return null;
+  if (raw.startsWith('+')) { /* already international */ }
+  else if (d.startsWith('00')) d = d.slice(2);
+  else if (d.startsWith('0') && d.length === 11) d = `234${d.slice(1)}`;
+  return d.length >= 10 && d.length <= 15 ? d : null;
+}

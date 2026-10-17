@@ -77,6 +77,10 @@ export default async function PartRequestSlipDetailPage({
     isMasterAdmin ||
     eligibleStoreManagers.staff.some((s) => s.id === viewerId) ||
     eligibleStoreOfficers.staff.some((s) => s.id === viewerId);
+  // Separation of duties (the server enforces it too): the person who asked
+  // for the parts, or gave the first approval, does not approve them again.
+  const hodBlocked = viewerId === slip.requestedById;
+  const storeBlocked = viewerId === slip.requestedById || viewerId === slip.hodApprovedById;
   const serializedLines = slip.lines.filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'SERIALIZED');
   // A slip comes from either a Job Card or a Vehicle Service estimate;
   // exactly one of the two is set.
@@ -284,7 +288,7 @@ export default async function PartRequestSlipDetailPage({
           {slip.status === 'RELEASED' ? (
             <PrintMenu orgHref={`/print/parts-requests/${slip.id}`} clientHref={`/print/parts-requests/${slip.id}?variant=client`} clientLabel="Collector Copy" />
           ) : null}
-          {slip.status === 'PENDING_HOD_APPROVAL' && isEligibleManager ? (
+          {slip.status === 'PENDING_HOD_APPROVAL' && isEligibleManager && hodBlocked ? (<p className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 text-sm text-[var(--ejo-text-muted)]" data-testid="sod-note">You raised this parts request, so another manager approves it.</p>) : slip.status === 'PENDING_HOD_APPROVAL' && isEligibleManager ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Workshop HOD Approval</h2>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -310,7 +314,7 @@ export default async function PartRequestSlipDetailPage({
             </div>
           ) : null}
 
-          {slip.status === 'PENDING_STORE_APPROVAL' && isEligibleStoreStaff ? (
+          {slip.status === 'PENDING_STORE_APPROVAL' && isEligibleStoreStaff && storeBlocked ? (<p className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4 text-sm text-[var(--ejo-text-muted)]" data-testid="sod-note">You already took part in this request (asked for it or approved it), so another member of the Store approves it out.</p>) : slip.status === 'PENDING_STORE_APPROVAL' && isEligibleStoreStaff ? (
             <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/5 p-6">
               <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Store Approval</h2>
               <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Approving reserves this stock immediately.</p>

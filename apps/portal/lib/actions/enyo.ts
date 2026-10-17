@@ -1,7 +1,7 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { complete, LlmError, llmAdminMessage, readLlmConfig } from '@ejo/enyo';
+import { complete, LlmError, llmAdminMessage, readLlmConfig, searchProvider, siteOf, webLookup, webLookupEnabled, webSearch } from '@ejo/enyo';
 import { requireUser } from './workshop';
 import { authorize, currentAssist, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -216,6 +216,30 @@ export async function testEnyoConnection(): Promise<EnyoConnectionResult> {
     const message = err instanceof LlmError ? llmAdminMessage(err) : `The model server could not be reached: ${err instanceof Error ? err.message.slice(0, 200) : 'unknown error'}.`;
     return { ok: false, message: `${message} (reference ${ref})` };
   }
+}
+
+export type WebSearchTestResult = { ok: true; source: string; found: number; sites: string[]; wikipedia: number } | { ok: false; message: string };
+
+/**
+ * Searches the web once for the organisation's own name, so an administrator
+ * can see Enyo's web look-up works from the server (which engine, how many
+ * results, from which sites). Sends only the organisation's name.
+ */
+export async function testWebSearch(): Promise<WebSearchTestResult> {
+  await authorize('enyo.manage', undefined, 'testWebSearch', 'Only administrators manage Enyo.');
+  if (!webLookupEnabled()) return { ok: false, message: 'Web look-up is switched off on this installation (ENYO_WEB_LOOKUP=off).' };
+  const organisationId = await myOrganisationId();
+  const org = organisationId ? await prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } }) : null;
+  const q = org?.name || 'Lagos Nigeria';
+  const provider = searchProvider();
+  const [g, w] = await Promise.allSettled([provider ? webSearch(q, { provider }) : Promise.resolve(null), webLookup(q)]);
+  const general = g.status === 'fulfilled' ? g.value : null;
+  const wiki = w.status === 'fulfilled' ? w.value : null;
+  if (!general?.pages.length && !wiki?.pages.length) {
+    const why = g.status === 'rejected' ? ` ${provider?.label ?? 'The search engine'} did not answer from the server${provider?.name === 'duckduckgo' ? ' (the free engine sometimes refuses servers; a search key in the hosting settings is reliable)' : ''}.` : '';
+    return { ok: false, message: `Nothing came back for “${q}”.${why}` };
+  }
+  return { ok: true, source: general?.pages.length ? general.source : 'Wikipedia', found: (general?.pages.length ?? 0), sites: [...new Set((general?.pages ?? []).map((p) => siteOf(p.url)).filter(Boolean))].slice(0, 5), wikipedia: wiki?.pages.length ?? 0 };
 }
 
 // ── What Enyo has learned (administrators) ────────────────────────────

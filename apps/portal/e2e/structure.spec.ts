@@ -8,6 +8,8 @@ test('organisation structure: departments are real, added and protected', async 
   await expect(page.getByRole('heading', { name: 'Organisation structure' })).toBeVisible();
   await expect(page.locator('article').getByText('Passenger Vehicle Workshop').first()).toBeVisible();
   const name = `Customer Care ${Date.now() % 10000}`;
+  // Settings are read first: the add form opens on purpose.
+  await page.getByText('+ Add a department').first().click();
   await page.getByRole('textbox', { name: /New department in/ }).first().fill(name);
   await page.getByRole('button', { name: 'Add', exact: true }).first().click();
   await expect(page.getByText('Department added.')).toBeVisible();

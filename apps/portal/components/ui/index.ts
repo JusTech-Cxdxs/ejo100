@@ -9,3 +9,4 @@ export { PriorityActions, BarRow, DataRow, PeriodPills, CHART, type PriorityItem
 export { ResponsiveTable } from './ResponsiveTable';
 export { FormJumpLink } from './FormJumpLink';
 export { RevealPanel } from './RevealPanel';
+export { EditableSection, ViewList } from './EditableSection';

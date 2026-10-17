@@ -25,6 +25,7 @@ import { aiDecision, asPriority, dueDates, priorityFromText, sensitiveReasons } 
 import { aiReply, followUrl, letterheadFor, newToken, nextAssignee, personOnlyFrom, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings, triageEmail, type QueueRow } from './server';
 import { senderContext } from './context';
 import { contextSnapshot, recordsReadyFor } from './context-core';
+import { announceRouted, emailLate } from './notify';
 
 export type AutomationResult = { normalised: number; read: number; aiAnswered: number; drafted: number; warned: number; breached: number; nudged: number; resolved: number; closed: number; surveyed: number; assumed: number };
 
@@ -86,6 +87,7 @@ async function normaliseHandovers(): Promise<number> {
         ...(t.tags.includes('portal_request') && queue.aiMode !== 'OFF' ? { aiPendingAt: new Date() } : {}) },
     });
     n += done.count;
+    if (done.count) await announceRouted(t.id);
   }
   return n;
 }
@@ -198,6 +200,8 @@ async function checkTargets(): Promise<{ warned: number; breached: number }> {
     const c = await prisma.supportTicket.updateMany({ where: { id: t.id, slaBreachedAt: null }, data: { slaBreachedAt: now, slaWarnedAt: now } });
     if (!c.count) continue;
     breached += 1;
+    // The owner and the team's leads are emailed; the bell shows it too.
+    await emailLate(t.id);
     await supportEvent({ organisationId: t.organisationId, ticketId: t.id, action: 'support.sla_breached', metadata: { number: t.number, priority: t.priority, ...(t.assignedToId ? { assignedTo: t.assignedToId } : {}) } });
   }
   return { warned, breached };

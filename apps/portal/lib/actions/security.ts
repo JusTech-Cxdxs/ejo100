@@ -521,6 +521,8 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
     claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: 'PENDING_HEAD' }, data: { status: 'PENDING_MANAGER', headApprovedById: user.id, headApprovedAt: now } }));
     await writeAuditLog({ userId: user.id, action: 'exit_pass.head_authorised', entityType: 'ExitPass', entityId: passId, metadata: { passNumber: p.passNumber } });
     await sendLogged('ExitPass', passId, managers, `Exit pass ${p.passNumber} needs your approval`, 'An exit pass needs the Manager\'s approval', [p.passNumber, `Reason: ${p.reason}`, 'Authorised by the Department Head.'], `/security/exit-passes/${passId}`, user.id);
+    // The person who asked hears how far it has got.
+    await sendLogged('ExitPass', passId, [p.requestedBy], `Exit pass ${p.passNumber}: Department Head authorised`, 'Your exit pass is with the Manager', [p.passNumber, 'Authorised by your Department Head. It now needs the Manager\'s approval.'], `/security/exit-passes/${passId}`, user.id);
     return;
   }
   claimed(await prisma.exitPass.updateMany({ where: { id: passId, status: p.status }, data: { status: 'APPROVED', managerApprovedById: user.id, managerApprovedAt: now, ...(alsoManager ? { headApprovedById: user.id, headApprovedAt: now } : {}) } }));

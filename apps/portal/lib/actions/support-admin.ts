@@ -40,7 +40,7 @@ export type SupportSetup = {
   settings: SupportSettings;
   queues: {
     id: string; name: string; kind: QueueKind; description: string | null; branchId: string | null; isDefault: boolean; active: boolean; aiMode: AiMode; autoAcknowledge: boolean;
-    targets: Targets; signature: string | null; members: { userId: string; name: string; capacity: number; away: boolean }[];
+    targets: Targets; signature: string | null; ackMessage: string | null; members: { userId: string; name: string; capacity: number; away: boolean; isLead: boolean }[];
     mailboxes: { id: string; address: string; displayName: string | null; status: string; lastSyncAt: Date | null; lastError: string | null; imapHost: string; smtpHost: string }[];
   }[];
   people: { id: string; name: string }[];
@@ -56,7 +56,7 @@ export async function getSupportSetup(): Promise<SupportSetup> {
       where: { organisationId },
       orderBy: [{ active: 'desc' }, { isDefault: 'desc' }, { name: 'asc' }],
       include: {
-        members: { select: { userId: true, capacity: true, away: true } },
+        members: { select: { userId: true, capacity: true, away: true, isLead: true } },
         mailboxes: { select: { id: true, address: true, displayName: true, status: true, lastSyncAt: true, lastError: true, imapHost: true, smtpHost: true } },
       },
     }),
@@ -68,8 +68,8 @@ export async function getSupportSetup(): Promise<SupportSetup> {
     settings,
     queues: queues.map((q) => ({
       id: q.id, name: q.name, kind: asQueueKind(q.kind), description: q.description, branchId: q.branchId, isDefault: q.isDefault, active: q.active, aiMode: asAiMode(q.aiMode),
-      autoAcknowledge: q.autoAcknowledge, targets: readTargets(q.targets), signature: q.signature,
-      members: q.members.map((m) => ({ userId: m.userId, name: name.get(m.userId) ?? 'Former colleague', capacity: m.capacity, away: m.away })).sort((a, b) => a.name.localeCompare(b.name)),
+      autoAcknowledge: q.autoAcknowledge, targets: readTargets(q.targets), signature: q.signature, ackMessage: q.ackMessage ?? null,
+      members: q.members.map((m) => ({ userId: m.userId, name: name.get(m.userId) ?? 'Former colleague', capacity: m.capacity, away: m.away, isLead: m.isLead })).sort((a, b) => a.name.localeCompare(b.name)),
       mailboxes: q.mailboxes,
     })),
     people: users.map((u) => ({ id: u.id, name: u.fullName })),
@@ -78,11 +78,20 @@ export async function getSupportSetup(): Promise<SupportSetup> {
   };
 }
 
+/** The automatic reply's own paragraph: plain text, line breaks kept, at most 600 characters; no links or addresses (the reply already carries the reference and the contact details). */
+function cleanAck(v: unknown): string | null {
+  const t = typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 600) : '';
+  if (!t) return null;
+  if (/https?:\/\/|<[a-z/]/i.test(t)) throw new SupportSetupError('Keep the automatic reply to plain words — no links or HTML. The reference, the team and the contact details are added for you.');
+  return t;
+}
+
 const str = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '');
 
 /** Creates or updates a team. Targets are given in minutes per priority; anything missing keeps the defaults. */
 export async function saveSupportQueue(input: {
   id?: string; name?: string; kind?: string; description?: string; branchId?: string; aiMode?: string; autoAcknowledge?: boolean; isDefault?: boolean; active?: boolean; signature?: string;
+  /** The team's own words in its automatic reply (v39). */ ackMessage?: string;
   targets?: Partial<Record<string, { first?: number; resolve?: number }>>;
 }): Promise<{ id: string }> {
   const { organisationId, userId } = await supportOrg('saveSupportQueue');
@@ -99,6 +108,7 @@ export async function saveSupportQueue(input: {
     name, kind: asQueueKind(input.kind), description: str(input.description, 300) || null, branchId, aiMode: asAiMode(input.aiMode), autoAcknowledge: input.autoAcknowledge !== false,
     signature: typeof input.signature === 'string' ? input.signature.replace(/\r\n?/g, '\n').trim().slice(0, 300) || null : null, targets: targets as unknown as Prisma.InputJsonValue,
     active: input.active !== false,
+    ...(input.ackMessage !== undefined ? { ackMessage: cleanAck(input.ackMessage) } : {}),
   };
   const existing = input.id ? await prisma.supportQueue.findFirst({ where: { id: String(input.id), organisationId }, select: { id: true } }) : null;
   if (input.id && !existing) throw new SupportSetupError('That team is not available.');
@@ -117,8 +127,8 @@ export async function saveSupportQueue(input: {
   return row;
 }
 
-/** Who works a team, and how many open requests each takes at a time (1–100). */
-export async function setSupportQueueMembers(queueId: string, members: { userId: string; capacity?: number }[]): Promise<void> {
+/** Who works a team, how many open requests each takes at a time (1–100), and who leads it (emailed when nobody is free or a request is late). */
+export async function setSupportQueueMembers(queueId: string, members: { userId: string; capacity?: number; isLead?: boolean }[]): Promise<void> {
   const { organisationId, userId } = await supportOrg('setSupportQueueMembers');
   await refuseDuringAssist('support.queue.members');
   const queue = await prisma.supportQueue.findFirst({ where: { id: String(queueId ?? ''), organisationId }, select: { id: true, name: true } });
@@ -132,11 +142,11 @@ export async function setSupportQueueMembers(queueId: string, members: { userId:
     prisma.supportQueueMember.deleteMany({ where: { queueId: queue.id, organisationId, userId: { notIn: ids } } }),
     ...list.filter((m) => ids.includes(m.userId)).map((m) => prisma.supportQueueMember.upsert({
       where: { queueId_userId: { queueId: queue.id, userId: m.userId } },
-      create: { queueId: queue.id, userId: m.userId, organisationId, capacity: cap(m.capacity) },
-      update: { capacity: cap(m.capacity) },
+      create: { queueId: queue.id, userId: m.userId, organisationId, capacity: cap(m.capacity), isLead: m.isLead === true },
+      update: { capacity: cap(m.capacity), isLead: m.isLead === true },
     })),
   ]);
-  await writeAuditLog({ userId, organisationId, action: 'support.queue_members_set', entityType: 'SupportQueue', entityId: queue.id, metadata: { name: queue.name, members: ids.length } });
+  await writeAuditLog({ userId, organisationId, action: 'support.queue_members_set', entityType: 'SupportQueue', entityId: queue.id, metadata: { name: queue.name, members: ids.length, leads: list.filter((m) => ids.includes(m.userId) && m.isLead === true).length } });
 }
 
 /** A colleague marks themselves away (or back) on every team they work: no new requests come to them while away. */

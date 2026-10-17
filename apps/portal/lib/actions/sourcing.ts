@@ -2,8 +2,9 @@
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
+import { emailColleaguesLater } from '@/lib/workflow-notify';
 
-import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService, refuseDuringAssist } from '@/lib/authz/server';
+import { authorize, authorizeOnJobCard, authorizeOnService, branchWithinReach, seeBranchAnyOf, seeJobCard, seeService, refuseDuringAssist, refuse } from '@/lib/authz/server';
 
 /**
  * Sourcing for a Job Card (or Vehicle Service) once work has started:
@@ -130,9 +131,15 @@ async function notifyTechnicianAndSupervisorOfPartRequestStatus(
   rejectionReason?: string,
 ): Promise<void> {
   try {
-    const jobCard = await getPartRequestEmailContext(jobCardId);
-    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
-    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const [jobCard, slip] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { requestedById: true, hodApprovedById: true, rejectionStage: true } }),
+    ]);
+    // The job's technician and supervisor, the person who raised the request
+    // (when someone else did), and — when the Store turns it down — the HOD
+    // who approved it.
+    const recipientIds = [...new Set([jobCard.supervisorId, jobCard.assignedTechnicianId, slip?.requestedById, kind === 'rejected' && slip?.rejectionStage === 'STORE' ? slip.hodApprovedById : null].filter((id): id is string => Boolean(id)))];
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds }, isActive: true }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
@@ -170,9 +177,13 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
   rejectionReason?: string,
 ): Promise<void> {
   try {
-    const jobCard = await getPartRequestEmailContext(jobCardId);
-    const recipientIds = [jobCard.supervisorId, jobCard.assignedTechnicianId].filter((id): id is string => Boolean(id));
-    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds } }, select: { fullName: true, email: true } });
+    const [jobCard, req] = await Promise.all([
+      getPartRequestEmailContext(jobCardId),
+      prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { requestedById: true } }),
+    ]);
+    // The job's technician and supervisor, and the person who raised the request (when someone else did).
+    const recipientIds = [...new Set([jobCard.supervisorId, jobCard.assignedTechnicianId, req?.requestedById].filter((id): id is string => Boolean(id)))];
+    const recipients = await prisma.user.findMany({ where: { id: { in: recipientIds }, isActive: true }, select: { fullName: true, email: true } });
     const orgContext = await getSourcingOrgContext(jobCard.branchId, jobCard.departmentName);
     const portalUrl = portalBaseUrl();
     const logoUrl = `${portalUrl}/images/logo/email-logo.png`;
@@ -889,7 +900,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
   // Catalogue check first (who may attempt this); branch eligibility and
   // workflow state are checked below.
   await authorize('store.prs.approve_hod', undefined, 'approvePartRequestSlipByHod');
-  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true } });
+  const slip = await prisma.partRequestSlip.findUnique({ where: { id: slipId }, select: { status: true, branchId: true, jobCardId: true, vehicleServiceId: true, referenceNumber: true, requestedById: true } });
   if (!slip) {
     throw new SourcingActionError('Request not found.');
   }
@@ -897,6 +908,8 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
     throw new SourcingActionError('This request is not awaiting HOD approval.');
   }
   const user = await requireEligibleManager(slip.branchId, 'store.prs.approve_hod');
+  // Separation of duties: nobody approves their own request.
+  if (user.id === slip.requestedById) await refuse('store.prs.approve_hod', 'approvePartRequestSlipByHod', 'You raised this parts request, so another manager must approve it.');
   // Nothing more is approved for a job that is cancelled or finished.
   await assertJobStillOpen(prisma, slip);
   const claimed = await prisma.partRequestSlip.updateMany({
@@ -1034,6 +1047,8 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
       jobCardId: true,
       vehicleServiceId: true,
       referenceNumber: true,
+      requestedById: true,
+      hodApprovedById: true,
       lines: { select: { id: true, partId: true, quantityRequested: true, part: { select: { name: true } } } },
     },
   });
@@ -1044,6 +1059,8 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
     throw new SourcingActionError('This request is not awaiting Store approval.');
   }
   const user = await requireStoreStaff(slip.branchId, 'store.prs.release');
+  // Separation of duties: the person who asked for the parts, or gave the first approval, does not also approve them out of the Store.
+  if (user.id === slip.requestedById || user.id === slip.hodApprovedById) await refuse('store.prs.release', 'approvePartRequestSlipByStore', 'You already took part in this request (asked for it or approved it), so another member of the Store must approve it.');
 
   for (const line of slip.lines) {
     const stock = await prisma.partStock.findUnique({ where: { partId: line.partId } });
@@ -1629,6 +1646,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
       branchId: true,
       jobCardId: true,
       referenceNumber: true,
+      requestedById: true,
       description: true,
       estimatedAmount: true,
       supplementaryLines: { select: { description: true, amount: true } },
@@ -1642,6 +1660,8 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
     throw new SourcingActionError('This request is not currently awaiting Finance review.');
   }
   const user = await requireEligibleFinance(request.branchId, 'procurement.epr.review');
+  // Separation of duties: nobody reviews their own request for cash.
+  if (user.id === request.requestedById) await refuse('procurement.epr.review', 'sendExternalProcurementToManager', 'You raised this request, so another Finance colleague must review it.');
   const claimed = await prisma.externalProcurementRequest.updateMany({
     where: { id: requestId, status: 'PENDING_FINANCE_REVIEW' },
     data: { status: 'PENDING_MANAGER_APPROVAL', financeReviewedById: user.id, financeReviewedAt: new Date() },
@@ -1724,6 +1744,8 @@ export async function approveExternalProcurementRequest(requestId: string, notes
       jobCardId: true,
       referenceNumber: true,
       estimatedAmount: true,
+      requestedById: true,
+      financeReviewedById: true,
       supplementaryLines: { select: { amount: true } },
     },
   });
@@ -1734,6 +1756,8 @@ export async function approveExternalProcurementRequest(requestId: string, notes
     throw new SourcingActionError('This request is not awaiting approval.');
   }
   const user = await requireEligibleManager(request.branchId, 'procurement.epr.approve');
+  // Separation of duties: the person who asked for the cash, or reviewed it, does not also approve it.
+  if (user.id === request.requestedById || user.id === request.financeReviewedById) await refuse('procurement.epr.approve', 'approveExternalProcurementRequest', 'You already took part in this request (raised or reviewed it), so another manager must approve it.');
   // Nothing is approved or paid out for a Job Card that is cancelled or finished.
   await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   // Fixed at approval, so nothing later can change what the Manager approved.
@@ -1771,6 +1795,25 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   });
 
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'approved', approvedTotal);
+  // Finance pays it out next: tell the branch's Finance officers. Not the
+  // person who raised it or the manager who approved it (they may not pay it out).
+  const finance = await listEligibleFinanceOfficersForBranch(request.branchId).catch(() => ({ supervisors: [] as { id: string }[] }));
+  emailColleaguesLater({
+    branchId: request.branchId,
+    userIds: finance.supervisors.map((f) => f.id).filter((id) => id !== request.requestedById),
+    exceptUserId: user.id,
+    path: `/workshop/external-procurement/${requestId}`,
+    where: 'external_procurement.approved',
+    notice: {
+      subject: `Ready to pay out — ${request.referenceNumber}`,
+      heading: 'An outside purchase is ready to pay out',
+      intro: `The manager approved outside purchase ${request.referenceNumber}. It is waiting for Finance to pay it out.`,
+      facts: [['Reference', request.referenceNumber], ['Approved total', `₦${approvedTotal.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`]],
+      next: 'Open the request, record how it was paid (method and reference), and pay out exactly the approved total.',
+      status: { label: 'Ready to pay out', tone: 'info' },
+      ctaLabel: 'Open the request',
+    },
+  });
 }
 
 /** Finance records the disbursement. No amount parameter: the amount is the
@@ -1786,7 +1829,7 @@ export async function disburseExternalProcurementRequest(
   await authorize('procurement.epr.disburse', undefined, 'disburseExternalProcurementRequest');
   const request = await prisma.externalProcurementRequest.findUnique({
     where: { id: requestId },
-    select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, approvedTotal: true },
+    select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, approvedTotal: true, requestedById: true, managerApprovedById: true },
   });
   if (!request) {
     throw new SourcingActionError('Request not found.');
@@ -1804,6 +1847,9 @@ export async function disburseExternalProcurementRequest(
     throw new SourcingActionError('Payment method is required.');
   }
   const user = await requireEligibleFinance(request.branchId, 'procurement.epr.disburse');
+  // Separation of duties: the person who asked for the cash, or approved it, never pays it out.
+  // (Finance may review and later pay out the same request: the manager's approval sits between; the integrity watch flags it.)
+  if (user.id === request.requestedById || user.id === request.managerApprovedById) await refuse('procurement.epr.disburse', 'disburseExternalProcurementRequest', 'You already took part in this request (raised or approved it), so another Finance colleague must pay it out.');
   // Nothing is approved or paid out for a Job Card that is cancelled or finished.
   await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   const disbursedAmount = request.approvedTotal;
@@ -1847,7 +1893,7 @@ export async function disburseExternalProcurementRequest(
 export async function rejectExternalProcurementRequest(requestId: string, reason: string): Promise<void> {
   // Decisions are never taken during an assisted session (the assistant approves nothing).
   await refuseDuringAssist('rejectExternalProcurementRequest');
-  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true } });
+  const request = await prisma.externalProcurementRequest.findUnique({ where: { id: requestId }, select: { status: true, branchId: true, jobCardId: true, referenceNumber: true, financeReviewedById: true } });
   if (!request) {
     throw new SourcingActionError('Request not found.');
   }
@@ -1883,4 +1929,22 @@ export async function rejectExternalProcurementRequest(requestId: string, reason
   });
 
   await notifyTechnicianAndSupervisorOfExternalProcurementStatus(request.jobCardId, requestId, request.referenceNumber, 'rejected', undefined, reason.trim());
+  // Turned down by the manager: the Finance colleague who reviewed it hears too.
+  if (stage === 'MANAGER_APPROVAL') {
+    emailColleaguesLater({
+      branchId: request.branchId,
+      userIds: [request.financeReviewedById],
+      exceptUserId: user.id,
+      path: `/workshop/external-procurement/${requestId}`,
+      where: 'external_procurement.rejected',
+      notice: {
+        subject: `Not approved — ${request.referenceNumber}`,
+        heading: 'An outside purchase you reviewed was not approved',
+        intro: `The manager did not approve outside purchase ${request.referenceNumber}, which you sent for approval. Nothing is to be paid out.`,
+        facts: [['Reference', request.referenceNumber], ['Reason', reason.trim().slice(0, 300)]],
+        status: { label: 'Not approved', tone: 'warning' },
+        ctaLabel: 'Open the request',
+      },
+    });
+  }
 }

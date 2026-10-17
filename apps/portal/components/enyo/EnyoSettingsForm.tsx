@@ -51,6 +51,7 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
   const [s, setS] = useState<EnyoAdminSettings>(initial);
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState<{ ok: boolean; text: string } | null>(null);
+  const [editing, setEditing] = useState(false);
   const [testing, setTesting] = useState(false);
   const [test, setTest] = useState<EnyoConnectionTest | null>(null);
   const set = <K extends keyof EnyoAdminSettings>(k: K, v: EnyoAdminSettings[K]) => { setS((x) => ({ ...x, [k]: v })); setFeedback(null); };
@@ -65,6 +66,7 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
     setSaving(false);
     if (r.ok) {
       setFeedback({ ok: true, text: 'Enyo settings saved.' });
+      setEditing(false);
       void getEnyoStatus(true);
       router.refresh();
     } else setFeedback({ ok: false, text: r.error });
@@ -79,6 +81,7 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
 
   return (
     <div className="grid gap-6">
+      {editing ? (
       <form onSubmit={save} className={card} aria-labelledby="enyo-switches">
         <h2 id="enyo-switches" className="text-sm font-semibold text-[var(--ejo-text)]">Switches</h2>
         <div className="mt-1 divide-y divide-[var(--ejo-border)]">
@@ -124,9 +127,28 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
           <button type="submit" disabled={saving || !changed} className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-5 text-sm font-medium text-white hover:brightness-110 disabled:opacity-50">
             {saving ? 'Saving…' : 'Save Enyo settings'}
           </button>
+          <button type="button" onClick={() => { setS(initial); setFeedback(null); setEditing(false); }} className="min-h-11 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]">Cancel</button>
           {feedback ? <p role={feedback.ok ? 'status' : 'alert'} className={`text-sm ${feedback.ok ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-error)]'}`}>{feedback.text}</p> : null}
         </div>
       </form>
+      ) : (
+        <section className={card} aria-labelledby="enyo-switches">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <h2 id="enyo-switches" className="text-sm font-semibold text-[var(--ejo-text)]">Settings</h2>
+            <button type="button" onClick={() => { setEditing(true); setFeedback(null); }} data-testid="edit-enyo-settings" className="inline-flex min-h-9 items-center rounded-full bg-[var(--ejo-primary)]/10 px-3 text-xs font-semibold text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/15">Edit settings</button>
+          </div>
+          {feedback?.ok ? <p role="status" className="mt-2 text-sm text-[var(--ejo-success)]">{feedback.text}</p> : null}
+          <ul className="mt-3 divide-y divide-[var(--ejo-border)]">
+            <li className="flex items-center justify-between gap-3 py-2 text-sm"><span className="font-medium text-[var(--ejo-text)]">Enyo is on</span><OnOff on={initial.enabled} /></li>
+            {FEATURES.map((f) => <li key={f.key} className="flex items-center justify-between gap-3 py-2 text-sm"><span className="text-[var(--ejo-text)]">{f.label}</span><OnOff on={initial.enabled && Boolean(initial[f.key])} /></li>)}
+          </ul>
+          <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
+            <div><dt className="text-xs text-[var(--ejo-text-muted)]">Display name</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{initial.displayName}</dd></div>
+            <div><dt className="text-xs text-[var(--ejo-text-muted)]">Predictions for estimates</dt><dd className="mt-0.5 text-[var(--ejo-text)]">{MODES.find((m) => m.value === initial.predictionsMode)?.label ?? initial.predictionsMode}</dd></div>
+            <div><dt className="text-xs text-[var(--ejo-text-muted)]">Learns from records opened</dt><dd className="mt-0.5 text-[var(--ejo-text)]">{initial.learnFrom ? `on or after ${initial.learnFrom}` : 'All history'}</dd></div>
+          </dl>
+        </section>
+      )}
 
       <section className={card} aria-labelledby="enyo-model">
         <h2 id="enyo-model" className="text-sm font-semibold text-[var(--ejo-text)]">Language model</h2>
@@ -152,4 +174,8 @@ export function EnyoSettingsForm({ initial, provider }: { initial: EnyoAdminSett
       </section>
     </div>
   );
+}
+
+function OnOff({ on }: { on: boolean }) {
+  return <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${on ? 'bg-[var(--ejo-success)]/12 text-[var(--ejo-success)]' : 'bg-[var(--ejo-text-muted)]/12 text-[var(--ejo-text-muted)]'}`}>{on ? 'On' : 'Off'}</span>;
 }

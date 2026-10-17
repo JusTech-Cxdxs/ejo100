@@ -2,7 +2,7 @@ import { guardPage } from '@/lib/authz/server';
 import { getSupportSetup } from '@/lib/actions/support-admin';
 import { saveSupportSettingsAction } from '@/lib/actions/support-form-handlers';
 import { SubmitButton } from '@/components/SubmitButton';
-import { SectionCard, StatusChip } from '@/components/ui';
+import { EditableSection, StatusChip } from '@/components/ui';
 import { holidayEntries } from '@/lib/support/holidays';
 import { SaveRow, SupportSetupFrame, btn, label } from '../shared';
 
@@ -18,7 +18,7 @@ const fmt = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-GB'
  * by the system — nobody types them in. The administrator only adds the
  * organisation's own closed days or opens on a holiday.
  */
-export default async function SupportHoursPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string }> }) {
+export default async function SupportHoursPage({ searchParams }: { searchParams: Promise<{ status?: string; error?: string; edit?: string }> }) {
   await guardPage('support.manage', '/settings/support');
   const sp = await searchParams;
   const s = await getSupportSetup();
@@ -36,7 +36,16 @@ export default async function SupportHoursPage({ searchParams }: { searchParams:
   return (
     <SupportSetupFrame active="/settings/support/hours" icon="clock" title="Hours & holidays" sp={sp}
       description="Targets count opening hours only (urgent requests count every hour), in Lagos time. Public holidays are worked out automatically each year.">
-      <SectionCard icon="clock" title="Opening hours" description="When the support teams answer. Outside these hours, the acknowledgement says when to expect a reply.">
+      <EditableSection id="hours" icon="clock" title="Opening hours" description="When the support teams answer. Outside these hours, the acknowledgement says when to expect a reply."
+        editing={sp.edit === 'hours'} editHref="/settings/support/hours?edit=hours#hours" cancelHref="/settings/support/hours#hours" editLabel="Edit hours"
+        view={(
+          <ul className="divide-y divide-[var(--ejo-border)] rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)]">
+            {DAYS.map(([d, name]) => {
+              const h = s.settings.hours[d as keyof typeof s.settings.hours];
+              return <li key={d} className="flex items-center justify-between gap-3 px-3 py-2 text-sm"><span className="font-medium text-[var(--ejo-text)]">{name}</span><span className={h ? 'text-[var(--ejo-text)]' : 'text-[var(--ejo-text-muted)]'}>{h ? `${h[0]} – ${h[1]}` : 'Closed'}</span></li>;
+            })}
+          </ul>
+        )}>
         <form action={saveSupportSettingsAction} className="space-y-4">
           <input type="hidden" name="section" value="hours" />
           <div className="divide-y divide-[var(--ejo-border)] rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)]">
@@ -54,9 +63,27 @@ export default async function SupportHoursPage({ searchParams }: { searchParams:
           </div>
           <SaveRow note="Untick a day to close all day."><SubmitButton label="Save opening hours" pendingLabel="Saving…" className={btn} /></SaveRow>
         </form>
-      </SectionCard>
+      </EditableSection>
 
-      <SectionCard icon="calendar" title="Public holidays and closed days" description="Nigeria’s public holidays come from the calendar (fixed dates, Easter, the Islamic holidays, and the usual Monday off when a holiday falls on a weekend). Islamic dates are expected dates until the Federal Government declares them.">
+      <EditableSection id="holidays" icon="calendar" title="Public holidays and closed days" description="Nigeria’s public holidays come from the calendar (fixed dates, Easter, the Islamic holidays, and the usual Monday off when a holiday falls on a weekend). Islamic dates are expected dates until the Federal Government declares them."
+        editing={sp.edit === 'holidays'} editHref="/settings/support/hours?edit=holidays#holidays" cancelHref="/settings/support/hours#holidays" editLabel="Edit holidays"
+        view={(
+          <div className="space-y-3">
+            <p className="text-sm text-[var(--ejo-text)]">{calendarOn ? <><span className="font-medium">Nigerian public holidays: automatic.</span> Worked out every year.</> : <span className="font-medium">The public-holiday calendar is off: only the organisation’s own closed days count.</span>}</p>
+            {upcoming.length ? (
+              <ul className="divide-y divide-[var(--ejo-border)] rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)]">
+                {upcoming.slice(0, 14).map((e) => (
+                  <li key={e.date} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
+                    <span className="w-36 shrink-0 font-medium text-[var(--ejo-text)]">{fmt(e.date)}</span>
+                    <span className="min-w-0 flex-1 text-[var(--ejo-text)]">{e.name}{e.provisional ? <span className="ml-1.5 text-xs text-[var(--ejo-text-muted)]">(expected)</span> : null}</span>
+                    {e.open ? <StatusChip tone="success" label="Open anyway" /> : <StatusChip tone="neutral" label="Closed" />}
+                  </li>
+                ))}
+              </ul>
+            ) : <p className="text-sm text-[var(--ejo-text-muted)]">No closed days ahead.</p>}
+            {upcoming.length > 14 ? <p className="text-xs text-[var(--ejo-text-muted)]">and {upcoming.length - 14} more — open Edit to see them all.</p> : null}
+          </div>
+        )}>
         <form action={saveSupportSettingsAction} className="space-y-5">
           <input type="hidden" name="section" value="holidays" />
           <label className="flex items-start gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm text-[var(--ejo-text)]">
@@ -94,7 +121,7 @@ export default async function SupportHoursPage({ searchParams }: { searchParams:
           </div>
           <SaveRow note={calendarOn ? undefined : 'With the calendar off, only the organisation’s own closed days count.'}><SubmitButton label="Save holidays" pendingLabel="Saving…" className={btn} /></SaveRow>
         </form>
-      </SectionCard>
+      </EditableSection>
     </SupportSetupFrame>
   );
 }

@@ -3,10 +3,11 @@
  *
  * - Wikipedia's public API (free, no key): search, then each page's
  *   introduction as plain text.
- * - A general web search engine, when the installation has a key for one in
- *   its server settings (never in code or chat): SERPER_API_KEY (Google
- *   results via serper.dev), BRAVE_SEARCH_API_KEY (Brave Search) or
- *   TAVILY_API_KEY (Tavily). The first one set is used. This finds what
+ * - A general web search engine: with a key in the server settings (never in
+ *   code or chat) SERPER_API_KEY (Google results via serper.dev),
+ *   BRAVE_SEARCH_API_KEY (Brave Search) or TAVILY_API_KEY (Tavily) — the
+ *   first one set is used; without a key, DuckDuckGo's free HTML results
+ *   (best effort; ENYO_FREE_WEB_SEARCH=off switches it off). This finds what
  *   Wikipedia does not hold: business leaders and their public professional
  *   profiles (LinkedIn), company news, recent events.
  *
@@ -27,7 +28,7 @@ import type { Tool, ToolResult } from './tools';
 export type WebPage = { title: string; url: string; text: string };
 export type WebLookup = { query: string; pages: WebPage[]; retrievedAt: string; source: string };
 
-type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
+type FetchLike = (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown>; text?: () => Promise<string> }>;
 type Env = Record<string, string | undefined>;
 
 const UA = 'EJO100-Enyo/1.0 (https://justech-dev.vercel.app; ERP assistant)';
@@ -97,7 +98,7 @@ export function relevantTo(query: string, page: { title: string; text: string })
 
 // ───────────────────────────────────────────── general web search (optional)
 
-export type SearchProvider = { name: 'serper' | 'brave' | 'tavily'; label: string; key: string };
+export type SearchProvider = { name: 'serper' | 'brave' | 'tavily' | 'duckduckgo'; label: string; key: string };
 
 /** The general search engine this installation has a key for (first set wins), or null. */
 export function searchProvider(env: Env = process.env): SearchProvider | null {
@@ -105,7 +106,32 @@ export function searchProvider(env: Env = process.env): SearchProvider | null {
   if (k('SERPER_API_KEY')) return { name: 'serper', label: 'Google', key: k('SERPER_API_KEY') };
   if (k('BRAVE_SEARCH_API_KEY')) return { name: 'brave', label: 'Brave Search', key: k('BRAVE_SEARCH_API_KEY') };
   if (k('TAVILY_API_KEY')) return { name: 'tavily', label: 'Tavily', key: k('TAVILY_API_KEY') };
+  // No key: DuckDuckGo's plain HTML results (free, no account) — best effort; ENYO_FREE_WEB_SEARCH=off switches it off.
+  if ((env.ENYO_FREE_WEB_SEARCH ?? '').trim().toLowerCase() !== 'off') return { name: 'duckduckgo', label: 'DuckDuckGo', key: '' };
   return null;
+}
+
+/**
+ * DuckDuckGo's plain HTML results page → title, link and snippet per result
+ * (ads and DuckDuckGo's own links skipped; redirect links unwrapped). Pure,
+ * so it is tested with a saved page.
+ */
+export function parseDuckDuckGo(html: string): { title: string; url: string; text: string }[] {
+  const out: { title: string; url: string; text: string }[] = [];
+  const blocks = html.split(/<div[^>]+class="[^"]*\bresult\b[^"]*"/i).slice(1);
+  for (const b of blocks) {
+    if (/result--ad|badge--ad/i.test(b.slice(0, 400))) continue;
+    const a = b.match(/<a[^>]+class="[^"]*result__a[^"]*"[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i) ?? b.match(/<a[^>]+href="([^"]+)"[^>]+class="[^"]*result__a[^"]*"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!a) continue;
+    let href = a[1]!.replace(/&amp;/g, '&');
+    const uddg = href.match(/[?&]uddg=([^&]+)/);
+    if (uddg) { try { href = decodeURIComponent(uddg[1]!); } catch { continue; } }
+    if (href.startsWith('//')) href = `https:${href}`;
+    if (!/^https:\/\//i.test(href) || /duckduckgo\.com\/(y\.js|l\/)/i.test(href)) continue;
+    const snip = b.match(/class="[^"]*result__snippet[^"]*"[^>]*>([\s\S]*?)<\/(?:a|td|div)>/i);
+    out.push({ title: a[2]!, url: href, text: snip ? snip[1]! : '' });
+  }
+  return out;
 }
 
 /** Where a result came from, for the answer: "linkedin.com", "kewalramchanrai.com". */
@@ -138,6 +164,16 @@ export async function webSearch(rawQuery: string, opts: { provider?: SearchProvi
   } else if (provider.name === 'brave') {
     const r = (await getJson(fetchImpl, `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=${limit}&country=ng&safesearch=strict`, ms, { headers: { 'X-Subscription-Token': provider.key } })) as { web?: { results?: { title?: string; url?: string; description?: string; extra_snippets?: string[] }[] } };
     rows = (r.web?.results ?? []).map((o) => ({ title: o.title, url: o.url, text: [o.description, ...(o.extra_snippets ?? []).slice(0, 2)].filter(Boolean).join(' ') }));
+  } else if (provider.name === 'duckduckgo') {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetchImpl('https://html.duckduckgo.com/html/', { method: 'POST', headers: { 'user-agent': UA, accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: `q=${encodeURIComponent(query)}&kl=wt-wt`, signal: ctrl.signal });
+      if (!res.ok || !res.text) throw new Error(`HTTP ${res.status}`);
+      rows = parseDuckDuckGo(await res.text()).slice(0, limit * 2);
+    } finally {
+      clearTimeout(timer);
+    }
   } else {
     const r = (await getJson(fetchImpl, 'https://api.tavily.com/search', ms, { method: 'POST', headers: { authorization: `Bearer ${provider.key}`, 'content-type': 'application/json' }, body: JSON.stringify({ query, max_results: limit, search_depth: 'basic', include_answer: false }) })) as { results?: { title?: string; url?: string; content?: string }[] };
     rows = (r.results ?? []).map((o) => ({ title: o.title, url: o.url, text: o.content }));
