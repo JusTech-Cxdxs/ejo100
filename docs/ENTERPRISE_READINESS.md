@@ -26,7 +26,7 @@ person sees), `RUNBOOKS.md` (operations), `PRODUCTION_READINESS.md` (Phase A rec
 | **Storage** | Images and documents stored with the records they belong to. | The API's object-storage module is a placeholder: no bucket, virus scan or signed URLs yet. |
 | **Migrations** | `prisma db push` on Render with additive-only predeploy/postdeploy SQL, a schema-upgrade CI job, System health showing the version. | Not **versioned migrations**: no migration history table, no down-scripts. Additive-only rules make rollback by redeploying the previous code safe, but this must be stated, not assumed. |
 | **Backups** | Supabase daily backups (plan-dependent). | **No restore drill on record.** RPO/RTO not agreed. |
-| **Dashboards** | Role dashboards; **Stage 1:** leadership overview and IT overview with "figures as of" time stamps. | No CSV/Excel **exports**, no saved filters, no per-tile freshness indicator. |
+| **Dashboards** | Role dashboards; **Stage 1:** leadership overview and IT overview with "figures as of" time stamps; **Headquarters** (every branch side by side for a chosen period, health per branch, CSV export with formulas neutralised and every export audited). | Other tables do not export yet; no saved filters; no per-tile freshness indicator. |
 | **Modules** | Workshop, store, procurement, warranty, gate security, CRM, support centre, scheduling, analytics, Enyo. | No HR/payroll, sales or budgets modules. No JusTech Control Centre (platform-level console across tenants). |
 
 ---
@@ -185,7 +185,7 @@ then a director is given `executive` within the organisation.
 | | | Access | Refused attempts 24 h; role and permission changes 7 days | |
 | | | Health | Database version, scheduled jobs on time, Enyo connected, support mailboxes reading | |
 
-Next (Stage 2): CSV export on each table, filters (branch, period) kept in the address bar, and a
+Delivered after Stage 1: Headquarters (`/headquarters`) with the branch table above and a CSV export. Next (Stage 2): CSV export on each other table, filters (branch, period) kept in the address bar, and a
 per-tile "updated" time where a tile is cached.
 
 ---
@@ -275,7 +275,8 @@ blocker for any claim of recoverability (section 10).
 - Versioned migrations, or a tested backup restore with a measured RPO/RTO.
 - A capacity figure (users or requests per second): CI load tests run on a throw-away database, not a production-sized staging environment.
 - Tamper-proof audit trail (append-only in the database; not yet shipped to an external store).
-- Exports, HR/payroll, sales, budgets, the JusTech Control Centre.
+- Exports beyond Headquarters, HR/payroll, sales, budgets, the JusTech Control Centre.
+- Group-wide consolidation across several companies: Headquarters covers every branch of one organisation; Group / Company / Region levels are Stage 2.
 
 What **can** be claimed, with evidence: organisation isolation tested on every action and in e2e;
 segregation of duties on estimates, parts requests and outside purchases; every change audited, the
