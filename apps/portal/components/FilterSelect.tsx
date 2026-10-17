@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Floating } from '@/components/ui/Floating';
 
 export type FilterOption = { value: string; label: string; group?: string; hint?: string };
 
@@ -29,6 +30,8 @@ export function FilterSelect({
   const [active, setActive] = useState(0);
   const chosen = useRef<FilterOption | undefined>(initial);
   const box = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
+  const panel = useRef<HTMLDivElement>(null);
   const listId = useId();
   const q = text.trim().toLowerCase();
   // While a choice is showing, list everything (the person is browsing, not searching).
@@ -53,7 +56,7 @@ export function FilterSelect({
   settleRef.current = settle;
 
   useEffect(() => {
-    const out = (e: MouseEvent) => { if (box.current && !box.current.contains(e.target as Node)) settleRef.current(); };
+    const out = (e: MouseEvent) => { const t = e.target as Node; if (box.current && !box.current.contains(t) && !panel.current?.contains(t)) settleRef.current(); };
     document.addEventListener('mousedown', out);
     return () => document.removeEventListener('mousedown', out);
   }, []);
@@ -71,6 +74,7 @@ export function FilterSelect({
     <div ref={box} className={`relative min-w-0 ${className ?? ''}`}>
       <input type="hidden" name={name} value={value} />
       <input
+        ref={field}
         id={id}
         type="text" value={text} placeholder={placeholder} aria-label={ariaLabel} required={required && !value} autoComplete="off"
         aria-controls={listId} aria-autocomplete="list"
@@ -81,8 +85,8 @@ export function FilterSelect({
       {!required && value ? (
         <button type="button" onClick={() => { set(undefined); setOpen(false); }} aria-label={`Clear ${ariaLabel}`} className="absolute right-1.5 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]">×</button>
       ) : null}
-      {open ? (
-        <div id={listId} role="listbox" aria-label={ariaLabel} className="absolute left-0 right-0 top-full z-40 mt-1 max-h-64 overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg sm:min-w-[16rem]">
+      {/* Drawn above the page (never clipped by a card or hidden behind the next one). */}
+      <Floating anchor={field} open={open} panelRef={panel} id={listId} role="listbox" ariaLabel={ariaLabel} maxHeight={288}>
           {shown.length === 0 ? <p className="px-3 py-2 text-xs text-[var(--ejo-text-muted)]">Nothing matches “{text.trim()}”.</p> : null}
           {groups.map((g) => (
             <div key={g || 'all'}>
@@ -97,8 +101,7 @@ export function FilterSelect({
               })}
             </div>
           ))}
-        </div>
-      ) : null}
+      </Floating>
     </div>
   );
 }

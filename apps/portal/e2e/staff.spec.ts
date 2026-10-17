@@ -10,7 +10,7 @@ import { signIn, signOut, latestMail, linkIn } from './helpers';
 test('add a staff member, welcome email, set password, first sign-in', async ({ page, request }) => {
   const email = `new.starter.${Date.now()}@e2e.test`;
   await signIn(page, who('administrator').email, E2E_PASSWORD);
-  await page.goto('/users?add=1');
+  await page.goto('/users/new');
   const form = page.locator('#add-staff');
   await form.getByLabel('Full name').fill('Nkechi Newstarter');
   await form.getByLabel('Work email').fill(email);
@@ -49,7 +49,7 @@ test('add a staff member, welcome email, set password, first sign-in', async ({ 
 
 test('a duplicate email is refused and what was typed stays', async ({ page }) => {
   await signIn(page, who('administrator').email, E2E_PASSWORD);
-  await page.goto('/users?add=1');
+  await page.goto('/users/new');
   const form = page.locator('#add-staff');
   await form.getByLabel('Full name').fill('Duplicate Person');
   await form.getByLabel('Work email').fill(who('technician').email);

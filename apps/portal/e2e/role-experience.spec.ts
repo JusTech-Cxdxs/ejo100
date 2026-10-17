@@ -163,6 +163,9 @@ test('an executive sees the business at a glance, read-only, and approves nothin
   await expect(page.getByTestId('it-overview')).toHaveCount(0);
   await open(page, '/analytics');
   await expect(page.getByRole('heading', { name: 'Business analytics', level: 1 })).toBeVisible();
+  // Leadership can send a notice to the organisation.
+  await open(page, '/notifications/broadcasts/new');
+  await expect(page, 'broadcasts').not.toHaveURL(/\/access-denied/);
   for (const url of ['/users', '/settings', '/crm/support', '/integrity']) {
     await page.goto(url);
     await expect(page, url).toHaveURL(/\/access-denied/);
@@ -176,7 +179,7 @@ test('an IT administrator sees systems and access, never the money', async ({ pa
   await expect(panel.getByRole('heading', { name: 'Systems and access' })).toBeVisible({ timeout: 30_000 });
   await expect(panel.getByText('Health checks')).toBeVisible();
   await expect(page.getByTestId('leadership-overview')).toHaveCount(0);
-  for (const url of ['/users', '/roles', '/audit-logs', '/audit-logs/errors', '/settings', '/settings/enyo']) {
+  for (const url of ['/users', '/users/new', '/roles', '/audit-logs', '/audit-logs/errors', '/settings', '/settings/enyo', '/notifications/broadcasts/new']) {
     await open(page, url);
     await expect(page, url).not.toHaveURL(/\/access-denied/);
   }

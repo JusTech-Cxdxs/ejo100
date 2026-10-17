@@ -1,76 +1,92 @@
 import { guardPage } from '@/lib/authz/server';
 import { listRolesForEditor } from '@/lib/actions/roles';
-import { grantRolePermissionFormAction, revokeRolePermissionFormAction } from '@/lib/actions/roles-form-handlers';
-import { APPROVAL_PERMISSIONS, PERMISSIONS, ROLE_DESCRIPTIONS, ROLE_GRANTS, SCOPE_WORDS, type PermissionKey } from '@/lib/authz/catalogue';
-import { SubmitButton } from '@/components/SubmitButton';
-import { plainLabel } from '@/lib/authz/describe-access';
-import { FilterSelect } from '@/components/FilterSelect';
-import { PageHeader } from '@/components/ui';
+import { APPROVAL_PERMISSIONS, ROLE_DESCRIPTIONS } from '@/lib/authz/catalogue';
+import { LoadingLink } from '@/components/LoadingLink';
+import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { Icon, PageHeader, StatusChip } from '@/components/ui';
+import { pluralize } from '@/lib/utils/pluralize';
 
-const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
+export const metadata = { title: 'Roles' };
 
+/** Where each role belongs, so the list reads like the organisation. */
+const GROUPS: { title: string; slugs: string[] }[] = [
+  { title: 'Leadership and headquarters', slugs: ['executive', 'administrator', 'it-administrator', 'branch-administrator'] },
+  { title: 'Workshop', slugs: ['workshop-manager', 'workshop-supervisor', 'technician', 'receptionist'] },
+  { title: 'Money, store and warranty', slugs: ['finance-officer', 'store-manager', 'store-officer', 'warranty-hod', 'warranty-officer'] },
+  { title: 'Customers and support', slugs: ['customer-care-lead', 'customer-care'] },
+  { title: 'Security, departments and everyday tools', slugs: ['chief-security-officer', 'security-officer', 'department-head', 'scheduling-admin', 'calendar-user', 'broadcaster', 'branch-assistant'] },
+];
+
+/**
+ * Roles, read first: every role grouped by where it works, what it is for,
+ * how many people hold it and how much it can do. Each opens its own page,
+ * where its permissions are listed and changed on purpose.
+ */
 export default async function RolesPage({ searchParams }: { searchParams: Promise<{ error?: string; status?: string }> }) {
   await guardPage('admin.roles.manage', '/roles');
-  const { error, status } = await searchParams;
+  const { error } = await searchParams;
   const roles = await listRolesForEditor();
-  const all = Object.keys(PERMISSIONS) as PermissionKey[];
+  const placed = new Set(GROUPS.flatMap((g) => g.slugs));
+  const groups = [...GROUPS.map((g) => ({ title: g.title, roles: g.slugs.map((s) => roles.find((r) => r.slug === s)).filter((r): r is (typeof roles)[number] => Boolean(r)) })),
+    { title: 'Set up by your organisation', roles: roles.filter((r) => !placed.has(r.slug) && !r.isPlatform) },
+    { title: 'Platform team', roles: roles.filter((r) => r.isPlatform) }].filter((g) => g.roles.length);
+  const people = roles.reduce((n, r) => n + r.users, 0);
+  const added = roles.reduce((n, r) => n + r.added.length, 0);
+
   return (
-    <div className="w-full p-4 sm:p-8">
+    <div className="w-full max-w-7xl p-4 sm:p-8">
       <PageHeader
         icon="shield"
         title="Roles"
-        description={<>What each role is for, what it can do and what it can approve. <b>Included by default</b> comes from the platform catalogue; you can <b>add</b> more for your organisation (and remove what you added). Every change is recorded in the audit trail. The full picture is on the Permissions page.</>}
+        description="What each role is for, what it can do and what it can approve. Open a role to see everything it allows and who holds it, and to add permissions for your organisation. Every change is in the audit trail and emailed to the people who hold the role."
       />
-      {error ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">{error}</p> : null}
-      {status === 'saved' ? <p className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5 p-3 text-sm text-[var(--ejo-text)]">Saved.</p> : null}
-      <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        {roles.map((r) => (
-          <section key={r.id} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4">
-            <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold text-[var(--ejo-text)]">{r.name}</h2>
-              <span className="text-xs text-[var(--ejo-text-muted)]">{r.users} {r.users === 1 ? 'person' : 'people'}</span>
-            </div>
-            {r.isPlatform ? (
-              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Platform team (the platform owner and their support staff). Holds every permission. Organisations cannot grant or change this role.</p>
-            ) : (
-              <>
-                {ROLE_DESCRIPTIONS[r.slug] ? <p className="mt-2 text-sm text-[var(--ejo-text)]">{ROLE_DESCRIPTIONS[r.slug]}</p> : null}
-                {(() => {
-                  const scope = (k: PermissionKey) => { const sc = ROLE_GRANTS[r.slug]?.[k]; return sc ? SCOPE_WORDS[sc] : null; };
-                  const approves = r.defaults.filter((k) => APPROVAL_PERMISSIONS.includes(k));
-                  const does = r.defaults.filter((k) => !APPROVAL_PERMISSIONS.includes(k));
-                  const List = ({ title, keys }: { title: string; keys: PermissionKey[] }) => (keys.length ? (
-                    <>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{title}</p>
-                      <ul className="mt-1 space-y-1 text-xs text-[var(--ejo-text)]">
-                        {keys.map((k) => <li key={k} className="flex gap-2"><span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--ejo-primary)]" aria-hidden="true" /><span>{plainLabel(PERMISSIONS[k].label)}{scope(k) ? <span className="text-[var(--ejo-text-muted)]"> — {scope(k)}</span> : null}</span></li>)}
-                      </ul>
-                    </>
-                  ) : null);
-                  return r.defaults.length ? (
-                    <>
-                      <List title="Included by default — can do" keys={does} />
-                      <List title="Included by default — can approve" keys={approves} />
-                    </>
-                  ) : <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">No defaults. Everyone can request their own exit pass and see their own notifications.</p>;
-                })()}
-                <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Added for this organisation</p>
-                <div className="mt-1 flex flex-wrap gap-1.5">
-                  {r.added.length ? r.added.map((k) => (
-                    <form key={k} action={revokeRolePermissionFormAction} className={`${chip} bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]`}>
-                      <input type="hidden" name="roleId" value={r.id} /><input type="hidden" name="key" value={k} />
-                      {PERMISSIONS[k].label}
-                      <SubmitButton label="×" pendingLabel="…" className="ml-1 rounded-full px-1 text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/20" />
-                    </form>
-                  )) : <span className="text-xs text-[var(--ejo-text-muted)]">Nothing added.</span>}
-                </div>
-                <form action={grantRolePermissionFormAction} className="mt-3 flex flex-wrap items-center gap-2">
-                  <input type="hidden" name="roleId" value={r.id} />
-                  <FilterSelect name="key" required ariaLabel={`Add a permission to ${r.name}`} placeholder="Type to find a permission…" className="flex-1" options={all.filter((k) => !r.defaults.includes(k) && !r.added.includes(k)).map((k) => ({ value: k, label: PERMISSIONS[k].label, group: PERMISSIONS[k].module }))} />
-                  <SubmitButton label="Add" pendingLabel="Adding…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 py-1.5 text-xs font-medium text-white hover:opacity-90" />
-                </form>
-              </>
-            )}
+      {error ? <FormFeedbackBanner kind="error" message={error} /> : null}
+
+      <dl className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+        {[
+          { label: 'Roles', value: roles.filter((r) => !r.isPlatform).length },
+          { label: 'Role assignments', value: people },
+          { label: 'Permissions added here', value: added },
+          { label: 'Approval steps covered', value: APPROVAL_PERMISSIONS.length },
+        ].map((s) => (
+          <div key={s.label} className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-3">
+            <dd className="text-2xl font-bold tabular-nums text-[var(--ejo-text)]">{s.value}</dd>
+            <dt className="text-[11px] font-medium uppercase tracking-wide text-[var(--ejo-text-muted)]">{s.label}</dt>
+          </div>
+        ))}
+      </dl>
+
+      <div className="space-y-8">
+        {groups.map((g) => (
+          <section key={g.title} aria-labelledby={`g-${g.title}`}>
+            <h2 id={`g-${g.title}`} className="mb-3 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">{g.title}</h2>
+            <ul className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {g.roles.map((r) => {
+                const approves = r.defaults.filter((k) => APPROVAL_PERMISSIONS.includes(k)).length;
+                const does = r.defaults.length - approves;
+                return (
+                  <li key={r.id}>
+                    <LoadingLink href={`/roles/${r.id}`} className="flex h-full flex-col rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 transition hover:border-[var(--ejo-primary)]/50 hover:shadow-md" aria-label={`${r.name}: open`}>
+                      <section className="flex h-full flex-col">
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="text-sm font-semibold text-[var(--ejo-text)]">{r.name}</h3>
+                          <StatusChip tone={r.users ? 'brand' : 'neutral'} label={pluralize(r.users, 'person', 'people')} />
+                        </div>
+                        <p className="mt-2 line-clamp-3 text-sm text-[var(--ejo-text-muted)]">{r.isPlatform ? 'The platform owner and their support staff. Holds every permission; organisations cannot grant or change it.' : ROLE_DESCRIPTIONS[r.slug] ?? 'A role your organisation set up.'}</p>
+                        <p className="mt-auto flex flex-wrap gap-x-3 gap-y-1 pt-3 text-xs text-[var(--ejo-text-muted)]">
+                          {r.isPlatform ? <span>Everything</span> : <>
+                            <span>{does} can do</span>
+                            <span>{approves ? `${approves} can approve` : 'approves nothing'}</span>
+                            {r.added.length ? <span className="font-medium text-[var(--ejo-primary)]">+{r.added.length} added here</span> : null}
+                          </>}
+                          <span className="ml-auto inline-flex items-center gap-1 font-medium text-[var(--ejo-primary)]">Open<Icon name="arrow-right" size={12} /></span>
+                        </p>
+                      </section>
+                    </LoadingLink>
+                  </li>
+                );
+              })}
+            </ul>
           </section>
         ))}
       </div>

@@ -63,6 +63,7 @@ const P = {
   clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
   walk: <><circle cx="13" cy="4" r="2" /><path d="M10 21l2-6-3-3 1-4 4 3 3 1M9 12l-2 3" /></>,
   megaphone: <><path d="M3 10v4a1 1 0 0 0 1 1h3l8 5V4L7 9H4a1 1 0 0 0-1 1z" /><path d="M19 9a4 4 0 0 1 0 6" /></>,
+  download: <><path d="M12 4v11M7 10l5 5 5-5" /><path d="M5 20h14" /></>,
   inbox: <><path d="M3 13h5l1.5 3h5L16 13h5" /><path d="M5 5h14l2 8v6a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-6z" /></>,
   check: <><path d="M5 12l5 5L20 7" /></>,
   'check-circle': <><circle cx="12" cy="12" r="9" /><path d="M8 12l3 3 5-6" /></>,
@@ -109,7 +110,7 @@ export function Icon({ name, size = 18, className, strokeWidth = 1.7, title }: {
 
 /** Each live module's icon (keys from lib/modules.ts and lib/authz/navigation.ts). */
 export const MODULE_ICON: Record<string, IconName> = {
-  dashboard: 'dashboard', organisation: 'building', structure: 'sitemap', branches: 'branch', users: 'users', roles: 'shield', permissions: 'key',
+  dashboard: 'dashboard', headquarters: 'building', organisation: 'building', structure: 'sitemap', branches: 'branch', users: 'users', roles: 'shield', permissions: 'key',
   crm: 'handshake', workshop: 'wrench', inventory: 'boxes', warranty: 'shield-check', security: 'lock', scheduling: 'calendar', analytics: 'chart',
   notifications: 'bell', 'audit-logs': 'history', 'recycle-bin': 'trash', settings: 'settings', 'exit-passes': 'exit', 'my-visitors': 'badge', deliveries: 'truck', approvals: 'check-circle', profile: 'user', assist: 'user-plus', mail: 'mail', reminders: 'clock', 'support-inbox': 'inbox', 'get-help': 'help', integrity: 'shield',
 };

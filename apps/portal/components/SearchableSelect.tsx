@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState } from 'react';
 import { useDebouncedValue } from '@/lib/hooks/useDebouncedValue';
+import { Floating } from '@/components/ui/Floating';
 
 export type SearchableOption = {
   value: string;
@@ -57,6 +58,8 @@ export function SearchableSelect({
   const [highlightIndex, setHighlightIndex] = useState(0);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const fieldRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0); // guards against an older, slower response overwriting a newer one
   const listboxId = useId();
   const debouncedQuery = useDebouncedValue(query, debounceMs);
@@ -109,7 +112,7 @@ export function SearchableSelect({
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node) && !panelRef.current?.contains(e.target as Node)) {
         setOpen(false);
       }
     }
@@ -140,7 +143,7 @@ export function SearchableSelect({
       e.preventDefault();
       const option = results[highlightIndex];
       if (option) selectOption(option);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
       setOpen(false);
     }
   }
@@ -151,6 +154,7 @@ export function SearchableSelect({
     <div ref={containerRef} className="relative">
       <input type="hidden" name={name} value={selectedValue} required={required} />
       <input
+        ref={fieldRef}
         id={id}
         type="text"
         role="combobox"
@@ -170,12 +174,7 @@ export function SearchableSelect({
         className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
       />
 
-      {showDropdown ? (
-        <div
-          id={listboxId}
-          role="listbox"
-          className="absolute z-30 mt-1 max-h-[min(16rem,45dvh)] w-full overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-lg"
-        >
+      <Floating anchor={fieldRef} open={showDropdown} panelRef={panelRef} id={listboxId} role="listbox" maxHeight={300}>
           {state === 'loading' ? (
             <p className="flex items-center gap-2 px-3 py-2 text-xs text-[var(--ejo-text-muted)]">
               <span className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
@@ -203,6 +202,7 @@ export function SearchableSelect({
                   role="option"
                   aria-selected={i === highlightIndex}
                   type="button"
+                  onMouseDown={(e) => e.preventDefault()}
                   onClick={() => selectOption(option)}
                   onMouseEnter={() => setHighlightIndex(i)}
                   className={`block min-h-10 w-full px-3 py-2 text-left text-sm ${
@@ -217,8 +217,7 @@ export function SearchableSelect({
               ))}
             </>
           )}
-        </div>
-      ) : null}
+      </Floating>
     </div>
   );
 }

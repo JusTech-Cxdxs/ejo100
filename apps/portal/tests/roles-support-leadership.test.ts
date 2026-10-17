@@ -24,11 +24,13 @@ test('executive: everything read-only with analytics, approves nothing but their
   for (const k of ['analytics.business.view', 'workshop.view', 'store.view', 'warranty.view', 'security.view', 'crm.view'] as const) assert.equal(g[k], 'ALL', k);
   for (const k of Object.keys(g)) if (/approve|record|manage|create|release|disburse|operate/.test(k)) assert.equal(k, 'security.pass.approve', k);
   assert.equal(g['security.pass.approve'], 'DEPARTMENT');
+  // Leadership can send a notice to the whole organisation.
+  assert.equal(g['notifications.broadcast.send'], 'ALL');
 });
 
 test('IT administrator: people, roles, settings, audit and Enyo — no transactions, no Recycle bin, no money', () => {
   const g = ROLE_GRANTS['it-administrator']!;
-  for (const k of ['admin.users.manage', 'admin.roles.manage', 'admin.settings.manage', 'audit.view', 'enyo.manage'] as const) assert.equal(g[k], 'ALL', k);
+  for (const k of ['admin.users.manage', 'admin.roles.manage', 'admin.settings.manage', 'audit.view', 'enyo.manage', 'notifications.broadcast.send'] as const) assert.equal(g[k], 'ALL', k);
   for (const k of Object.keys(g)) assert.doesNotMatch(k, /^(workshop|store|procurement|warranty|analytics)\.|recycle|payment|refund/, k);
   // Nobody widens their own access, and only an Organisation Administrator gives the Administrator role.
   assert.match(read('lib/actions/roles.ts'), /You cannot change a role you hold yourself/);

@@ -1,5 +1,5 @@
 import { platformModules } from '../modules';
-import { APPROVAL_PERMISSIONS, decide, PAGE_PERMISSIONS, type PermissionKey, type Principal } from './catalogue';
+import { APPROVAL_PERMISSIONS, decide, PAGE_PERMISSIONS, scopeFor, type PermissionKey, type Principal } from './catalogue';
 
 export type NavItem = { key: string; name: string; href: string; status: string };
 
@@ -28,6 +28,8 @@ export function navigationFor(p: Principal): NavItem[] {
     if (m.status !== 'LIVE') continue;
     if (m.key === 'dashboard') {
       out.push({ key: m.key, name: m.name, href: m.href, status: m.status });
+      // Leadership with the whole organisation in view: every branch side by side.
+      if (p.isSuperAdmin || scopeFor(p, 'analytics.business.view') === 'ALL') out.push({ key: 'headquarters', name: 'Headquarters', href: '/headquarters', status: m.status });
       // People who decide things get one list of everything waiting for them.
       if (p.isSuperAdmin || APPROVAL_PERMISSIONS.some(can)) out.push({ key: 'approvals', name: 'Approvals', href: '/approvals', status: m.status });
       continue;
