@@ -73,16 +73,21 @@ export default async function RolePage({ params, searchParams }: { params: Promi
               <SectionCard icon="shield-check" title="Included by default — can approve" description="Each one a step that waits on a named person. Nobody approves their own request.">
                 {approves.length ? <Grouped keys={approves} scope={scope} /> : <p className="text-sm text-[var(--ejo-text-muted)]">This role approves nothing.</p>}
               </SectionCard>
+              {holdsIt ? (
+                <SectionCard id="perms" icon="key" title="Added for this organisation" description="Extra permissions your organisation gave this role, on top of the defaults.">
+                  {r.added.length ? <ul className="flex flex-wrap gap-1.5">{r.added.map((k) => <li key={k}><StatusChip tone="brand" label={PERMISSIONS[k].label} /></li>)}</ul> : <p className="text-sm text-[var(--ejo-text-muted)]">Nothing added — this role has exactly its defaults.</p>}
+                  <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">You hold this role, so another administrator changes it.</p>
+                </SectionCard>
+              ) : (
               <EditableSection
                 id="perms" icon="key" title="Added for this organisation"
                 description="Extra permissions your organisation gave this role, on top of the defaults."
-                editing={sp.edit === 'perms' && !holdsIt} editHref={`${here}?edit=perms#perms`} cancelHref={`${here}#perms`} editLabel="Change permissions"
+                editing={sp.edit === 'perms'} editHref={`${here}?edit=perms#perms`} cancelHref={`${here}#perms`} editLabel="Change permissions"
                 view={(
                   <div className="space-y-2">
                     {r.added.length ? (
                       <ul className="flex flex-wrap gap-1.5">{r.added.map((k) => <li key={k}><StatusChip tone="brand" label={PERMISSIONS[k].label} /></li>)}</ul>
                     ) : <p className="text-sm text-[var(--ejo-text-muted)]">Nothing added — this role has exactly its defaults.</p>}
-                    {holdsIt ? <p className="text-xs text-[var(--ejo-text-muted)]">You hold this role, so another administrator changes it.</p> : null}
                   </div>
                 )}
               >
@@ -109,6 +114,7 @@ export default async function RolePage({ params, searchParams }: { params: Promi
                   </form>
                 </div>
               </EditableSection>
+              )}
             </>
           )}
         </div>

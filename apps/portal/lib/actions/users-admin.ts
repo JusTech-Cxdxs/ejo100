@@ -156,6 +156,14 @@ export type StaffPlacement = { branches: { id: string; name: string }[]; departm
 
 /** Where a new person can be placed by this administrator: their
  * organisation's branches (a Branch Administrator: only their own). */
+/** The roles an administrator may give a new person (no platform roles; a Branch Administrator: no administrator roles). */
+export async function rolesForNewStaff(): Promise<AssignableRole[]> {
+  await authorize('admin.users.manage', undefined, 'users.roles_for_new');
+  const { organisationId, branchOnly } = await actorOrg();
+  const roles = await prisma.role.findMany({ where: { organisationId: organisationId ?? '__none__', isSuperAdmin: false, ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true } });
+  return roles.map((r: { id: string; name: string; slug: string }) => ({ id: r.id, name: r.name, slug: r.slug, isPlatform: false }));
+}
+
 export async function staffPlacementOptions(): Promise<StaffPlacement> {
   await authorize('admin.users.manage', undefined, 'users.placement');
   const { p, organisationId, branchOnly } = await actorOrg();

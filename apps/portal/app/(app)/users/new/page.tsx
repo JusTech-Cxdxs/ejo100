@@ -1,5 +1,5 @@
 import { guardPage } from '@/lib/authz/server';
-import { listUsersForAdmin, staffPlacementOptions } from '@/lib/actions/users-admin';
+import { rolesForNewStaff, staffPlacementOptions } from '@/lib/actions/users-admin';
 import { ROLE_DESCRIPTIONS } from '@/lib/authz/catalogue';
 import { AddStaffForm } from '@/components/AddStaffForm';
 import { Icon, PageHeader, SectionCard } from '@/components/ui';
@@ -13,7 +13,7 @@ export const metadata = { title: 'Add a staff member' };
  */
 export default async function AddStaffPage() {
   await guardPage('admin.users.manage', '/users');
-  const [{ roles }, placement] = await Promise.all([listUsersForAdmin(undefined, {}), staffPlacementOptions()]);
+  const [roles, placement] = await Promise.all([rolesForNewStaff(), staffPlacementOptions()]);
   const branchName = new Map(placement.branches.map((b) => [b.id, b.name]));
   const next: { icon: 'badge' | 'mail' | 'key' | 'history'; title: string; text: string }[] = [
     { icon: 'badge', title: 'An employee ID is issued', text: 'Automatically, from the branch: organisation, branch and a number. Nobody types it.' },

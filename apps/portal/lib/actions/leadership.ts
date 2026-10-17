@@ -115,7 +115,7 @@ export async function getLeadershipPulse(): Promise<LeadershipPulse> {
   let support: LeadershipPulse['support'] = null;
   if (org) {
     // Within the viewer's reach: a branch-scoped viewer counts only their branches' requests.
-    const inReach = 'branchId' in reach && reach.branchId !== undefined ? { branchId: { in: branchIds } } : {};
+    const inReach = typeof reach.branchId === 'string' ? { branchId: { in: branchIds } } : {};
     const openWhere = { organisationId: org, ...inReach, status: { in: ['OPEN' as const, 'WAITING_ON_CUSTOMER' as const, 'ON_HOLD' as const] } };
     const [open, late, unassigned, csat] = await Promise.all([
       prisma.supportTicket.count({ where: openWhere }),

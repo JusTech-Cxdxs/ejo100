@@ -58,6 +58,13 @@ test('Headquarters: leadership with the whole organisation in view; a branch man
   const action = read('lib/actions/headquarters.ts');
   assert.match(action, /await authorize\('analytics\.business\.view'/);
   assert.match(action, /businessUnit: \{ organisationId: org \}/, 'branches from the viewer\'s own organisation only');
+  // Organisation-wide is the permission's scope, not the shape of the reach (which is a list of branch ids).
+  assert.match(action, /const orgWide = p\.isSuperAdmin \|\| scopeFor\(p, 'analytics\.business\.view'\) === 'ALL'/);
+  // Decisions waiting include service estimates; closed jobs never count; money is summed by the database.
+  assert.match(action, /prisma\.serviceEstimate\.findMany/);
+  assert.match(action, /jobCard: \{ \.\.\.inB, status: \{ notIn: \[\.\.\.CLOSED_JC\] \} \}/);
+  assert.match(action, /prisma\.payment\.aggregate/);
+  assert.doesNotMatch(action, /prisma\.payment\.findMany/);
   const route = read('app/(app)/headquarters/export/route.ts');
   assert.match(route, /getHeadquarters\(period\)/, 'the export runs the same checks as the page');
   assert.match(route, /'Cache-Control': 'no-store'/);

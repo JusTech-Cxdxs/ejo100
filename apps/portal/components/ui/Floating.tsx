@@ -12,6 +12,9 @@ type Place = { left: number; width: number; top?: number; bottom?: number; maxHe
  * downwards, or upwards when there is more room above; it is never wider than
  * the screen; it follows the field when the page scrolls or resizes.
  *
+ * Layers: z-[85], above pop-over menus (z-[80]) and phone sheets (z-[60]),
+ * below the full-page select search (z-[90]) and the progress bar.
+ *
  * The caller keeps its own open/close logic; `panelRef` lets it treat clicks
  * inside the list as inside the field.
  */
@@ -38,6 +41,12 @@ export function Floating({
       const el = anchor.current;
       if (!el) return;
       const r = el.getBoundingClientRect();
+      // The field scrolled away (out of the window, or under the header or a
+      // scroll area's edge): hide the list rather than float it over the page.
+      const cx = Math.min(Math.max(r.left + r.width / 2, 0), window.innerWidth - 1);
+      const cy = r.top + r.height / 2;
+      const hit = cy >= 0 && cy < window.innerHeight ? document.elementFromPoint(cx, cy) : null;
+      if (!hit || !(el === hit || el.contains(hit) || hit.contains(el) || el.parentElement?.contains(hit))) { setPlace(null); return; }
       const vw = window.innerWidth;
       const vh = window.innerHeight;
       const width = Math.min(Math.max(r.width, Math.min(minWidth, vw - 16)), vw - 16);
@@ -70,7 +79,7 @@ export function Floating({
       aria-label={ariaLabel}
       data-floating=""
       style={{ position: 'fixed', left: place.left, width: place.width, top: place.top, bottom: place.bottom, maxHeight: place.maxHeight }}
-      className={`z-[95] overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-xl ${className}`}
+      className={`z-[85] overflow-y-auto rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] shadow-xl ${className}`}
     >
       {children}
     </div>,

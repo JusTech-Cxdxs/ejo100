@@ -2,6 +2,7 @@
 
 import { prisma } from '@ejo/database';
 import { allows, authorize, getPrincipal, myOrganisationId, reachWhere } from '@/lib/authz/server';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { branchHealth, hqPeriod, median, type Health, type HqBranch, type HqPeriodKey } from '@/lib/hq-core';
 import { broadcastState, BROADCAST_CATEGORY, AUDIENCE_LABEL, BROADCAST_STATE_LABEL } from '@/lib/notification-rules';
 
@@ -43,9 +44,10 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
   const branches = typeof rb === 'string' ? all.filter((b) => b.id === rb) : rb && typeof rb === 'object' && 'in' in rb ? all.filter((b) => (rb.in as string[]).includes(b.id)) : all;
   const ids = branches.map((b) => b.id);
   const inB = { branchId: { in: ids } };
-  const orgWide = !(typeof rb === 'string' || (rb && typeof rb === 'object'));
+  // Organisation-wide is the permission's scope (an organisation-wide reach is still a list of branch ids).
+  const orgWide = p.isSuperAdmin || scopeFor(p, 'analytics.business.view') === 'ALL';
 
-  const [organisation, staff, staffNew, customersNew, jcOpened, vsOpened, jcDone, vsDone, payJc, payVs, refJc, refVs, jcIn, vsIn, jcReady, vsReady, est, prs, epr, passes, claims, supOpen, supLate, outs, canBroadcast] = await Promise.all([
+  const [organisation, staff, staffNew, customersNew, jcOpened, vsOpened, jcDone, vsDone, jcIn, vsIn, jcReady, vsReady, est, svEst, prs, epr, passes, claims, supOpen, supLate, outs, canBroadcast] = await Promise.all([
     org ? prisma.organisation.findUnique({ where: { id: org }, select: { name: true } }) : null,
     prisma.user.groupBy({ by: ['branchId'], where: { organisationId: org ?? '__none__', isActive: true, ...inB }, _count: { _all: true } }),
     prisma.user.count({ where: { organisationId: org ?? '__none__', ...(orgWide ? {} : inB), createdAt: range } }),
@@ -54,15 +56,12 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
     prisma.vehicleService.groupBy({ by: ['branchId'], where: { ...inB, createdAt: range }, _count: { _all: true } }),
     prisma.jobCard.groupBy({ by: ['branchId'], where: { ...inB, completedAt: range, status: { not: 'CANCELLED' } }, _count: { _all: true } }),
     prisma.vehicleService.groupBy({ by: ['branchId'], where: { ...inB, completedAt: range, status: { not: 'CANCELLED' } }, _count: { _all: true } }),
-    prisma.payment.findMany({ where: { recordedAt: range, jobCard: inB }, select: { amount: true, jobCard: { select: { branchId: true } } }, take: 50_000 }),
-    prisma.payment.findMany({ where: { recordedAt: range, vehicleService: inB }, select: { amount: true, vehicleService: { select: { branchId: true } } }, take: 50_000 }),
-    prisma.refund.findMany({ where: { recordedAt: range, jobCard: inB }, select: { amount: true, jobCard: { select: { branchId: true } } }, take: 20_000 }),
-    prisma.refund.findMany({ where: { recordedAt: range, vehicleService: inB }, select: { amount: true, vehicleService: { select: { branchId: true } } }, take: 20_000 }),
     prisma.jobCard.groupBy({ by: ['branchId'], where: { ...inB, status: { notIn: [...CLOSED_JC] } }, _count: { _all: true } }),
     prisma.vehicleService.groupBy({ by: ['branchId'], where: { ...inB, status: { notIn: [...CLOSED_VS] } }, _count: { _all: true } }),
     prisma.jobCard.groupBy({ by: ['branchId'], where: { ...inB, status: 'READY_FOR_COLLECTION' }, _count: { _all: true } }),
     prisma.vehicleService.groupBy({ by: ['branchId'], where: { ...inB, status: 'READY_FOR_COLLECTION' }, _count: { _all: true } }),
-    prisma.estimate.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED'] }, jobCard: inB }, select: { submittedAt: true, approvedAt: true, createdAt: true, jobCard: { select: { branchId: true } } }, take: 5_000 }),
+    prisma.estimate.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED'] }, jobCard: { ...inB, status: { notIn: [...CLOSED_JC] } } }, select: { submittedAt: true, approvedAt: true, createdAt: true, jobCard: { select: { branchId: true } } }, take: 5_000 }),
+    prisma.serviceEstimate.findMany({ where: { status: { in: ['SUBMITTED', 'APPROVED'] }, vehicleService: { ...inB, status: { notIn: [...CLOSED_VS] } } }, select: { submittedAt: true, approvedAt: true, createdAt: true, vehicleService: { select: { branchId: true } } }, take: 5_000 }),
     prisma.partRequestSlip.findMany({ where: { ...inB, status: { in: ['PENDING_HOD_APPROVAL', 'PENDING_STORE_APPROVAL'] } }, select: { branchId: true, createdAt: true }, take: 5_000 }),
     prisma.externalProcurementRequest.findMany({ where: { ...inB, status: { in: ['PENDING_FINANCE_REVIEW', 'PENDING_MANAGER_APPROVAL'] } }, select: { branchId: true, createdAt: true }, take: 5_000 }),
     prisma.exitPass.findMany({ where: { ...inB, status: { in: ['PENDING_HEAD', 'PENDING_MANAGER'] } }, select: { branchId: true, createdAt: true }, take: 5_000 }),
@@ -80,11 +79,17 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
   const staffB = byBranch(staff), opJ = byBranch(jcOpened), opV = byBranch(vsOpened), dnJ = byBranch(jcDone), dnV = byBranch(vsDone);
   const inJ = byBranch(jcIn), inV = byBranch(vsIn), rdJ = byBranch(jcReady), rdV = byBranch(vsReady), sOpen = byBranch(supOpen), sLate = byBranch(supLate);
 
+  // Money collected: summed by the database, branch by branch (never a capped list).
   const money = new Map<string, number>();
-  for (const x of payJc) add(money, x.jobCard?.branchId, num(x.amount));
-  for (const x of payVs) add(money, x.vehicleService?.branchId, num(x.amount));
-  for (const x of refJc) add(money, x.jobCard?.branchId, -num(x.amount));
-  for (const x of refVs) add(money, x.vehicleService?.branchId, -num(x.amount));
+  await Promise.all(ids.map(async (b) => {
+    const [pj, pv, rj, rv] = await Promise.all([
+      prisma.payment.aggregate({ where: { recordedAt: range, jobCard: { branchId: b } }, _sum: { amount: true } }),
+      prisma.payment.aggregate({ where: { recordedAt: range, vehicleService: { branchId: b } }, _sum: { amount: true } }),
+      prisma.refund.aggregate({ where: { recordedAt: range, jobCard: { branchId: b } }, _sum: { amount: true } }),
+      prisma.refund.aggregate({ where: { recordedAt: range, vehicleService: { branchId: b } }, _sum: { amount: true } }),
+    ]);
+    money.set(b, num(pj._sum.amount) + num(pv._sum.amount) - num(rj._sum.amount) - num(rv._sum.amount));
+  }));
 
   // Decisions waiting: how many, and since when (the oldest).
   const waitN = new Map<string, number>();
@@ -95,6 +100,7 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
     if (since) oldest.set(b, Math.min(oldest.get(b) ?? Infinity, since.getTime()));
   };
   for (const e of est) wait(e.jobCard.branchId, e.approvedAt ?? e.submittedAt ?? e.createdAt);
+  for (const e of svEst) wait(e.vehicleService.branchId, e.approvedAt ?? e.submittedAt ?? e.createdAt);
   for (const x of prs) wait(x.branchId, x.createdAt);
   for (const x of epr) wait(x.branchId, x.createdAt);
   for (const x of passes) wait(x.branchId, x.createdAt);

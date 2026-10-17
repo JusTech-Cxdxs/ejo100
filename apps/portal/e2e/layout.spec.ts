@@ -40,7 +40,7 @@ async function listsFloatOnTop(page: Page, name: string, max = 3) {
     expect(verdict.onScreen, `${name}: list ${i + 1} runs off the screen`).toBe(true);
     await shot(page, `${name}--list-${i + 1}`);
     await page.keyboard.press('Escape');
-    await page.mouse.click(2, 2);
+    await page.locator('h1').first().click({ position: { x: 2, y: 2 } }).catch(() => undefined);
   }
 }
 
@@ -92,7 +92,7 @@ test('an executive gets Headquarters, can export it and send a notice; a technic
   await as(page, 'executive');
   await visitHealthy(page, '/headquarters');
   await expect(page.getByTestId('headquarters').getByRole('heading', { name: 'Headquarters', level: 1 })).toBeVisible();
-  await expect(page.getByText('Branches side by side')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Branches side by side' })).toBeVisible();
   await expect(page.getByRole('link', { name: 'Send a notice' }).first()).toBeVisible();
   await noSidewaysScroll(page, '/headquarters (executive)');
   await shot(page, 'headquarters-executive');

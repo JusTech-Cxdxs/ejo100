@@ -143,7 +143,7 @@ export function SearchableSelect({
       e.preventDefault();
       const option = results[highlightIndex];
       if (option) selectOption(option);
-    } else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape' || e.key === 'Tab') {
       setOpen(false);
     }
   }
