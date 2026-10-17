@@ -7,7 +7,8 @@ import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asDa
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
 import { runAgent } from '../src/agent';
 import { buildSystemPrompt, lagosNow, trimHistory } from '../src/prompts';
-import { cleanQuery, trimExtract, webLookup, webLookupEnabled, webLookupTool } from '../src/web';
+import { cleanQuery, relevantTo, searchProvider, siteOf, trimExtract, webLookup, webLookupEnabled, webLookupTool, webSearch } from '../src/web';
+import { stripCitationMarks } from '../src/guardrails';
 import { routeModel } from '../src/routing';
 
 const config: LlmConfig = { baseUrl: 'https://llm.test/v1', apiKey: 'k', model: 'm', fastModel: 'm', providerLabel: 'Test', timeoutMs: 5_000 };
@@ -241,7 +242,7 @@ test('web look-up: searches Wikipedia, returns introductions as untrusted data, 
   const out = await tool.run({ query: 'President of Nigeria' }, {});
   assert.ok(out.ok);
   const text = JSON.stringify(out.ok ? out.data : null);
-  assert.match(text, /<untrusted source=\\"Wikipedia: President of Nigeria\\">/);
+  assert.match(text, /<untrusted source=\\"Wikipedia\\">[^<]*President of Nigeria/);
   const down = webLookupTool<object>({ fetchImpl: async () => { throw new Error('offline'); } });
   const failed = await down.run({ query: 'x y' }, {});
   assert.equal(failed.ok, false);
@@ -312,4 +313,58 @@ test('agent: a lookup that hangs never holds the answer past the deadline', asyn
   assert.equal(r.toolRuns[0]?.ok, false);
   assert.match((seen[1]?.body.messages as { content: string }[]).at(-1)?.content ?? '', /took too long/);
   assert.equal(r.answer, 'I could not check that just now.');
+});
+
+test('web look-up: a general search engine when a key is set, relevant results only, no citation marks', async () => {
+  assert.equal(searchProvider({}), null);
+  assert.equal(searchProvider({ SERPER_API_KEY: ' k1 ', BRAVE_SEARCH_API_KEY: 'k2' })?.name, 'serper');
+  assert.equal(searchProvider({ BRAVE_SEARCH_API_KEY: 'k2' })?.label, 'Brave Search');
+  assert.equal(searchProvider({ TAVILY_API_KEY: 'k3' })?.name, 'tavily');
+  assert.equal(siteOf('https://ng.linkedin.com/in/someone'), 'linkedin.com');
+  assert.equal(siteOf('not a url'), '');
+  // Unrelated pages are dropped: at least half the meaningful words must appear.
+  assert.equal(relevantTo('Who is Ada Obi', { title: 'Lagos', text: 'A city in Nigeria.' }), false);
+  assert.equal(relevantTo('Who is Ada Obi', { title: 'Ada Obi - Director', text: 'Ada Obi is a director.' }), true);
+  assert.equal(relevantTo('President of Nigeria', { title: 'President of Nigeria', text: 'Head of state.' }), true);
+
+  const calls: { url: string; init?: { method?: string; headers?: Record<string, string>; body?: string } }[] = [];
+  const fake = async (url: string, init?: { method?: string; headers?: Record<string, string>; body?: string }) => {
+    calls.push({ url, init });
+    if (url.startsWith('https://google.serper.dev/')) {
+      return { ok: true, status: 200, json: async () => ({ organic: [
+        { title: 'Ada Obi - Director - Example Group | LinkedIn', link: 'https://ng.linkedin.com/in/ada-obi', snippet: 'Ada Obi is Director of the Automobile Division at Example Group.' },
+        { title: 'Unrelated', link: 'https://example.com/x', snippet: 'Football results from the weekend.' },
+        { title: 'Ada Obi - Director - Example Group | LinkedIn', link: 'https://ng.linkedin.com/in/ada-obi', snippet: 'duplicate of the first result, Ada Obi' },
+      ] }) };
+    }
+    const body = url.includes('list=search') ? { query: { search: [{ title: 'Lagos' }] } } : { query: { pages: [{ title: 'Lagos', extract: 'Lagos is the largest city in Nigeria and a major financial centre for all of Africa.' }] } };
+    return { ok: true, status: 200, json: async () => body };
+  };
+  const g = await webSearch('Ada Obi Example Group', { provider: { name: 'serper', label: 'Google', key: 'secret-key' }, fetchImpl: fake });
+  assert.equal(g.pages.length, 1);
+  assert.equal(g.pages[0]!.url, 'https://ng.linkedin.com/in/ada-obi');
+  const serper = calls.find((c) => c.url.startsWith('https://google.serper.dev/'))!;
+  assert.equal(serper.init?.method, 'POST');
+  assert.equal(serper.init?.headers?.['X-API-KEY'], 'secret-key');
+  assert.deepEqual(JSON.parse(serper.init!.body!).q, 'Ada Obi Example Group');
+
+  const tool = webLookupTool<object>({ fetchImpl: fake, env: { SERPER_API_KEY: 'secret-key' } });
+  assert.match(String(tool.description), /Google web search and Wikipedia/);
+  const out = await tool.run({ query: 'Ada Obi Example Group' }, {});
+  assert.ok(out.ok);
+  const data = JSON.stringify(out.ok ? out.data : null);
+  assert.match(data, /linkedin\.com/);
+  assert.doesNotMatch(data, /Lagos is the largest/); // the unrelated Wikipedia page is dropped
+  assert.doesNotMatch(data, /secret-key/);
+  assert.ok(out.ok && out.sources?.[0]?.href === 'https://ng.linkedin.com/in/ada-obi');
+  // Without a key: Wikipedia only, and nothing relevant → a plain "not found".
+  const wikiOnly = webLookupTool<object>({ fetchImpl: fake, env: {} });
+  const none = await wikiOnly.run({ query: 'Ada Obi Example Group' }, {});
+  assert.equal(none.ok, false);
+  assert.match(none.ok ? '' : none.message, /could not find public information/);
+
+  assert.equal(stripCitationMarks('Bola Tinubu is the president【web_lookup†source】.'), 'Bola Tinubu is the president.');
+  assert.equal(stripCitationMarks('Done 【3†L1-L4】 and more [web_lookup] here'), 'Done and more here');
+  assert.equal(stripCitationMarks('Half way 【web_look'), 'Half way');
+  assert.equal(stripCitationMarks('A [link](/x) stays'), 'A [link](/x) stays');
 });

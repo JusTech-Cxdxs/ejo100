@@ -352,6 +352,8 @@ export async function loadOwnEstimate(customerId: string, item: { kind: 'jc' | '
 
 export type SupportTicketView = {
   id: string; number: string; subject: string; status: string; createdAt: Date; updatedAt: Date;
+  /** A colleague has it (never their name). */
+  withTeam: boolean;
   replies: { id: string; fromCustomer: boolean; body: string; createdAt: Date; kind: string }[];
 };
 
@@ -360,16 +362,18 @@ export type SupportTicketView = {
  * every reply, newest first. Staff replies carry no staff names here — they
  * read as "Customer care". Enyo's internal summary is never shown.
  */
-export const loadSupportTickets = cache(async (customerId: string, organisationId: string): Promise<SupportTicketView[]> => {
+export const loadSupportTickets = cache(async (customerId: string, organisationId: string, email?: string | null): Promise<SupportTicketView[]> => {
+  // Their own requests, and requests left on the website (not signed in) with their account's own email address.
+  const e = (email ?? '').trim();
   const rows = await prisma.supportTicket.findMany({
-    where: { customerId, organisationId },
+    where: { organisationId, OR: [{ customerId }, ...(e ? [{ customerId: null, channel: 'WEBSITE' as const, contactEmail: { equals: e, mode: 'insensitive' as const } }] : [])] },
     orderBy: { updatedAt: 'desc' },
     take: 30,
     select: {
-      id: true, number: true, subject: true, status: true, createdAt: true, updatedAt: true,
+      id: true, number: true, subject: true, status: true, createdAt: true, updatedAt: true, assignedToId: true,
       // Only what the customer may see: never a colleague's internal note or Enyo's draft.
       replies: { where: { visibility: 'PUBLIC', kind: { in: ['CUSTOMER', 'AGENT', 'AI'] } }, orderBy: { createdAt: 'asc' }, take: 100, select: { id: true, fromCustomer: true, body: true, createdAt: true, kind: true } },
     },
   });
-  return rows.map((t) => ({ ...t, status: String(t.status) }));
+  return rows.map(({ assignedToId, ...t }) => ({ ...t, status: String(t.status), withTeam: Boolean(assignedToId) }));
 });

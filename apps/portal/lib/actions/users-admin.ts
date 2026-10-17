@@ -78,6 +78,8 @@ async function checkPair(userId: string, roleId: string) {
   if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
   if (branchOnly && ADMIN_ROLE_SLUGS.includes(role.slug)) throw new Error('Administrator roles are given by headquarters.');
   if (userId === p.userId) throw new Error('You cannot change your own roles — ask another administrator.');
+  // Only an Organisation Administrator gives or takes the Administrator role (an IT administrator, for example, cannot).
+  if (role.slug === 'administrator' && !p.isSuperAdmin && !p.roleSlugs.includes('administrator')) throw new Error('Only an Organisation Administrator can give or remove the Administrator role.');
   const targetIsPlatform = user.roles.some((r: { role: { isSuperAdmin: boolean } }) => r.role.isSuperAdmin);
   if (targetIsPlatform && !p.isSuperAdmin) throw new Error('That person no longer exists — refresh the page.');
   // The platform OWNER (PLATFORM_OWNER_EMAIL) can only be changed by the owner — not even by other platform-team members.
@@ -191,6 +193,7 @@ export async function createStaffMember(input: NewStaffInput): Promise<{ id: str
     const r = await prisma.role.findUnique({ where: { id: input.roleId }, select: { id: true, name: true, slug: true, isSuperAdmin: true, organisationId: true } });
     if (!r || r.isSuperAdmin || r.organisationId !== branchOrg) throw new Error('Choose a role of this organisation.');
     if (branchOnly && ADMIN_ROLE_SLUGS.includes(r.slug)) throw new Error('Administrator roles are given by headquarters.');
+    if (r.slug === 'administrator' && !p.isSuperAdmin && !p.roleSlugs.includes('administrator')) throw new Error('Only an Organisation Administrator can give the Administrator role.');
     role = r;
   }
   if (await prisma.user.findUnique({ where: { email }, select: { id: true } })) throw new Error('Someone already has that email address.');
@@ -287,6 +290,8 @@ export async function setStaffActive(userId: string, active: boolean, reason: st
   if (branchOnly && user.branchId !== branchOnly) throw new Error('You can only manage the people of your own branch.');
   // Administrators are switched on and off by headquarters, never from a branch.
   if (branchOnly && user.roles.some((r: { role: { slug: string } }) => ADMIN_ROLE_SLUGS.includes(r.role.slug))) throw new Error('Administrators are managed by headquarters.');
+  // An Organisation Administrator is switched on and off only by another one (an IT administrator, for example, cannot).
+  if (!p.isSuperAdmin && !p.roleSlugs.includes('administrator') && user.roles.some((r: { role: { slug: string } }) => r.role.slug === 'administrator')) throw new Error('Only an Organisation Administrator can switch another Administrator on or off.');
   if (userId === p.userId) throw new Error('You cannot switch off your own account.');
   const owner = process.env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
   if (owner && user.email.toLowerCase() === owner) throw new Error("The platform owner's account cannot be switched off.");

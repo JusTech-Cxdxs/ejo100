@@ -33,14 +33,63 @@ const ISLAMIC: Record<number, [string, string][]> = {
   2027: [['2027-03-10', 'Eid-el-Fitr'], ['2027-03-11', 'Eid-el-Fitr holiday'], ['2027-05-17', 'Eid-el-Kabir'], ['2027-05-18', 'Eid-el-Kabir holiday'], ['2027-08-16', 'Eid-el-Maulud']],
 };
 
-export function nigerianHolidays(year: number): Map<string, Holiday> {
+/**
+ * The Islamic holidays for a year not in the table above, worked out from
+ * the Hijri calendar the browser and server already have (Umm al-Qura via
+ * Intl): 1 Shawwal (Eid-el-Fitr), 10 Dhul Hijjah (Eid-el-Kabir) and 12 Rabi'
+ * al-Awwal (Eid-el-Maulud). Nigeria's moon sighting usually falls a day after
+ * Umm al-Qura, so each is moved a day later; the second day of each Eid is
+ * the next weekday. Always provisional ("subject to FG declaration").
+ */
+export function islamicHolidaysEstimated(year: number): [string, string][] {
+  let f: Intl.DateTimeFormat;
+  try {
+    f = new Intl.DateTimeFormat('en-u-ca-islamic-umalqura', { day: 'numeric', month: 'numeric', year: 'numeric', timeZone: 'UTC' });
+  } catch {
+    return [];
+  }
+  // A runtime without the Hijri calendar quietly falls back to the Gregorian one: then give no estimate rather than wrong days.
+  if (!/^islamic/.test(f.resolvedOptions().calendar)) return [];
+  const out: [string, string][] = [];
+  const nextWeekday = (iso: string) => {
+    let t = Date.parse(`${iso}T00:00:00Z`) + 86_400_000;
+    while ([0, 6].includes(new Date(t).getUTCDay())) t += 86_400_000;
+    return new Date(t).toISOString().slice(0, 10);
+  };
+  for (let t = Date.UTC(year, 0, 1) - 86_400_000; t < Date.UTC(year + 1, 0, 1); t += 86_400_000) {
+    const p = Object.fromEntries(f.formatToParts(new Date(t)).map((x) => [x.type, x.value]));
+    const day = new Date(t + 86_400_000).toISOString().slice(0, 10); // a day after Umm al-Qura
+    if (!day.startsWith(String(year))) continue;
+    if (p.month === '10' && p.day === '1') out.push([day, 'Eid-el-Fitr'], [nextWeekday(day), 'Eid-el-Fitr holiday']);
+    else if (p.month === '12' && p.day === '10') out.push([day, 'Eid-el-Kabir'], [nextWeekday(day), 'Eid-el-Kabir holiday']);
+    else if (p.month === '3' && p.day === '12') out.push([day, 'Eid-el-Maulud']);
+  }
+  return out.filter(([d]) => d.startsWith(String(year)));
+}
+
+/**
+ * Nigeria's public holidays for a year. With `observed`, a fixed-date holiday
+ * that falls on a Saturday or Sunday also gives the next free weekday off,
+ * as the Federal Government usually declares (marked provisional).
+ */
+export function nigerianHolidays(year: number, opts: { observed?: boolean } = {}): Map<string, Holiday> {
   const out = new Map<string, Holiday>();
   const fixed: [number, number, string][] = [[1, 1, "New Year's Day"], [5, 1, "Workers' Day"], [6, 12, 'Democracy Day'], [10, 1, 'Independence Day'], [12, 25, 'Christmas Day'], [12, 26, 'Boxing Day']];
   for (const [m, d, name] of fixed) out.set(ymd(year, m, d), { name, provisional: false });
   const e = easter(year);
   out.set(shift(year, e.m, e.d, -2), { name: 'Good Friday', provisional: false });
   out.set(shift(year, e.m, e.d, 1), { name: 'Easter Monday', provisional: false });
-  for (const [date, name] of ISLAMIC[year] ?? []) out.set(date, { name, provisional: true });
+  for (const [date, name] of ISLAMIC[year] ?? islamicHolidaysEstimated(year)) if (!out.has(date)) out.set(date, { name, provisional: true });
+  if (opts.observed) {
+    for (const [m, d, name] of fixed) {
+      const dow = new Date(Date.UTC(year, m - 1, d)).getUTCDay();
+      if (dow !== 0 && dow !== 6) continue;
+      let k = 1;
+      let day = shift(year, m, d, k);
+      while ([0, 6].includes(new Date(`${day}T00:00:00Z`).getUTCDay()) || out.has(day)) { k += 1; day = shift(year, m, d, k); }
+      if (day.startsWith(String(year))) out.set(day, { name: `${name} (holiday observed)`, provisional: true });
+    }
+  }
   return out;
 }
 

@@ -8,6 +8,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { securityActionLabel } from '@/lib/security-labels';
 import { formatDateTime } from '@/lib/utils/format-date';
+import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
 export const metadata = { title: 'Integrity alert' };
 export const dynamic = 'force-dynamic';
@@ -60,6 +61,7 @@ export default async function IntegrityAlertPage({ params, searchParams }: { par
             </fieldset>
             <label htmlFor="resolution" className="block text-xs font-medium text-[var(--ejo-text-muted)]">What you found and did (needed to confirm or dismiss)</label>
             <textarea id="resolution" name="resolution" rows={4} maxLength={1000} defaultValue={a.resolution ?? ''} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-base text-[var(--ejo-text)] sm:text-sm" />
+            <RefineTextButton targetId="resolution" label="review note" />
             <SubmitButton label="Save review" pendingLabel="Saving…" className="min-h-11 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white" />
           </form>
         </SectionCard>

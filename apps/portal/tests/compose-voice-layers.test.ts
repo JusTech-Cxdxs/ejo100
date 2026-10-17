@@ -21,7 +21,7 @@ test('compose previews live beside the form, never runs scripts, and has no moda
 });
 
 test('voice notes: pause, resume, edit as text, send, cancel — nothing is sent without the person choosing', () => {
-  const v = read('components/enyo/voice.ts');
+  const v = read('../../packages/enyo/src/ui/speechInput.ts');
   for (const f of ['const pause =', 'const resume =', 'const finish =', 'const cancel =']) assert.ok(v.includes(f), f);
   // A browser that stops by itself keeps the words (paused); it does not send.
   assert.match(v, /Paused by the person, or the browser stopped by itself: keep the words/);

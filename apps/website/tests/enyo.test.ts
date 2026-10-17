@@ -6,6 +6,8 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   checkHandoverContact, findOwnJob, isPlainId, isUniqueClashOn, isVisitorKey, lagosYear, newVisitorKey, nextStepFor, nextTicketNumber,
   normaliseJobNumber, NOT_FOUND_MESSAGE, originAllowed, plural, rateVerdict, readLimits, retryOnNumberClash, safeHref, TICKET_PATTERN,
@@ -149,4 +151,31 @@ test('plurals', () => {
   assert.equal(plural(1, 'vehicle'), '1 vehicle');
   assert.equal(plural(2, 'vehicle'), '2 vehicles');
   assert.equal(plural(0, 'warranty', 'warranties'), '0 warranties');
+});
+
+test('hand-over never loses a request: older database, refused save, visitor confirmation', () => {
+  const src = readFileSync(join(__dirname, '..', '..', 'lib', 'enyo', 'handover.ts'), 'utf8');
+  assert.match(src, /function missingColumn/);
+  assert.match(src, /P2022/);
+  assert.match(src, /emailOnly\(ctx, contact, topic, summary/);
+  assert.match(src, /\/support\/request\/\$\{ticket\.token\}/);
+  assert.match(src, /const linkedCustomerId = ctx\.customer\?\.id \?\? null;/);
+  assert.doesNotMatch(src, /customerByEmail/);
+  const pub = readFileSync(join(__dirname, '..', '..', 'lib', 'enyo', 'public-tools.ts'), 'utf8');
+  assert.match(pub, /if \(!r\.ticketNumber\)/);
+  const chat = readFileSync(join(__dirname, '..', '..', 'components', 'enyo', 'EnyoChat.tsx'), 'utf8');
+  assert.match(chat, /noopener noreferrer nofollow/);
+  const md = readFileSync(join(__dirname, '..', '..', 'lib', 'enyo', 'markdown.ts'), 'utf8');
+  assert.match(md, /stripCitationMarks\(src/);
+});
+
+test('voice notes on the website and in the customer portal, microphone allowed for this site only', () => {
+  const chat = readFileSync(join(__dirname, '..', '..', 'components', 'enyo', 'EnyoChat.tsx'), 'utf8');
+  assert.match(chat, /useSpeechInput\(/);
+  assert.match(chat, /aria-label="Record a voice note"/);
+  assert.match(chat, /Edit as text/);
+  assert.match(chat, /if \(how === 'send'\) \{ void send\(words\); return; \}/);
+  const headers = readFileSync(join(__dirname, '..', '..', 'lib', 'security-headers.ts'), 'utf8');
+  assert.match(headers, /'microphone=\(self\)'/);
+  assert.doesNotMatch(headers, /'microphone=\(\)'/);
 });

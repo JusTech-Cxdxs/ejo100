@@ -13,7 +13,7 @@ export const CONSENT_LINE = 'We use your name and phone number or email only to 
 
 const companyInfo: WebTool = {
   name: 'organisation_info',
-  description: 'The organisation\'s public information: organisation name, branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, and how to book. The only source for answers to visitors.',
+  description: 'The organisation\'s public information: organisation name, branches with addresses, phone numbers and emails, opening hours if listed, the businesses and services described on the website, its leadership and other people it publishes (who they are, their titles and public profiles), and how to book. Check this first for any question about the organisation or "who is …" one of its people.',
   parameters: { type: 'object', properties: {}, additionalProperties: false },
   kind: 'read',
   status: 'Looking up our details…',
@@ -46,9 +46,17 @@ const requestHandover: WebTool = {
     if (!checked.ok) return { ok: false, message: checked.message };
     const r = await openHandover(ctx, checked.contact, String(args.topic ?? ''));
     const how = checked.contact.phone && checked.contact.email ? 'call or email you' : checked.contact.phone ? 'call you' : 'email you';
+    if (!r.ticketNumber) {
+      const text = r.emailed
+        ? `Thank you. I have emailed your request to our customer care team. They will ${how} soon.`
+        : 'I could not pass this on just now. Please call us on the numbers on our Contact page, or try again in a few minutes.';
+      if (r.emailed) ctx.emit({ type: 'handover', ticketNumber: '', text });
+      return r.emailed ? { ok: true, data: { emailedTheTeam: true, tellTheVisitor: text } } : { ok: false, message: `${text} Give them the phone numbers from the organisation information tool.` };
+    }
+    const followUp = checked.contact.email ? ' We have emailed you the reference and a link to follow it.' : '';
     const text = r.existing
       ? `Our team already has your request as ${r.ticketNumber}. They will ${how} soon.`
-      : `Thank you. I have passed this to our customer care team as ${r.ticketNumber}. They will ${how} soon.`;
+      : `Thank you. I have passed this to our customer care team as ${r.ticketNumber}. They will ${how} soon.${followUp}`;
     ctx.emit({ type: 'handover', ticketNumber: r.ticketNumber, text });
     return { ok: true, data: { ticket: r.ticketNumber, alreadyOpen: r.existing, tellTheVisitor: text } };
   },

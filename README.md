@@ -281,6 +281,7 @@ centralising configuration (`apps/portal/lib/site-config.ts`, website
 | `MAILBOX_ENCRYPTION_KEY` | portal | Required for Mail and support addresses | 32 bytes, base64. Encrypts mailbox passwords (AES-256-GCM). Losing it means reconnecting every mailbox. |
 | `ENYO_LLM_BASE_URL`, `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL`, `ENYO_LLM_FAST_MODEL` | portal, website | Required for Enyo | Any OpenAI-compatible server (e.g. Groq: `openai/gpt-oss-120b` and `openai/gpt-oss-20b`). |
 | `ENYO_LLM_PROVIDER_LABEL`, `ENYO_LLM_TIMEOUT_MS`, `ENYO_LLM_ROUTING`, `ENYO_WEB_LOOKUP`, `ENYO_REQUESTS_PER_MINUTE`, `ENYO_IP_HASH_KEY` | portal, website | Optional | Name shown in Settings, time limit, `off` to send everything to the large model, `off` to stop web look-ups, per-person rate, hashing of visitor addresses. |
+| `SERPER_API_KEY` / `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` | portal, website | Optional | A general web search engine for Enyo alongside Wikipedia (first one set is used). |
 | `NEXT_PUBLIC_DEALER_BRANDS` | portal, website | Optional | Dealer brands in the email footer, e.g. `FOTON:#111111,ISUZU:#E4002B,SOUEAST:#F39800`. |
 | `NEXT_PUBLIC_APP_SHORT_NAME` | portal, website | Optional | Name of the installed app (default: the organisation's initials, e.g. KCG). |
 | `WEBSITE_ORGANISATION_SLUG` | website | Optional | Which organisation the website and its chat belong to. |

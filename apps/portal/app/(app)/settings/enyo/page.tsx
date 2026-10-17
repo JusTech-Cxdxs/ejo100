@@ -3,7 +3,7 @@ import { guardPage, myOrganisationId } from '@/lib/authz/server';
 import { getEnyoSettings } from '@/lib/enyo/settings';
 import { BackLink, PageHeader } from '@/components/ui';
 import { prisma } from '@ejo/database';
-import { webLookupEnabled } from '@ejo/enyo';
+import { searchProvider, webLookupEnabled } from '@ejo/enyo';
 import { EnyoSettingsForm } from '@/components/enyo/EnyoSettingsForm';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5 sm:p-6';
@@ -34,7 +34,7 @@ export default async function EnyoSettingsPage() {
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Fast model (greetings, how-to, email briefs, Refine)</dt><dd className="mt-0.5 break-all font-mono text-xs text-[var(--ejo-text)]">{cfg?.fastModel ?? '—'}</dd></div>
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Choosing the cheaper model when it is enough</dt><dd className={`mt-0.5 font-medium ${routing && cfg && cfg.fastModel !== cfg.model ? 'text-[var(--ejo-success)]' : 'text-[var(--ejo-text-muted)]'}`}>{!cfg ? '—' : cfg.fastModel === cfg.model ? 'Off: set ENYO_LLM_FAST_MODEL to a smaller model' : routing ? 'On' : 'Off (ENYO_LLM_ROUTING=off)'}</dd></div>
           <div><dt className="text-xs text-[var(--ejo-text-muted)]">Answers learned from people</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{learnedCount.toLocaleString('en-NG')} approved{learnedWaiting ? `, ${learnedWaiting.toLocaleString('en-NG')} waiting for approval` : ''} <a href="/enyo/learning#learned" className="ml-1 text-xs font-medium text-[var(--ejo-primary)] hover:underline">See them</a></dd></div>
-          <div><dt className="text-xs text-[var(--ejo-text-muted)]">General knowledge from the web (Wikipedia, free)</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{webLookupEnabled() ? 'On' : 'Off (ENYO_WEB_LOOKUP=off)'}</dd></div>
+          <div><dt className="text-xs text-[var(--ejo-text-muted)]">General knowledge from the web</dt><dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{webLookupEnabled() ? (searchProvider() ? `On: ${searchProvider()!.label} web search and Wikipedia` : 'On: Wikipedia only (add a search key in the hosting settings for Google, LinkedIn and news results)') : 'Off (ENYO_WEB_LOOKUP=off)'}</dd></div>
         </dl>
         <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">A general question colleagues already found answered well (and an administrator approved) is answered again instantly from what Enyo learned, with no model cost. Everything that reads the organisation&apos;s records always goes to the main model.</p>
       </section>

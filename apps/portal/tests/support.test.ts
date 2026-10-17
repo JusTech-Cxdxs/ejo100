@@ -107,8 +107,9 @@ test('the actions: authorise, fence, audit; staff replies are compare-and-set an
 
 test('a customer\'s own Support page: only their tickets, staff names never shown', () => {
   const data = readFileSync(join(ROOT, '..', 'website', 'lib', 'customer-portal', 'data.ts'), 'utf8');
-  assert.match(data, /supportTicket\.findMany\(\{\s*where: \{ customerId, organisationId \}/);
+  // Their own, or a website request left with their own account's email (never linked by a typed address alone).
+  assert.match(data, /where: \{ organisationId, OR: \[\{ customerId \}, \.\.\.\(e \? \[\{ customerId: null, channel: 'WEBSITE' as const, contactEmail: \{ equals: e, mode: 'insensitive' as const \} \}\] : \[\]\)\] \}/);
   assert.doesNotMatch(data.slice(data.indexOf('loadSupportTickets')), /authorUserId|summary: true/);
   const action = readFileSync(join(ROOT, '..', 'website', 'lib', 'customer-portal', 'support.ts'), 'utf8');
-  assert.match(action, /where: \{ id: ticketId, customerId: me\.id, organisationId: me\.organisationId \}/);
+  assert.match(action, /where: \{ id: ticketId, organisationId: me\.organisationId, OR: \[\{ customerId: me\.id \}, \{ customerId: null, channel: 'WEBSITE', contactEmail: \{ equals: me\.email, mode: 'insensitive' \} \}\] \}/);
 });

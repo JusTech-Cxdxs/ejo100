@@ -15,6 +15,7 @@ import {
   type AiMode, type Hours, type QueueKind, type Targets,
 } from '@/lib/support/core';
 import { supportSecretOwner, supportSettings, type SupportSettings } from '@/lib/support/server';
+import { asCalendar, isIsoDay } from '@/lib/support/holidays';
 
 /**
  * Setting up the Support centre (support.manage): teams (queues) with their
@@ -207,21 +208,33 @@ export async function changeSupportMailbox(id: string, action: 'pause' | 'resume
   await writeAuditLog({ userId, organisationId, action: `support.mailbox_${action === 'remove' ? 'removed' : action === 'pause' ? 'paused' : 'resumed'}`, entityType: 'SupportMailbox', entityId: box.id, metadata: { address: box.address } });
 }
 
-/** Opening hours, holidays, how sure Enyo must be, reminders and closing, and the satisfaction question. */
-export async function saveSupportSettings(input: { hours?: Hours; holidays?: string[]; aiThreshold?: number; nudgeAfterHours?: number; autoResolveDays?: number; closeAfterDays?: number; csatEnabled?: boolean }): Promise<void> {
+/**
+ * One part of the Support centre's rules at a time (each set-up page saves
+ * only its own fields): opening hours; closed days (the country calendar,
+ * extra days, calendar days the organisation opens anyway); how sure Enyo
+ * must be; reminders, closing and the satisfaction question.
+ */
+export async function saveSupportSettings(input: {
+  hours?: Hours; holidayCalendar?: string | null; holidays?: string[]; holidaysOff?: string[];
+  aiThreshold?: number; nudgeAfterHours?: number; autoResolveDays?: number; closeAfterDays?: number; csatEnabled?: boolean;
+}): Promise<void> {
   const { organisationId, userId } = await supportOrg('saveSupportSettings');
   await refuseDuringAssist('support.settings');
-  const hours = readHours(input.hours ?? DEFAULT_HOURS);
-  const holidays = [...new Set((Array.isArray(input.holidays) ? input.holidays : []).map((d) => String(d).trim()).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(`${d}T00:00:00Z`))))].sort().slice(0, 60);
+  const days = (v: unknown, max: number) => [...new Set((Array.isArray(v) ? v : []).map((d) => String(d).trim()).filter(isIsoDay))].sort().slice(0, max);
   const num = (v: unknown, lo: number, hi: number, dflt: number) => { const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : dflt; };
-  const data = {
-    hours: hours as unknown as Prisma.InputJsonValue, holidays,
-    aiThreshold: Math.round(num(input.aiThreshold, 0.5, 0.99, 0.75) * 100) / 100,
-    nudgeAfterHours: Math.round(num(input.nudgeAfterHours, 12, 240, 48)),
-    autoResolveDays: Math.round(num(input.autoResolveDays, 2, 30, 7)),
-    closeAfterDays: Math.round(num(input.closeAfterDays, 1, 28, 4)),
-    csatEnabled: input.csatEnabled !== false,
-  };
-  await prisma.supportSetting.upsert({ where: { organisationId }, create: { organisationId, ...data, updatedById: userId }, update: { ...data, updatedById: userId } });
-  await writeAuditLog({ userId, organisationId, action: 'support.settings_changed', entityType: 'SupportSetting', entityId: organisationId, metadata: { aiThreshold: data.aiThreshold, nudgeAfterHours: data.nudgeAfterHours, autoResolveDays: data.autoResolveDays, closeAfterDays: data.closeAfterDays, csatEnabled: data.csatEnabled, holidays: holidays.length } });
+  const data: Prisma.SupportSettingUncheckedUpdateInput = {};
+  if (input.hours !== undefined) data.hours = readHours(input.hours) as unknown as Prisma.InputJsonValue;
+  if (input.holidayCalendar !== undefined) data.holidayCalendar = asCalendar(input.holidayCalendar);
+  if (input.holidays !== undefined) data.holidays = days(input.holidays, 120);
+  if (input.holidaysOff !== undefined) data.holidaysOff = days(input.holidaysOff, 60);
+  if (input.aiThreshold !== undefined) data.aiThreshold = Math.round(num(input.aiThreshold, 0.5, 0.99, 0.75) * 100) / 100;
+  if (input.nudgeAfterHours !== undefined) data.nudgeAfterHours = Math.round(num(input.nudgeAfterHours, 12, 240, 48));
+  if (input.autoResolveDays !== undefined) data.autoResolveDays = Math.round(num(input.autoResolveDays, 2, 30, 7));
+  if (input.closeAfterDays !== undefined) data.closeAfterDays = Math.round(num(input.closeAfterDays, 1, 28, 4));
+  if (input.csatEnabled !== undefined) data.csatEnabled = input.csatEnabled !== false;
+  if (!Object.keys(data).length) return;
+  const create = { organisationId, updatedById: userId, ...(data as Record<string, unknown>), hours: (data.hours ?? (DEFAULT_HOURS as unknown)) as Prisma.InputJsonValue } as Prisma.SupportSettingUncheckedCreateInput;
+  await prisma.supportSetting.upsert({ where: { organisationId }, create, update: { ...data, updatedById: userId } });
+  const changed = Object.keys(data);
+  await writeAuditLog({ userId, organisationId, action: 'support.settings_changed', entityType: 'SupportSetting', entityId: organisationId, metadata: { changed, ...(data.aiThreshold !== undefined ? { aiThreshold: data.aiThreshold } : {}), ...(data.holidayCalendar !== undefined ? { holidayCalendar: data.holidayCalendar } : {}) } });
 }

@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseInline, parseMarkdown, plainText, safeHref, type Inline } from '../lib/enyo/markdown';
-import { speakable, speechChunks } from '../components/enyo/voice';
+import { speakable, speechChunks } from '../components/enyo/voice-text';
 import { firstName, greetingText, lagosDay, lagosHour, starterPrompts } from '../lib/enyo/greeting';
 
 const ROOT = join(__dirname, '..', '..');

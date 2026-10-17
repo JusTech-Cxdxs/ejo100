@@ -48,12 +48,15 @@ export function renderSupportTicketStaffEmail(o: Brand & {
 }
 
 /** To the signed-in customer: we have it, here is your reference. */
-export function renderSupportTicketConfirmEmail(o: Brand & { fullName: string; ticketNumber: string; subject: string; url: string }): { subject: string; html: string } {
+export function renderSupportTicketConfirmEmail(o: Brand & { fullName: string; ticketNumber: string; subject: string; url: string; inPortal?: boolean }): { subject: string; html: string } {
+  const inPortal = o.inPortal !== false;
   const bodyHtml = html`
     ${greeting(o.fullName)}
     ${para(html`Thank you for getting in touch. Our customer care team has your request and will reply as soon as they can. Your reference is ${strong(o.ticketNumber)}.`)}
-    ${details([['Reference', o.ticketNumber], ['About', o.subject]])}
-    ${para('You can read the reply and answer it under Help & support in your customer portal. We will also email you when there is a reply.', 'small')}`;
+    ${details([['Reference', o.ticketNumber], ['About', o.subject], ['Status', 'Received — waiting for our team']])}
+    ${para(inPortal
+      ? 'You can follow it, read the reply and answer it under Help & support in your customer portal. We will also email you when there is a reply.'
+      : 'You can follow it and answer the team on your request page (the button below). We will also email you when there is a reply. If you have a customer portal account with this email address, it also appears under Help & support there.', 'small')}`;
   return {
     subject: `We have your request (${o.ticketNumber})`,
     html: renderEmailLayout({
@@ -64,7 +67,7 @@ export function renderSupportTicketConfirmEmail(o: Brand & { fullName: string; t
       status: { label: 'Received', tone: 'success' },
       heading: 'We have your request',
       bodyHtml,
-      ctaLabel: 'Open my support requests',
+      ctaLabel: inPortal ? 'Open my support requests' : 'Follow my request',
       ctaUrl: o.url,
       audience: 'customer',
     }),

@@ -27,6 +27,9 @@ import { PLATFORM } from '@/lib/brand';
 class HelpError extends Error {}
 
 export type HelpTo = 'organisation' | 'platform';
+/** What a colleague's request is about — decides which team gets it. */
+export type HelpAbout = 'portal' | 'fault' | 'complaint' | 'hr';
+const asAbout = (v: unknown): HelpAbout => (v === 'fault' || v === 'complaint' || v === 'hr' ? v : 'portal');
 
 const STAFF_HELP = 'Staff help';
 
@@ -43,6 +46,24 @@ async function helpQueue(organisationId: string): Promise<QueueRow> {
   return { ...q, aiMode: asAiMode(q.aiMode), targets: readTargets(q.targets) };
 }
 
+/**
+ * The team for a colleague's request: a complaint goes to Customer care (a
+ * team of kind customer_care), an HR question to HR & people (kind hr), when
+ * the organisation has such a team; everything else — and those, when it does
+ * not — to Staff help.
+ */
+async function routeHelp(organisationId: string, about: HelpAbout): Promise<QueueRow> {
+  const kind = about === 'complaint' ? 'customer_care' : about === 'hr' ? 'hr' : null;
+  if (kind) {
+    const q = await prisma.supportQueue.findFirst({
+      where: { organisationId, kind, active: true }, orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+      select: { id: true, name: true, kind: true, aiMode: true, autoAcknowledge: true, targets: true, signature: true, branchId: true, isDefault: true },
+    });
+    if (q) return { ...q, aiMode: asAiMode(q.aiMode), targets: readTargets(q.targets) };
+  }
+  return helpQueue(organisationId);
+}
+
 async function me() {
   await refuseDuringAssist('help');
   const user = await requireUser();
@@ -53,7 +74,7 @@ async function me() {
   return { ...u, organisationId };
 }
 
-export type HelpRow = { id: string; number: string; subject: string; status: string; statusLabel: string; createdAt: Date; updatedAt: Date; to: HelpTo; answered: boolean };
+export type HelpRow = { id: string; number: string; subject: string; status: string; statusLabel: string; createdAt: Date; updatedAt: Date; to: HelpTo; about: HelpAbout; answered: boolean };
 
 export async function listMyHelpRequests(): Promise<HelpRow[]> {
   const m = await me();
@@ -65,7 +86,8 @@ export async function listMyHelpRequests(): Promise<HelpRow[]> {
   });
   return rows.map((r) => ({
     id: r.id, number: r.number, subject: r.subject, status: r.status, statusLabel: SUPPORT_STATUS_FOR_CUSTOMER[r.status as SupportStatus] ?? r.status,
-    createdAt: r.createdAt, updatedAt: r.updatedAt, to: r.tags.includes('platform') ? 'platform' : 'organisation', answered: r.replies.length > 0,
+    createdAt: r.createdAt, updatedAt: r.updatedAt, to: r.tags.includes('platform') ? 'platform' : 'organisation',
+    about: asAbout(r.tags.find((t) => t.startsWith('about:'))?.slice(6) ?? (r.tags.includes('platform') ? 'fault' : 'portal')), answered: r.replies.length > 0,
   }));
 }
 
@@ -98,7 +120,7 @@ export async function getMyHelpRequest(id: string): Promise<HelpDetail> {
 }
 
 /** Ask for help. `ref`: the reference on an error screen; `page`: where it happened. */
-export async function openHelpRequest(input: { subject?: string; body?: string; to?: string; ref?: string; page?: string }): Promise<{ id: string; number: string }> {
+export async function openHelpRequest(input: { subject?: string; body?: string; to?: string; about?: string; ref?: string; page?: string }): Promise<{ id: string; number: string }> {
   const m = await me();
   if (!withinLimit(`help:${m.id}`, 10, 24 * 3_600_000)) throw new HelpError('You have asked for help 10 times today. Please wait for an answer, or call your administrator.');
   const subject = String(input.subject ?? '').replace(/\s+/g, ' ').trim().slice(0, 160);
@@ -106,23 +128,24 @@ export async function openHelpRequest(input: { subject?: string; body?: string; 
   if (subject.length < 3) throw new HelpError('Say in a few words what you need help with.');
   if (text.length < 5) throw new HelpError('Describe what you were doing and what happened.');
   if (text.length > REPLY_MAX) throw new HelpError(`At most ${REPLY_MAX.toLocaleString('en-NG')} characters.`);
-  const to: HelpTo = input.to === 'platform' ? 'platform' : 'organisation';
+  const about = asAbout(input.about ?? (input.to === 'platform' ? 'fault' : 'portal'));
+  const to: HelpTo = about === 'fault' || input.to === 'platform' ? 'platform' : 'organisation';
   const ref = typeof input.ref === 'string' && /^[A-Za-z0-9-]{4,40}$/.test(input.ref) ? input.ref : null;
   const page = typeof input.page === 'string' && /^\/[\w\-/[\]?=&.%]{0,200}$/.test(input.page) ? input.page : null;
   const body = [text, ref ? `Error reference: ${ref}` : '', page ? `Page: ${page}` : ''].filter(Boolean).join('\n\n');
-  const queue = await helpQueue(m.organisationId);
+  const queue = await routeHelp(m.organisationId, about);
   // One transaction: the request is private (requesterUserId) and has its first message from the moment it exists.
   const created = await prisma.$transaction(async (tx) => {
     const t = await openTicket({
       organisationId: m.organisationId, channel: 'STAFF', queue, branchId: m.branchId, contactName: m.fullName, contactEmail: m.email, subject, summary: text.slice(0, 600),
-      priority: priorityFromText(`${subject}\n${text}`, ref ? 'HIGH' : 'NORMAL'), verified: true, authenticatedSender: true,
+      priority: priorityFromText(`${subject}\n${text}`, ref || about === 'complaint' ? 'HIGH' : 'NORMAL'), verified: true, authenticatedSender: true,
       aiPending: queue.aiMode !== 'OFF', handoverReason: 'staff_help', openedAt: new Date(),
-      requesterUserId: m.id, senderKind: 'staff', senderUserId: m.id, tags: to === 'platform' ? ['platform', 'staff_help'] : ['staff_help'],
+      requesterUserId: m.id, senderKind: 'staff', senderUserId: m.id, tags: [...(to === 'platform' ? ['platform'] : []), 'staff_help', `about:${about}`, ...(about === 'complaint' ? ['complaint'] : [])],
     }, tx);
     await tx.supportReply.create({ data: { ticketId: t.id, fromCustomer: true, kind: 'CUSTOMER', visibility: 'PUBLIC', body } });
     return t;
   });
-  await supportEvent({ organisationId: m.organisationId, ticketId: created.id, userId: m.id, action: 'support.help_requested', metadata: { number: created.number, to, ...(ref ? { ref } : {}) } });
+  await supportEvent({ organisationId: m.organisationId, ticketId: created.id, userId: m.id, action: 'support.help_requested', metadata: { number: created.number, to, about, team: queue.name, ...(ref ? { ref } : {}) } });
   return { id: created.id, number: created.number };
 }
 

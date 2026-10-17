@@ -28,6 +28,10 @@ const SENSITIVE_EXACT = new Set<string>([
   'support.assist',
   // Sets selling prices and stock levels, which is money by another name.
   'store.parts.manage',
+  // Reviewing colleagues' conduct, setting up support and the AI: never on someone else's behalf.
+  'integrity.review',
+  'support.manage',
+  'enyo.manage',
 ]);
 const SENSITIVE_PREFIXES = ['admin.', 'analytics.', 'procurement.epr.'];
 // Also everything the catalogue lists as a decision or as showing purchase

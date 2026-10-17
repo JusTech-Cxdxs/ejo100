@@ -11,16 +11,16 @@ import { requireUser } from './workshop';
 const str = (f: FormData, k: string) => String(f.get(k) ?? '');
 const page = (id: string) => `/support/help/${encodeURIComponent(id)}`;
 
-export type HelpFormState = { error: string | null; subject: string; body: string; to: string };
+export type HelpFormState = { error: string | null; subject: string; body: string; to: string; about?: string };
 
 export async function openHelpRequestAction(_prev: HelpFormState, f: FormData): Promise<HelpFormState> {
   await requireUser();
-  const input = { subject: str(f, 'subject'), body: str(f, 'body'), to: str(f, 'to'), ref: str(f, 'ref'), page: str(f, 'page') };
+  const input = { subject: str(f, 'subject'), body: str(f, 'body'), about: str(f, 'about'), to: str(f, 'about') === 'fault' ? 'platform' : 'organisation', ref: str(f, 'ref'), page: str(f, 'page') };
   let id = '';
   try {
     id = (await openHelpRequest(input)).id;
   } catch (err) {
-    return { error: friendlyError(err, 'Could not send your request.', 'help-form-handlers'), subject: input.subject, body: input.body, to: input.to };
+    return { error: friendlyError(err, 'Could not send your request.', 'help-form-handlers'), subject: input.subject, body: input.body, to: input.to, about: input.about };
   }
   revalidatePath('/support/help');
   redirect(`${page(id)}?status=sent`);

@@ -21,7 +21,7 @@ export type EnyoStatus = {
 export type EnyoChatRequest = { conversationId?: string; message: string; page?: string };
 
 /** POST /api/enyo/refine */
-export type EnyoTone = 'polite' | 'formal' | 'short' | 'friendly';
+export type EnyoTone = 'polite' | 'formal' | 'short' | 'friendly' | 'clear' | 'decision';
 export type EnyoRefineRequest = { text: string; tone?: EnyoTone };
 export type EnyoRefineResponse = { text: string } | { error: string; ref?: string };
 

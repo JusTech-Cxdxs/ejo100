@@ -22,7 +22,7 @@ import { SUPPORT_STATUS_FOR_CUSTOMER } from '@/lib/support-rules';
 import { getEnyoSettings } from '@/lib/enyo/settings';
 import { PLATFORM } from '@/lib/brand';
 import { aiDecision, asPriority, dueDates, priorityFromText, sensitiveReasons } from './core';
-import { aiReply, followUrl, letterheadFor, newToken, nextAssignee, personOnlyFrom, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings, triageEmail } from './server';
+import { aiReply, followUrl, letterheadFor, newToken, nextAssignee, personOnlyFrom, queueById, responseUrl, sendFromSupport, subjectFor, supportEvent, supportSettings, triageEmail, type QueueRow } from './server';
 import { senderContext } from './context';
 import { contextSnapshot, recordsReadyFor } from './context-core';
 
@@ -50,19 +50,40 @@ export async function runSupportAutomations(budgetMs: number, only: 'enyo' | 're
 
 // 1 ───────────────────────────────────────────────────────── chat hand-overs
 
+/**
+ * The team for a request the website or customer portal opened without one:
+ * a complaint to Customer care, a warranty question to Warranty, when the
+ * organisation has such a team; otherwise the default team.
+ */
+async function teamFor(organisationId: string, tags: string[]): Promise<QueueRow> {
+  const kind = tags.includes('complaint') ? 'customer_care' : tags.includes('topic:warranty') ? 'warranty' : tags.includes('topic:vehicle') ? 'technical' : null;
+  if (kind) {
+    const q = await prisma.supportQueue.findFirst({ where: { organisationId, kind, active: true }, orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }], select: { id: true } });
+    if (q) return queueById(organisationId, q.id);
+  }
+  return queueById(organisationId, null);
+}
+
 async function normaliseHandovers(): Promise<number> {
-  // Only hand-overs opened since v36 (they carry the reason); older tickets keep their history as it was.
-  const rows = await prisma.supportTicket.findMany({ where: { queueId: null, handoverReason: 'chat_handover' }, orderBy: { createdAt: 'asc' }, take: 50, select: { id: true, organisationId: true, createdAt: true, subject: true, summary: true, assignedToId: true, token: true, priority: true, status: true } });
+  // Hand-overs from a chat (since v36 they carry the reason) and requests a customer opened in the portal (v38);
+  // older tickets keep their history as it was.
+  const rows = await prisma.supportTicket.findMany({
+    where: { queueId: null, OR: [{ handoverReason: 'chat_handover' }, { tags: { has: 'portal_request' } }] },
+    orderBy: { createdAt: 'asc' }, take: 50,
+    select: { id: true, organisationId: true, createdAt: true, subject: true, summary: true, assignedToId: true, token: true, priority: true, status: true, tags: true, handoverReason: true },
+  });
   let n = 0;
   for (const t of rows) {
-    const queue = await queueById(t.organisationId, null);
+    const queue = await teamFor(t.organisationId, t.tags);
     const settings = await supportSettings(t.organisationId);
     const priority = priorityFromText(`${t.subject}\n${t.summary}`, t.priority);
     const due = dueDates(t.createdAt, asPriority(priority), queue.targets, settings.hours, settings.holidays);
     const assignee = t.assignedToId ?? await nextAssignee(t.organisationId, queue.id);
     const done = await prisma.supportTicket.updateMany({
       where: { id: t.id, queueId: null },
-      data: { queueId: queue.id, priority, dueFirstResponseAt: due.first, dueResolutionAt: due.resolve, token: t.token ?? newToken(), lastCustomerAt: t.createdAt, handoverReason: 'chat_handover', ...(assignee ? { assignedToId: assignee } : {}) },
+      data: { queueId: queue.id, priority, dueFirstResponseAt: due.first, dueResolutionAt: due.resolve, token: t.token ?? newToken(), lastCustomerAt: t.createdAt, handoverReason: t.handoverReason ?? 'chat_handover', ...(assignee ? { assignedToId: assignee } : {}),
+        // A request written in the customer portal: Enyo reads it (summary, draft) like an email, when the team allows.
+        ...(t.tags.includes('portal_request') && queue.aiMode !== 'OFF' ? { aiPendingAt: new Date() } : {}) },
     });
     n += done.count;
   }

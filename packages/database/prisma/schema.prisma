@@ -3717,6 +3717,12 @@ model SupportSetting {
   autoResolveDays Int     @default(7)
   closeAfterDays Int      @default(4)
   csatEnabled    Boolean  @default(true)
+  // v38 — public holidays come from a calendar worked out each year
+  // ("NG": Nigeria's fixed dates, Easter dates and the Islamic holidays),
+  // plus the extra days in `holidays`, minus any calendar days listed in
+  // `holidaysOff` (e.g. the branch opens on Boxing Day). Null = no calendar.
+  holidayCalendar String?  @default("NG")
+  holidaysOff    String[] @default([])
   updatedById    String?
   updatedAt      DateTime @updatedAt
 
@@ -4034,4 +4040,32 @@ model MailStyleSample {
 
   @@index([userId, sentAt])
   @@map("mail_style_samples")
+}
+
+// v38 — the organisation's leadership and other people it publishes (name,
+// title, the part of the business they lead, a short public biography and a
+// public profile link). Managed by administrators on Organisation → People we
+// publish. Enyo (website, customer portal and staff portal) answers "who is …"
+// questions from this list; only rows marked public reach the website and
+// customer portal. No contact details are kept here. Additive only.
+model PublicProfile {
+  id             String   @id @default(cuid())
+  organisationId String
+  name           String
+  title          String
+  // The part of the business they lead or work in ("Automobile Division", "Group IT").
+  area           String?
+  bio            String?
+  // A public professional page (LinkedIn or the organisation's website), https only.
+  profileUrl     String?
+  // Shown on the website and the customer portal (staff always see them).
+  isPublic       Boolean  @default(true)
+  sortOrder      Int      @default(0)
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @default(now()) @updatedAt
+
+  @@index([organisationId, sortOrder])
+  @@map("public_profiles")
 }

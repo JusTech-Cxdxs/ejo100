@@ -24,7 +24,7 @@ export default async function ExitPassPrint({ params, searchParams }: { params: 
         orgName={org?.name ?? portalConfig.organisationName}
         subName={p.branch.name}
         title="Employee Exit Pass"
-        note="NOTE: The Security Officers will not permit or allow any Employee on duty to go out during working hour(s) without the Employee Exit pass approval."
+        note="NOTE: The Security Officers will not permit or allow any Employee on duty to go out during working hours without the Employee Exit pass approval."
       >
         <div style={{ textAlign: 'center', fontWeight: 700, marginBottom: '4px' }}>{p.passNumber}{valid ? '' : ` — NOT VALID (${EXIT_PASS_STATUS_LABEL[p.status]})`}</div>
         <PassLine label="Date" value={formatDateOnly(p.createdAt)} />

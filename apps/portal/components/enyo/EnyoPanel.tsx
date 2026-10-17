@@ -14,6 +14,7 @@ import { EnyoHistory } from './EnyoHistory';
 import { EIcon } from './icons';
 import { getEnyoStatus, loadConversation, streamChat } from './api';
 import { DEFAULT_PREFS, readPrefs, writePrefs, type EnyoPrefs } from './prefs';
+import { ENYO_ASK_EVENT } from './ask-event';
 import { createMouthDriver, joinSpoken, useSpeechInput, useSpeechOutput, type MouthDriver } from './voice';
 import { useChatViewport } from '@ejo/enyo/src/ui/useChatViewport';
 
@@ -175,6 +176,21 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
   }, [cancelSpeech]);
 
   const visible = ready || (status !== null && canManage);
+
+  // "Ask Enyo" buttons anywhere on a page (AskEnyoButton) open the chat with
+  // the question in the box, ready to send or change — never sent by itself.
+  useEffect(() => {
+    if (!visible) return;
+    document.documentElement.dataset.enyo = 'ready';
+    const onAsk = (e: Event) => {
+      const q = (e as CustomEvent<{ question?: unknown }>).detail?.question;
+      setView('chat');
+      openPanel();
+      if (typeof q === 'string' && q.trim()) setInput(q.trim().slice(0, MAX_LEN));
+    };
+    window.addEventListener(ENYO_ASK_EVENT, onAsk);
+    return () => { window.removeEventListener(ENYO_ASK_EVENT, onAsk); delete document.documentElement.dataset.enyo; };
+  }, [visible, openPanel]);
 
   // Ctrl/Cmd+J toggles from anywhere on the page.
   useEffect(() => {

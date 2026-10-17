@@ -558,12 +558,13 @@ export const GUIDE: GuideEntry[] = [
   },
   {
     id: 'support-setup', title: 'Set up support teams and addresses (support@, warranty@, technical@)', page: '/settings/support', needs: ['admin.settings.manage'], does: ['support.manage'], who: 'Administrators',
-    keywords: ['support setup', 'support email', 'warranty@', 'technical@', 'customercare@', 'queue', 'team', 'auto reply', 'autoresponder', 'opening hours', 'targets', 'sla'],
+    keywords: ['support setup', 'support email', 'warranty@', 'technical@', 'customercare@', 'queue', 'team', 'auto reply', 'autoresponder', 'opening hours', 'targets', 'sla', 'public holidays', 'holiday', 'closed days'],
     steps: [
-      'Go to Settings → Support centre set-up.',
-      'Add a team (for example Warranty), choose how Enyo helps (people only, Enyo drafts, or Enyo answers general questions), its targets and whether to send an acknowledgement.',
-      'Connect the team\'s address with an app password. New mail becomes numbered requests within minutes; the customer gets the reference and when to expect an answer.',
-      'Tick who works the team and how many open requests each takes. Set opening hours, holidays and the reminder and closing rules at the bottom.',
+      'Go to Settings → Support centre set-up. The Overview tab shows what people do, what Enyo does, and which requests always go to a person and why.',
+      'Teams & addresses → Add a team (for example Customer care & complaints), choose how Enyo helps (people only, Enyo drafts, or Enyo answers general questions), its targets and whether to send an acknowledgement.',
+      'Open the team: connect its address with an app password (new mail becomes numbered requests within minutes), then search and tick who works it and how many open requests each takes.',
+      'Hours & holidays: set opening hours. Nigerian public holidays are worked out automatically each year; tick "Open" on any you work, or add your own closed day.',
+      'Enyo’s part sets how sure Enyo must be to answer by itself; Follow-ups sets the reminder, resolve and close rules and the satisfaction question.',
     ],
   },
   {

@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { authorize, getPrincipal } from '@/lib/authz/server';
-import { PERMISSIONS, ROLE_GRANTS, type PermissionKey } from '@/lib/authz/catalogue';
+import { PERMISSIONS, ROLE_GRANTS, scopeFor, type PermissionKey } from '@/lib/authz/catalogue';
 
 export type RoleForEditor = { id: string; name: string; slug: string; isPlatform: boolean; users: number; defaults: PermissionKey[]; added: PermissionKey[] };
 
@@ -33,6 +33,8 @@ async function editableRole(roleId: string) {
   if (!role) throw new Error('That role no longer exists — refresh the page.');
   if (role.isSuperAdmin) throw new Error('The Master Administrator role belongs to the platform team and already holds everything.');
   if (!p.isSuperAdmin && role.organisationId !== me?.organisationId) throw new Error('You can only change roles in your own organisation.');
+  // Nobody widens their own access: a role you hold is changed by another administrator.
+  if (!p.isSuperAdmin && p.roleSlugs.includes(role.slug)) throw new Error('You cannot change a role you hold yourself — ask another administrator.');
   return { p, role };
 }
 
@@ -42,6 +44,12 @@ export async function grantRolePermission(roleId: string, key: string): Promise<
   if (!(key in PERMISSIONS)) throw new Error('That permission does not exist.');
   const { p, role } = await editableRole(roleId);
   if (key in (ROLE_GRANTS[role.slug] ?? {})) throw new Error('This role already includes that permission by default.');
+  // No one hands out more than they hold: outside the Organisation Administrator (and the platform team),
+  // a permission can only be added to a role by someone who has it themselves, and never to an administrator role.
+  if (!p.isSuperAdmin && !p.roleSlugs.includes('administrator')) {
+    if (role.slug === 'administrator' || role.slug === 'branch-administrator') throw new Error('Only an Organisation Administrator can change the administrator roles.');
+    if (scopeFor(p, key as PermissionKey) === null) throw new Error('You can only add a permission you hold yourself — ask an Organisation Administrator.');
+  }
   const perm = await prisma.permission.upsert({ where: { key }, update: {}, create: { key, description: PERMISSIONS[key as PermissionKey].label } });
   await prisma.rolePermission.upsert({ where: { roleId_permissionId: { roleId, permissionId: perm.id } }, update: {}, create: { roleId, permissionId: perm.id } });
   await writeAuditLog({ userId: p.userId, action: 'role.permission_granted', entityType: 'Role', entityId: roleId, metadata: { role: role.name, permission: PERMISSIONS[key as PermissionKey].label } });

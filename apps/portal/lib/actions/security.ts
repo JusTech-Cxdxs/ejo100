@@ -23,7 +23,7 @@ import { PLATFORM } from '@/lib/brand';
 
 class SecurityError extends Error {}
 
-const HEAD_SLUGS = ['department-head', 'workshop-manager', 'store-manager', 'warranty-hod'];
+const HEAD_SLUGS = ['department-head', 'workshop-manager', 'store-manager', 'warranty-hod', 'customer-care-lead', 'executive'];
 
 type Person = { id: string; fullName: string; email: string };
 

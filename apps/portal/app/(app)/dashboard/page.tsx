@@ -21,6 +21,16 @@ import { APPROVAL_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue'
 
 /** The shortcuts a person sees — only for what they may do. */
 const QUICK: { key: PermissionKey; label: string; href: string; icon: IconName }[] = [
+  // Customer care (the support department)
+  { key: 'support.tickets.manage', label: 'Support centre', href: '/crm/support', icon: 'inbox' },
+  { key: 'support.tickets.manage', label: 'Log a call or complaint', href: '/crm/support/new', icon: 'phone' },
+  // Leadership
+  { key: 'analytics.business.view', label: 'Business analytics', href: '/analytics', icon: 'chart' },
+  { key: 'analytics.business.view', label: 'How work flows', href: '/analytics/workflows', icon: 'activity' },
+  // IT
+  { key: 'admin.users.manage', label: 'People & access', href: '/users', icon: 'users' },
+  { key: 'audit.view', label: 'Error log', href: '/audit-logs/errors', icon: 'alert' },
+  { key: 'admin.settings.manage', label: 'System health', href: '/settings#health', icon: 'activity' },
   { key: 'workshop.job_card.create', label: 'Open a Job Card', href: '/workshop/job-cards', icon: 'clipboard' },
   { key: 'workshop.job_card.create', label: 'Book a service', href: '/workshop/vehicle-service/book', icon: 'droplet' },
   { key: 'workshop.view', label: 'Vehicles in custody', href: '/workshop/custody', icon: 'garage' },
@@ -31,7 +41,9 @@ const QUICK: { key: PermissionKey; label: string; href: string; icon: IconName }
   { key: 'security.exit_pass.request', label: 'Request an exit pass', href: '/security/exit-passes/new', icon: 'exit' },
   { key: 'schedule.view', label: 'New appointment', href: '/schedule/new', icon: 'calendar' },
   { key: 'notifications.broadcast.send', label: 'New broadcast', href: '/notifications/broadcasts/new', icon: 'megaphone' },
-  { key: 'analytics.business.view', label: 'Business analytics', href: '/analytics', icon: 'chart' },
+  // Everyone: their own help desk and features guide.
+  { key: 'security.exit_pass.request', label: 'Get help', href: '/support/help', icon: 'help' },
+  { key: 'security.exit_pass.request', label: 'What I can do here', href: '/support/features', icon: 'sparkles' },
 ];
 
 /** The "at a glance" tiles: an icon per destination; colour only when it means something. */
@@ -77,7 +89,10 @@ export default async function DashboardPage() {
     worksJobs ? getMyJobs().catch(() => []) : Promise.resolve([]),
   ]);
   const approvals = notifications.filter(isApproval);
-  const quick = QUICK.filter((_, i) => quickAllowed[i]).slice(0, 8);
+  // Unique destinations, role-specific first, at most ten.
+  const allowedQuick = QUICK.filter((q, i) => quickAllowed[i] && QUICK.findIndex((x) => x.href === q.href) === i);
+  const forEveryone = (q: (typeof QUICK)[number]) => q.href === '/support/help' || q.href === '/support/features';
+  const quick = [...allowedQuick.filter((q) => !forEveryone(q)).slice(0, 8), ...allowedQuick.filter(forEveryone)];
   const firstName = person?.fullName?.trim().split(/\s+/)[0];
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Lagos' }).format(new Date());
 
