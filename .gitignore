@@ -27,3 +27,5 @@ __pycache__/
 .pytest_cache/
 ml/.venv/
 ml-out/
+# Per-builder test output folders
+.test-out-*/
