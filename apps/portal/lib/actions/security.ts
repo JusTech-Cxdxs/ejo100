@@ -882,12 +882,16 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
   // The final step belongs to the pass's own approvers: its branch's Managers, or — for a
   // manager's or headquarters person's own pass — the executives above them.
   const finals = await finalDecidable(rows, user.id, roles.isMaster);
+  // The head step: only a head of department, a reporting manager, a Manager, an executive or
+  // an administrator can ever be asked — anyone else is done here (one query, not one per row).
+  const { slugs } = await slugsOf(user.id);
+  const reportsToMe = roles.isMaster ? false : (await prisma.employeeProfile.count({ where: { reportingManagerId: user.id } })) > 0;
+  const mayHead = roles.isMaster || reportsToMe || [...HEAD_SLUGS, ...FINAL_SLUGS].some((x) => slugs.includes(x));
   const headMemo = new Map<string, boolean>();
   for (const p of rows) {
     if (p.status === 'PENDING_MANAGER') {
       if (finals.has(p.id)) out.push(p);
-    }
-    else if (p.status === 'PENDING_HEAD') {
+    } else if (p.status === 'PENDING_HEAD' && mayHead) {
       const key = `${p.requestedById}|${p.branchId}`;
       if (!headMemo.has(key)) headMemo.set(key, roles.isMaster || (await headApproversFor(p.requestedById, p.branchId)).some((h) => h.id === user.id));
       if (headMemo.get(key)) out.push(p);
