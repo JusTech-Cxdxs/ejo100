@@ -1,0 +1,93 @@
+[
+ {
+  "id": "01-intro",
+  "kind": "card",
+  "text": "Kewalram Chanrai Group. EJO one hundred, Enterprise Platform. Built by JusTech.",
+  "dur": 6.28517
+ },
+ {
+  "id": "02-signin",
+  "role": "frontdesk",
+  "text": "This is EJO one hundred: one platform for the whole group, from the front desk to the boardroom. Every member of staff signs in with their own account, and sees only what their role allows. Let's start where the day starts, at the front desk.",
+  "dur": 14.029025
+ },
+ {
+  "id": "03-dashboard",
+  "role": "frontdesk",
+  "text": "The dashboard is the morning briefing. Live counts of the vehicles in the workshop, jobs waiting on approval, parts that need reordering, and everything that changed since yesterday. While a page loads, the EJO mark pulses, so you always know the system is working for you.",
+  "dur": 16.153651
+ },
+ {
+  "id": "04-crm",
+  "role": "frontdesk",
+  "text": "Customers live in one place. A profile holds the vehicles, every job card, every payment, and the full history of the relationship. Nothing is typed twice, and nothing is lost when a member of staff moves on.",
+  "dur": 13.227937
+ },
+ {
+  "id": "05-workshop",
+  "role": "supervisor",
+  "text": "The workshop runs on job cards. A job card follows a vehicle from gate to gate: intake, inspection, estimate, parts, work done, billing, and release. Every step records who did it and when, so a supervisor can see the state of the whole floor at a glance.",
+  "dur": 17.465578
+ },
+ {
+  "id": "06-print",
+  "role": "supervisor",
+  "text": "Every document prints on the group's own letterhead. The logo sits beside the wordmark, the green rule carries the group name beneath it, and the executing branch follows underneath, exactly as on the printed job card the workshop uses today.",
+  "dur": 14.116644
+ },
+ {
+  "id": "07-inventory",
+  "role": "store",
+  "text": "Inventory knows every part on the shelf: what is in stock, what is reserved against a job card, what has just arrived on a goods receipt, and what has fallen below its reorder level. The store manager sees the numbers before the shelf runs empty.",
+  "dur": 14.197914
+ },
+ {
+  "id": "08-approvals",
+  "role": "manager",
+  "text": "Approvals route themselves to the right person. A supervisor approves first, the manager gives the final word, and the rules make sure nobody signs off their own request. Each decision is one tap, and the requester is told the moment it happens.",
+  "dur": 14.435374
+ },
+ {
+  "id": "09-security",
+  "role": "security",
+  "text": "At the gate, security registers visitors, logs every vehicle coming in and going out, and issues exit passes and road test passes that print with a reference the gate can verify. Who is on the premises right now is always one screen away.",
+  "dur": 14.139864
+ },
+ {
+  "id": "10-schedule",
+  "role": "scheduler",
+  "text": "The schedule brings meetings, rooms, visitors and appointments into one calendar for the whole branch. Book a room, invite colleagues, and the gate knows who to expect.",
+  "dur": 9.391383
+ },
+ {
+  "id": "11-support",
+  "role": "care",
+  "text": "Customer care runs the support centre. Every request becomes a ticket with an owner, a deadline, and a follow-up. Service hours and teams are set by the business, not by the software.",
+  "dur": 11.091701
+ },
+ {
+  "id": "12-enyo",
+  "role": "manager",
+  "text": "Enyo is the assistant built into the platform. Ask it in plain language and it answers from the group's own records, with the same permissions as the person asking. It summarises, drafts, and explains, and it never sees data it should not.",
+  "dur": 14.702404
+ },
+ {
+  "id": "13-leadership",
+  "role": "executive",
+  "text": "Leadership sees across every branch: workflow analytics, headquarters dashboards, and a complete, append-only audit log. Every action in the system can be traced to a person and a moment, which is what makes the numbers worth trusting.",
+  "dur": 14.546213
+ },
+ {
+  "id": "14-mobile",
+  "role": "frontdesk",
+  "mobile": true,
+  "text": "And it all fits in a pocket. EJO one hundred installs on any phone like an app, with the same data, the same permissions, and the same letterhead, wherever the work happens to be.",
+  "dur": 10.389841
+ },
+ {
+  "id": "15-outro",
+  "kind": "card",
+  "text": "EJO one hundred, Enterprise Platform. Built by Just Technologies for Kewalram Chanrai Group. Powered by EJO one hundred.",
+  "dur": 8.746485
+ }
+]
