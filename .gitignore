@@ -29,3 +29,7 @@ ml/.venv/
 ml-out/
 # Per-builder test output folders
 .test-out-*/
+# Playwright run artifacts
+apps/portal/test-results/
+apps/portal/report/
+apps/portal/playwright-report/
