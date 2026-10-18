@@ -92,9 +92,10 @@ export async function createExitPassFormAction(f: FormData) {
   const employees = f.getAll('employeeIds').map(String).filter(Boolean);
   const leaveAt = str(f, 'leaveWhen') === 'LATER' && str(f, 'leaveTime') ? new Date(`${new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' })}T${str(f, 'leaveTime')}:00+01:00`) : undefined;
   let id = '';
+  let done = 'requested';
   try {
     if (!who) throw new Error('Choose who is going out.');
-    id = (
+    const made = (
       await createExitPass({
         reason: str(f, 'reason'),
         returning: str(f, 'returning') === 'yes',
@@ -103,11 +104,14 @@ export async function createExitPassFormAction(f: FormData) {
         employeeIds: who === 'OTHERS' ? employees : [str(f, 'me'), ...employees],
         others: others.map((n) => ({ name: n })),
       })
-    ).id;
+    );
+    id = made.id;
+    // The Manager / Executive approved it on the spot: say so, not "requested".
+    if (made.status === 'APPROVED') done = 'approved_now';
   } catch (err) {
     back('/security/exit-passes/new', err, 'Could not create the exit pass.');
   }
-  ok(`/security/exit-passes/${id}`, 'requested');
+  ok(`/security/exit-passes/${id}`, done);
 }
 
 export async function exitPassActionFormAction(f: FormData) {
@@ -173,14 +177,17 @@ export async function requestRoadTestFormAction(f: FormData) {
   const jobCardId = str(f, 'jobCardId') || undefined;
   const vehicleServiceId = str(f, 'vehicleServiceId') || undefined;
   let id = '';
+  let done = 'requested';
   try {
-    id = (await requestRoadTest({ jobCardId, vehicleServiceId, driverId: str(f, 'driverId'), purpose: str(f, 'purpose'), route: str(f, 'route'), expectedDurationMinutes: Number(str(f, 'expectedMinutes')), companionIds: f.getAll('companionIds').map(String).filter(Boolean), otherCompanions: str(f, 'otherCompanions').split('\n') })).id;
+    const made = (await requestRoadTest({ jobCardId, vehicleServiceId, driverId: str(f, 'driverId'), purpose: str(f, 'purpose'), route: str(f, 'route'), expectedDurationMinutes: Number(str(f, 'expectedMinutes')), companionIds: f.getAll('companionIds').map(String).filter(Boolean), otherCompanions: str(f, 'otherCompanions').split('\n') }));
+    id = made.id;
+    if (made.status === 'APPROVED') done = 'approved_now';
   } catch (err) {
     back(`/security/road-tests/new?${jobCardId ? `jobCardId=${jobCardId}` : `vehicleServiceId=${vehicleServiceId}`}`, err, 'Could not request the road test.');
   }
   if (jobCardId) revalidatePath(`/workshop/job-cards/${jobCardId}`);
   if (vehicleServiceId) revalidatePath(`/workshop/vehicle-service/${vehicleServiceId}`);
-  ok(`/security/road-tests/${id}`, 'requested');
+  ok(`/security/road-tests/${id}`, done);
 }
 
 export async function roadTestActionFormAction(f: FormData) {
@@ -280,13 +287,16 @@ export async function deliveryActionFormAction(f: FormData) {
 export async function requestContractorFormAction(f: FormData) {
   const team = str(f, 'party') === 'GROUP';
   let id = '';
+  let done = 'requested';
   try {
     if (!str(f, 'party')) throw new Error('Choose whether it is one person or a team.');
-    id = (await requestContractorPass({ company: str(f, 'company'), work: str(f, 'work'), workArea: str(f, 'workArea'), leadName: str(f, 'leadName'), memberNames: team ? f.getAll('memberName').map(String) : [], phone: str(f, 'phone'), validFrom: str(f, 'validFrom'), validUntil: str(f, 'validUntil'), hostUserId: str(f, 'hostUserId') || undefined })).id;
+    const made = (await requestContractorPass({ company: str(f, 'company'), work: str(f, 'work'), workArea: str(f, 'workArea'), leadName: str(f, 'leadName'), memberNames: team ? f.getAll('memberName').map(String) : [], phone: str(f, 'phone'), validFrom: str(f, 'validFrom'), validUntil: str(f, 'validUntil'), hostUserId: str(f, 'hostUserId') || undefined }));
+    id = made.id;
+    if (made.status === 'APPROVED') done = 'approved_now';
   } catch (err) {
     back('/security/contractors/new', err, 'Could not request the contractor pass.');
   }
-  ok(`/security/contractors/${id}`, 'requested');
+  ok(`/security/contractors/${id}`, done);
 }
 
 export async function contractorActionFormAction(f: FormData) {

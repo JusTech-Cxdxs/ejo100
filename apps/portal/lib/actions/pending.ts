@@ -64,6 +64,9 @@ export async function getMyPending(): Promise<PendingItem[]> {
   };
   // A manager's or headquarters person's own pass goes up to the executives (see security.ts managerApprovers).
   const senior = SENIOR_REQUESTER_SLUGS.some((x) => p.roleSlugs.includes(x));
+  // Managers and the Executive approve their own passes: anything of theirs still pending waits on them.
+  const approvesOwn = p.isSuperAdmin || p.roleSlugs.includes('executive') || p.roleSlugs.includes('workshop-manager');
+  const onMe = 'you — open it and approve it';
   let above: string | null = null;
   const aboveMe = async () => {
     if (above === null) {
@@ -98,14 +101,14 @@ export async function getMyPending(): Promise<PendingItem[]> {
     waitingOn: e.status === 'PENDING_MANAGER_APPROVAL' ? await managerOf(e.branchId) : await financeOf(e.branchId),
     since: e.managerApprovedAt ?? e.financeReviewedAt ?? e.createdAt, url: `/workshop/external-procurement/${e.id}`,
   });
-  for (const x of passes) out.push({ id: `ep-${x.id}`, area: 'Security', number: x.passNumber, title: x.status === 'PENDING_HEAD' ? 'Exit pass waiting for your head of department' : 'Exit pass waiting for final approval', waitingOn: x.status === 'PENDING_HEAD' ? 'your head of department' : senior ? await aboveMe() : await managerOf(x.branchId), since: x.headApprovedAt ?? x.createdAt, url: `/security/exit-passes/${x.id}` });
+  for (const x of passes) out.push({ id: `ep-${x.id}`, area: 'Security', number: x.passNumber, title: x.status === 'PENDING_HEAD' ? 'Exit pass waiting for your head of department' : 'Exit pass waiting for final approval', waitingOn: approvesOwn ? onMe : x.status === 'PENDING_HEAD' ? 'your head of department' : senior ? await aboveMe() : await managerOf(x.branchId), since: x.headApprovedAt ?? x.createdAt, url: `/security/exit-passes/${x.id}` });
   for (const c of claims) out.push({ id: `wc-${c.id}`, area: 'Warranty', number: c.claimNumber, title: c.status === 'PENDING_HOD' ? 'Warranty claim waiting for the Warranty HOD' : c.status === 'PENDING_MANAGER' ? 'Warranty claim waiting for the Manager' : 'Warranty claim with the provider', waitingOn: c.status === 'PENDING_HOD' ? 'the Warranty HOD' : c.status === 'PENDING_MANAGER' ? 'the Manager' : 'the warranty provider', since: c.submittedAt ?? c.reviewRequestedAt ?? c.createdAt, url: `/warranty/claims/${c.id}` });
   for (const c of closes) out.push({ id: `close-${c.jobCard.id}`, area: 'Workshop', number: c.jobCard.jobNumber, title: 'Close request waiting for approval', waitingOn: await managerOf(c.jobCard.branchId), since: c.requestedAt, url: `/workshop/job-cards/${c.jobCard.id}` });
   for (const c of cancels) out.push({ id: `cancel-${c.jobCard.id}`, area: 'Workshop', number: c.jobCard.jobNumber, title: 'Cancellation request waiting for approval', waitingOn: await managerOf(c.jobCard.branchId), since: c.requestedAt, url: `/workshop/job-cards/${c.jobCard.id}` });
   for (const c of svCloses) out.push({ id: `sclose-${c.vehicleService.id}`, area: 'Workshop', number: c.vehicleService.serviceNumber, title: 'Close request waiting for approval', waitingOn: await managerOf(c.vehicleService.branchId), since: c.requestedAt, url: `/workshop/vehicle-service/${c.vehicleService.id}` });
   for (const c of svCancels) out.push({ id: `scancel-${c.vehicleService.id}`, area: 'Workshop', number: c.vehicleService.serviceNumber, title: 'Cancellation request waiting for approval', waitingOn: await managerOf(c.vehicleService.branchId), since: c.requestedAt, url: `/workshop/vehicle-service/${c.vehicleService.id}` });
-  for (const t of tests) out.push({ id: `rt-${t.id}`, area: 'Security', number: t.permitNumber, title: 'Road test waiting for approval', waitingOn: senior ? await aboveMe() : await managerOf(t.branchId), since: t.createdAt, url: `/security/road-tests/${t.id}` });
-  for (const c of contractors) out.push({ id: `ctr-${c.id}`, area: 'Security', number: c.passNumber, title: `Contractor pass waiting for approval — ${c.company}`, waitingOn: senior ? await aboveMe() : await managerOf(c.branchId), since: c.createdAt, url: `/security/contractors/${c.id}` });
+  for (const t of tests) out.push({ id: `rt-${t.id}`, area: 'Security', number: t.permitNumber, title: 'Road test waiting for approval', waitingOn: approvesOwn ? onMe : senior ? await aboveMe() : await managerOf(t.branchId), since: t.createdAt, url: `/security/road-tests/${t.id}` });
+  for (const c of contractors) out.push({ id: `ctr-${c.id}`, area: 'Security', number: c.passNumber, title: `Contractor pass waiting for approval — ${c.company}`, waitingOn: approvesOwn ? onMe : senior ? await aboveMe() : await managerOf(c.branchId), since: c.createdAt, url: `/security/contractors/${c.id}` });
   for (const h of help) out.push({ id: `help-${h.id}`, area: 'Help', number: h.number, title: h.subject.slice(0, 80) || 'Help request', waitingOn: h.status === 'WAITING_ON_CUSTOMER' ? 'you — support asked you for more information' : h.assignedToId && helpers.get(h.assignedToId) ? `${helpers.get(h.assignedToId)} (Support)` : 'the support team', since: h.createdAt, url: `/support/help/${h.id}` });
   return out.sort((a, b) => a.since.getTime() - b.since.getTime());
 }

@@ -15,6 +15,7 @@ import { getPrincipal } from '@/lib/authz/server';
 import { primaryRoleLabel } from '@/lib/authz/catalogue';
 
 const DONE: Record<string, string> = {
+  approved_now: 'Exit pass approved on the spot — you have the authority to approve it. Security and everyone on it have been told; show it at the gate.',
   requested: 'Exit pass submitted — the person who approves it has been asked, and it shows under Approvals → Waiting on others until it is decided.',
   approve: 'Decision recorded — the next person has been told.',
   decline: 'Exit pass declined — the requester has been told.',
@@ -41,7 +42,11 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
   // The final approval is the Manager's; a manager's or headquarters person's own pass is approved above them (Executive).
   const me = await getPrincipal();
   const finalAs = me.roleSlugs.includes('workshop-manager') ? 'Manager' : primaryRoleLabel(me.roleSlugs, me.isSuperAdmin) ?? 'Manager';
-  const step = p.status === 'PENDING_HEAD' ? 'Authorise (Department Head)' : `Approve (${finalAs})`;
+  const mine = p.requestedBy.id === roles.userId;
+  const waitingLabel = p.status === 'PENDING_MANAGER' && p.finalStep === 'Executive' ? 'Awaiting Executive' : EXIT_PASS_STATUS_LABEL[p.status];
+  const step = mine ? `Approve my pass (${finalAs})` : p.status === 'PENDING_HEAD' ? 'Authorise (Department Head)' : `Approve (${finalAs})`;
+  // Approved on request: the Manager / Executive booked it and approved it in one go.
+  const onRequest = p.managerApprovedBy?.id === p.requestedBy.id;
 
   return (
     <div className="p-4 sm:p-8">
@@ -51,7 +56,7 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
           <PageTitle icon="exit">Exit pass {p.passNumber}</PageTitle>
           <p className="mt-1 text-sm text-[var(--ejo-text-muted)]">Requested by {p.requestedBy.fullName} on {formatDateTime(p.createdAt)} · {pluralize(p.people.length, 'person', 'people')}</p>
         </div>
-        <StatusChip status={p.status} label={EXIT_PASS_STATUS_LABEL[p.status]} className="px-3 py-1 text-sm" />
+        <StatusChip status={p.status} label={waitingLabel} className="px-3 py-1 text-sm" />
       </div>
       <SecurityNav active="/security/exit-passes" />
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
@@ -73,8 +78,14 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
             <Row k="Return" val={p.returning ? 'Returning' : 'No return'} />
             <Row k="Planned time out" val={p.expectedOutAt ? formatDateTime(p.expectedOutAt) : null} />
             <Row k="Expected time in" val={p.expectedReturnAt ? formatDateTime(p.expectedReturnAt) : null} />
-            <Row k="Authorised by (Department Head)" val={p.headApprovedBy && p.headApprovedAt ? `${p.headApprovedBy.fullName} · ${formatDateTime(p.headApprovedAt)}` : null} />
-            <Row k="Approved by (Manager)" val={p.managerApprovedBy && p.managerApprovedAt ? `${p.managerApprovedBy.fullName} · ${formatDateTime(p.managerApprovedAt)}` : null} />
+            {onRequest ? (
+              <Row k="Approved on request by" val={p.managerApprovedBy && p.managerApprovedAt ? `${p.managerApprovedBy.fullName} · ${formatDateTime(p.managerApprovedAt)}` : null} />
+            ) : (
+              <>
+                <Row k="Authorised by (Department Head)" val={p.headApprovedBy && p.headApprovedAt ? `${p.headApprovedBy.fullName} · ${formatDateTime(p.headApprovedAt)}` : null} />
+                <Row k="Approved by" val={p.managerApprovedBy && p.managerApprovedAt ? `${p.managerApprovedBy.fullName} · ${formatDateTime(p.managerApprovedAt)}` : null} />
+              </>
+            )}
             <Row k="Declined" val={p.declinedBy && p.declinedAt ? `${p.declinedBy.fullName} · ${formatDateTime(p.declinedAt)} — ${p.declineReason ?? ''}` : null} />
             <Row k="Cancelled because" val={p.cancelReason} />
             <Row k="Time out" val={p.gateOutAt ? `${formatDateTime(p.gateOutAt)}${p.gateOutBy ? ` · ${p.gateOutBy.fullName}` : ''}` : null} />
@@ -88,10 +99,10 @@ export default async function ExitPassPage({ params, searchParams }: { params: P
           {canDecide ? (
             <>
               <form action={exitPassActionFormAction}><Hidden action="approve" /><SubmitButton label={step} pendingLabel="Saving…" className={btn} /></form>
-              <form action={exitPassActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>
+              {mine ? null : <form action={exitPassActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>}
             </>
           ) : null}
-          {(p.status === 'PENDING_HEAD' || p.status === 'PENDING_MANAGER') && !canDecide ? <p className="text-sm text-[var(--ejo-text-muted)]">{EXIT_PASS_STATUS_LABEL[p.status]}.</p> : null}
+          {(p.status === 'PENDING_HEAD' || p.status === 'PENDING_MANAGER') && !canDecide ? <p className="text-sm text-[var(--ejo-text-muted)]">{waitingLabel}.</p> : null}
           {p.status === 'APPROVED' && roles.isGate ? <form action={exitPassActionFormAction}><Hidden action="gate_out" /><SubmitButton label="Record time out" pendingLabel="Saving…" className={btn} /></form> : null}
           {p.status === 'OUT' && roles.isGate ? <form action={exitPassActionFormAction}><Hidden action="gate_in" /><SubmitButton label="Record time in" pendingLabel="Saving…" className={btn} /></form> : null}
           {p.status === 'APPROVED' && !roles.isGate ? <p className="text-sm text-[var(--ejo-text-muted)]">Approved — show this pass at the gate.</p> : null}

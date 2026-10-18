@@ -304,8 +304,12 @@ export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string 
   // The short form ("Executive", "Front Desk"): it is shown inside brackets after a name.
   return best ? ROLE_LABELS[best]?.replace(/\s*\(.*\)\s*$/, '') ?? null : null;
 }
-/** Managers and headquarters people: their own passes and permits are decided above them (the Executive). */
-export const SENIOR_REQUESTER_SLUGS = ['workshop-manager', 'executive', 'administrator', 'it-administrator', 'branch-administrator', 'customer-care-lead'];
+/**
+ * Headquarters people below the Executive (IT, administrators): their own passes
+ * and permits go to the Executive. (The Executive and a branch's Manager approve
+ * their own on the spot — see security.ts approvesOwn.)
+ */
+export const SENIOR_REQUESTER_SLUGS = ['administrator', 'it-administrator'];
 /** Headquarters roles: they oversee every branch rather than belonging to one. */
 export const HQ_ROLE_SLUGS = ['executive', 'administrator', 'it-administrator'] as const;
 export const isHqRole = (slugs: string[]): boolean => HQ_ROLE_SLUGS.some((s) => slugs.includes(s));
@@ -341,7 +345,7 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'branch-assistant': 'IT support at the branch. Helps colleagues who are not comfortable with computers: with the colleague\'s own password, works on their tasks for a limited time. Every action is recorded as done for that colleague, with the assistant named. Cannot help managers, supervisors, finance or administrators, and approves nothing.',
   'customer-care': 'The support department. Works the Support centre for their branch: customers\' emails, website and portal hand-overs, complaints and colleagues\' Get help requests — answers, uses Enyo\'s drafts, hands over and resolves. Can look up customers, jobs and warranties to answer, but changes nothing there and cannot open the Support centre\'s set-up.',
   'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
-  executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Approves nothing; decisions stay with the managers who own them. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
+  executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Branch decisions stay with the managers who own them; the Executive approves what is escalated (IT and administrator passes) and their own passes on the spot. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
   'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, looks after Enyo (AI) and sends system notices (broadcasts), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
 };
 

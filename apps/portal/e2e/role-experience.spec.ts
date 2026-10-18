@@ -1,6 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
 import { as, expectHealthy, open, waitOutcome } from './helpers';
-import { SUPERMANAGER } from './people';
 
 /**
  * Each role sees its own job (docs/ROLES_AND_ACCESS.md): a technician gets
@@ -213,38 +212,4 @@ test('customer care works the Support centre but never its set-up', async ({ pag
   await expect(page.getByRole('heading', { name: /Support centre/, level: 1 })).toBeVisible();
   await page.goto('/settings/support');
   await expect(page).toHaveURL(/\/access-denied/);
-});
-
-test('a Manager’s own exit pass goes up to the Executive — never back to a Manager', async ({ page }) => {
-  await as(page, 'workshop-manager');
-  await page.goto('/security/exit-passes/new');
-  const form = page.locator('form').filter({ has: page.locator('select[name="who"]') }).first();
-  await form.locator('select[name="who"]').selectOption('ME');
-  await form.locator('textarea[name="reason"]').fill('Meeting at head office');
-  await form.locator('select[name="leaveWhen"]').selectOption('NOW');
-  await form.locator('select[name="returning"]').selectOption('yes');
-  await form.locator('select[name="outHours"]').selectOption('2');
-  await form.locator('select[name="outMinutes"]').selectOption('0');
-  await form.getByRole('button', { name: 'Submit for approval' }).click();
-  await waitOutcome(page, /\/security\/exit-passes\/[^/?]+\?status=requested/);
-  const url = new URL(page.url()).pathname;
-  // Nobody approves their own pass.
-  await expect(page.getByRole('button', { name: /^Approve \(/ })).toHaveCount(0);
-  // The Manager sees it waiting on the Executive, by name.
-  await open(page, '/approvals');
-  const waiting = page.getByRole('list', { name: 'Waiting on others' });
-  await expect(waiting.locator(`a[href="${url}"]`)).toContainText(/\(Executive\)/);
-
-  // Another Manager is not asked.
-  await as(page, SUPERMANAGER);
-  await open(page, '/approvals');
-  await expect(page.locator(`main ul[aria-label$="approvals"] a[href="${url}"]`)).toHaveCount(0);
-
-  // The Executive is, and approves it as the Executive.
-  await as(page, 'executive');
-  await open(page, '/approvals');
-  await expect(page.locator(`main ul[aria-label$="approvals"] a[href="${url}"]`)).toBeVisible();
-  await open(page, url);
-  await page.getByRole('button', { name: /^Approve \(Executive\)/ }).click();
-  await waitOutcome(page, /status=approve/);
 });
