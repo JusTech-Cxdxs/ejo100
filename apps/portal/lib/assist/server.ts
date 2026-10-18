@@ -20,7 +20,13 @@ import { sendLoggedEmail } from '@/lib/logged-email';
  */
 
 /** Better Auth's session for this request (the person who typed their own password). */
-export const signedInSession = cache(async () => auth.api.getSession({ headers: await headers() }));
+export const signedInSession = cache(async () => {
+  // Outside a request (a scheduled job, or work still running once the response has gone)
+  // there is no session — quietly, never Next's "used headers inside after()" error.
+  let h: Headers;
+  try { h = await headers(); } catch { return null; }
+  return auth.api.getSession({ headers: h });
+});
 
 const PARTY_SELECT = {
   id: true, fullName: true, email: true, isActive: true, organisationId: true, branchId: true, departmentId: true,
@@ -97,7 +103,8 @@ function endLater(id: string, reason: string): void {
  * colleague can still be assisted (checked again on every request).
  */
 export const activeAssistFor = cache(async (userId: string, authSessionId: string): Promise<ActiveAssist | null> => {
-  const raw = (await cookies()).get(ASSIST_COOKIE)?.value;
+  let raw: string | undefined;
+  try { raw = (await cookies()).get(ASSIST_COOKIE)?.value; } catch { return null; } // outside a request: no assisted session
   if (!raw) return null;
   const id = verifyAssistToken(raw, authSessionId, SECRET());
   if (!id) {
