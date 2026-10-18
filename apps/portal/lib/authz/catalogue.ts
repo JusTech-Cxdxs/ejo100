@@ -82,6 +82,48 @@ export const PERMISSIONS = {
   'notifications.broadcast.send': { module: 'Notifications', label: 'Send broadcasts' },
   // Support
   'support.assist': { module: 'Support', label: 'Help colleagues with their tasks (assisted session)' },
+  // ── Zinox edition: manufacturing, warehouses, sales, procurement, service, projects ──
+  // Catalogue
+  'catalogue.view': { module: 'Catalogue', label: 'See products, configurations, bills of materials and software packages' },
+  'catalogue.manage': { module: 'Catalogue', label: 'Manage products, configurations, bills of materials, software packages and default warranty policies' },
+  // Production
+  'production.view': { module: 'Production', label: 'Open Production — build orders, the line, unit travellers and QA results' },
+  'production.build_order.manage': { module: 'Production', label: 'Plan build orders: create, check materials, raise requisitions from shortages, release to the line (Planner)' },
+  'production.assemble': { module: 'Production', label: 'Build units on the line and record each station on the unit traveller (Assembler)' },
+  'production.line_check': { module: 'Production', label: 'Check units against their configuration: components, software image, packages, labels (Line Supervisor)' },
+  'production.qa': { module: 'Production', label: 'Test units and pass or fail them (QA Inspector) — never a unit they built' },
+  'production.manage': { module: 'Production', label: 'Release finished units to the store, approve rework and scrap, close build orders (Production Manager)' },
+  // Warehouses
+  'warehouse.view': { module: 'Warehouse', label: 'Open the Warehouses — components, finished goods by serial, locations, transfers and dispatches' },
+  'warehouse.parts.operate': { module: 'Warehouse', label: 'Components: receive against purchase orders, incoming QC, bins, issue to production' },
+  'warehouse.fg.operate': { module: 'Warehouse', label: 'Finished goods: locations, picking and goods release notes' },
+  'warehouse.dispatch': { module: 'Warehouse', label: 'Dispatch released goods: vehicle, driver, waybill, delivery confirmation' },
+  'warehouse.manage': { module: 'Warehouse', label: 'Transfers, adjustments, stock counts and reorder levels (Warehouse Manager)' },
+  // Procurement
+  'procurement.view': { module: 'Procurement', label: 'See suppliers, requisitions, purchase orders and shipments' },
+  'procurement.requisition.raise': { module: 'Procurement', label: 'Raise purchase requisitions' },
+  'procurement.requisition.approve': { module: 'Procurement', label: 'Approve purchase requisitions — never their own' },
+  'procurement.po.manage': { module: 'Procurement', label: 'Manage suppliers, purchase orders, shipments and supplier claims' },
+  'procurement.po.approve': { module: 'Procurement', label: 'Approve and send purchase orders (Head of Procurement)' },
+  // Sales
+  'sales.view': { module: 'Sales', label: 'See quotations, sales orders, pro-forma invoices, releases and dispatches' },
+  'sales.quote.manage': { module: 'Sales', label: 'Prepare quotations and sales orders within their discount limit; log enquiries' },
+  'sales.discount.approve': { module: 'Sales', label: 'Approve discounts beyond officers\' limits and returns (Sales Manager) — never their own' },
+  'sales.discount.approve_large': { module: 'Sales', label: 'Approve large discounts and credit sales to new accounts (Commercial Director)' },
+  'sales.dealer.manage': { module: 'Sales', label: 'Onboard dealers and distributors, set their tier and portal access' },
+  'sales.pricing.manage': { module: 'Sales', label: 'Price lists and the daily dealer price broadcast' },
+  // Billing & finance
+  'billing.invoice.issue': { module: 'Finance', label: 'Issue pro-forma invoices, tax invoices, credit notes and statements' },
+  'finance.payment.confirm': { module: 'Finance', label: 'Confirm customer payments and clear orders for release' },
+  'finance.credit.manage': { module: 'Finance', label: 'Set dealer and corporate credit limits and terms; hold or release accounts' },
+  'finance.export': { module: 'Finance', label: 'Export invoices, payments and stock values to the finance system' },
+  // Service centre
+  'service.view': { module: 'Service', label: 'See service jobs and the service parts store' },
+  'service.job.work': { module: 'Service', label: 'Diagnose and repair on service jobs assigned to them; record parts used' },
+  'service.manage': { module: 'Service', label: 'Run the Service Centre: open and assign jobs, QA after repair, return units' },
+  // Projects
+  'projects.view': { module: 'Projects', label: 'See projects, milestones and deliveries' },
+  'projects.manage': { module: 'Projects', label: 'Manage projects: milestones, deliverables, site deployments, acceptance' },
 } as const;
 export type PermissionKey = keyof typeof PERMISSIONS;
 
@@ -118,12 +160,14 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
     'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
+    'catalogue.view': A, 'production.view': A, 'warehouse.view': A, 'procurement.view': A, 'sales.view': A, 'service.view': A, 'projects.view': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
     'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B, 'support.tickets.manage': B,
+    'catalogue.view': A, 'production.view': B, 'warehouse.view': B, 'procurement.view': B, 'sales.view': B, 'service.view': B, 'projects.view': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
@@ -202,6 +246,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   executive: {
     'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'crm.view': A,
+    'catalogue.view': A, 'production.view': A, 'warehouse.view': A, 'procurement.view': A, 'sales.view': A, 'service.view': A, 'projects.view': A,
     'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
     // Leadership speaks to the organisation: notices to staff (and customers).
     'notifications.broadcast.send': A,
@@ -216,6 +261,37 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     // System notices: planned downtime, a security warning, a password reminder.
     'notifications.broadcast.send': A,
   },
+  // ── Zinox edition ────────────────────────────────────────────────
+  // Commercial: the customer relationship from enquiry to delivery note.
+  'sales-officer': { 'sales.view': B, 'sales.quote.manage': B, 'catalogue.view': A, 'warehouse.view': B, 'crm.view': B, 'crm.manage': B, 'warranty.view': B, 'support.tickets.manage': B, 'schedule.view': 'OWN' },
+  'showroom-officer': { 'sales.view': B, 'sales.quote.manage': B, 'catalogue.view': A, 'warehouse.view': B, 'crm.view': B, 'crm.manage': B, 'warranty.view': B, 'warranty.manage': B, 'schedule.view': 'OWN' },
+  'key-account-manager': { 'sales.view': A, 'sales.quote.manage': A, 'catalogue.view': A, 'warehouse.view': A, 'crm.view': A, 'crm.manage': A, 'projects.view': A, 'projects.manage': A, 'warranty.view': A, 'schedule.view': 'OWN' },
+  'sales-manager': { 'sales.view': A, 'sales.quote.manage': A, 'sales.discount.approve': A, 'sales.dealer.manage': A, 'catalogue.view': A, 'warehouse.view': A, 'crm.view': A, 'crm.manage': A, 'projects.view': A, 'warranty.view': A, 'analytics.business.view': A, 'support.tickets.manage': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  'commercial-director': { 'sales.view': A, 'sales.discount.approve': A, 'sales.discount.approve_large': A, 'sales.dealer.manage': A, 'sales.pricing.manage': A, 'catalogue.view': A, 'catalogue.manage': A, 'warehouse.view': A, 'production.view': A, 'crm.view': A, 'projects.view': A, 'warranty.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Billing & Finance: paper and money, never the sale itself.
+  'billing-officer': { 'sales.view': A, 'billing.invoice.issue': A, 'crm.view': A, 'catalogue.view': A, 'schedule.view': 'OWN' },
+  'credit-controller': { 'sales.view': A, 'finance.credit.manage': A, 'crm.view': A, 'analytics.business.view': A, 'schedule.view': 'OWN' },
+  'finance-manager': { 'sales.view': A, 'finance.payment.confirm': A, 'finance.credit.manage': A, 'finance.export': A, 'billing.invoice.issue': A, 'workshop.payment.record': A, 'workshop.refund.record': A, 'procurement.view': A, 'procurement.epr.review': A, 'procurement.epr.disburse': A, 'warehouse.view': A, 'crm.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Production: plan, build, check, test, release — four different people.
+  'production-planner': { 'production.view': B, 'production.build_order.manage': B, 'catalogue.view': A, 'warehouse.view': B, 'procurement.view': B, 'procurement.requisition.raise': B, 'sales.view': B, 'analytics.inventory.view': B, 'schedule.view': 'OWN' },
+  assembler: { 'production.view': B, 'production.assemble': MINE, 'catalogue.view': A },
+  'line-supervisor': { 'production.view': B, 'production.line_check': B, 'production.assemble': B, 'catalogue.view': A, 'warehouse.view': B, 'schedule.view': 'OWN' },
+  'qa-inspector': { 'production.view': B, 'production.qa': B, 'catalogue.view': A, 'service.view': B, 'schedule.view': 'OWN' },
+  'production-manager': { 'production.view': A, 'production.build_order.manage': A, 'production.manage': A, 'production.line_check': A, 'catalogue.view': A, 'catalogue.manage': A, 'warehouse.view': A, 'procurement.view': A, 'procurement.requisition.raise': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Warehouses & logistics.
+  'parts-warehouse-officer': { 'warehouse.view': B, 'warehouse.parts.operate': B, 'store.view': B, 'store.grn.record': B, 'store.parts.manage': B, 'procurement.view': B, 'production.view': B, 'catalogue.view': A, 'analytics.inventory.view': B },
+  'fg-warehouse-officer': { 'warehouse.view': B, 'warehouse.fg.operate': B, 'sales.view': B, 'production.view': B, 'catalogue.view': A, 'analytics.inventory.view': B },
+  'dispatch-officer': { 'warehouse.view': B, 'warehouse.dispatch': B, 'sales.view': B, 'security.view': B },
+  'warehouse-manager': { 'warehouse.view': A, 'warehouse.parts.operate': A, 'warehouse.fg.operate': A, 'warehouse.dispatch': A, 'warehouse.manage': A, 'store.view': A, 'store.parts.manage': A, 'store.grn.record': A, 'procurement.view': A, 'procurement.requisition.raise': A, 'production.view': A, 'sales.view': A, 'catalogue.view': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Procurement.
+  'procurement-officer': { 'procurement.view': A, 'procurement.requisition.raise': A, 'procurement.po.manage': A, 'warehouse.view': A, 'catalogue.view': A, 'store.view': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN' },
+  'procurement-head': { 'procurement.view': A, 'procurement.requisition.raise': A, 'procurement.requisition.approve': A, 'procurement.po.manage': A, 'procurement.po.approve': A, 'warehouse.view': A, 'catalogue.view': A, 'store.view': A, 'production.view': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Warranty & service.
+  'service-technician': { 'service.view': B, 'service.job.work': MINE, 'warranty.view': B, 'catalogue.view': A, 'store.view': B },
+  'service-supervisor': { 'service.view': B, 'service.job.work': B, 'service.manage': B, 'warranty.view': B, 'warranty.manage': B, 'catalogue.view': A, 'store.view': B, 'crm.view': B, 'support.tickets.manage': B, 'schedule.view': 'OWN' },
+  'warranty-manager': { 'warranty.view': A, 'warranty.manage': A, 'warranty.claim.approve': A, 'service.view': A, 'service.manage': A, 'catalogue.view': A, 'store.view': A, 'crm.view': A, 'procurement.view': A, 'analytics.warranty.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
+  // Projects.
+  'project-manager': { 'projects.view': A, 'projects.manage': A, 'sales.view': A, 'production.view': A, 'warehouse.view': A, 'catalogue.view': A, 'crm.view': A, 'service.view': A, 'schedule.view': 'OWN' },
 };
 
 /** Steps only the platform team may take — never grantable to organisation roles. */
@@ -235,7 +311,7 @@ export type Principal = { userId: string; isSuperAdmin: boolean; roleSlugs: stri
   lensBranchId?: string | null };
 
 /** The permissions whose organisation-wide holders get the branch lens (headquarters roles). */
-export const LENS_KEYS: PermissionKey[] = ['analytics.business.view', 'workshop.view', 'crm.view', 'store.view', 'warranty.view', 'security.view', 'admin.users.manage', 'audit.view'];
+export const LENS_KEYS: PermissionKey[] = ['analytics.business.view', 'workshop.view', 'crm.view', 'store.view', 'warranty.view', 'security.view', 'admin.users.manage', 'audit.view', 'sales.view', 'production.view', 'warehouse.view'];
 
 /** Does this person see the whole organisation in any area, so the branch lens applies? */
 export function hasBranchLens(p: Principal): boolean {

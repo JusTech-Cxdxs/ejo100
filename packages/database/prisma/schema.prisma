@@ -120,6 +120,14 @@ model Organisation {
 
   @@map("organisations")
   broadcasts Broadcast[]
+  // Zinox edition
+  products Product[]
+  softwarePackages SoftwarePackage[]
+  checkTemplates CheckTemplate[]
+  suppliers Supplier[]
+  priceLists PriceList[]
+  priceBroadcasts PriceBroadcast[]
+  projects Project[]
 }
 
 model BusinessUnit {
@@ -229,6 +237,15 @@ model Branch {
   securityIncidents SecurityIncident[]
   gateDeliveries GateDelivery[]
   contractorPasses ContractorPass[]
+  // Zinox edition
+  buildOrders BuildOrder[]
+  productionUnits ProductionUnit[]
+  fgLocations FgLocation[]
+  purchaseRequisitions PurchaseRequisition[]
+  purchaseOrders PurchaseOrder[]
+  quotations Quotation[]
+  salesOrders SalesOrder[]
+  serviceJobs ServiceJob[]
 }
 
 model Department {
@@ -433,6 +450,17 @@ model User {
   assistsGiven      AssistSession[]    @relation("AssistSessionAssistant")
   assistsReceived   AssistSession[]    @relation("AssistSessionSubject")
   notificationPreference NotificationPreference? @relation("NotificationPreference")
+  // Zinox edition
+  productsCreated Product[] @relation("ProductCreatedBy")
+  buildOrdersPlanned BuildOrder[] @relation("BuildOrderPlannedBy")
+  transfersRequested StockTransfer[] @relation("TransferRequestedBy")
+  requisitionsRaised PurchaseRequisition[] @relation("RequisitionRaisedBy")
+  purchaseOrdersRaised PurchaseOrder[] @relation("PurchaseOrderRaisedBy")
+  priceListsCreated PriceList[] @relation("PriceListCreatedBy")
+  quotationsPrepared Quotation[] @relation("QuotationPreparedBy")
+  salesOrdersConfirmed SalesOrder[] @relation("SalesOrderConfirmedBy")
+  serviceJobsOpened ServiceJob[] @relation("ServiceJobOpenedBy")
+  projectsManaged Project[] @relation("ProjectManagedBy")
 }
 
 // One-to-one HR extension of User, keeping the identity table small.
@@ -594,6 +622,13 @@ model Customer {
   warrantyClaims WarrantyClaim[]
   notes           CustomerNote[]
   notificationReads CustomerNotificationRead[]
+  // Zinox edition
+  dealerAccount DealerAccount?
+  finishedUnits FinishedUnit[]
+  quotations Quotation[]
+  salesOrders SalesOrder[]
+  serviceJobs ServiceJob[]
+  projects Project[]
 }
 
 // Optional company details when the customer is a business (fleet account).
@@ -1712,6 +1747,13 @@ model Part {
 
   @@unique([branchId, partNumber])
   @@map("parts")
+  // Zinox edition
+  bomLines BomLine[]
+  materialIssues MaterialIssue[]
+  unitComponents UnitComponent[]
+  requisitionLines PurchaseRequisitionLine[]
+  purchaseLines PurchaseOrderLine[]
+  serviceParts ServicePart[]
 }
 
 // An alternative unit a delivery may arrive in and its factor to the base
@@ -1860,6 +1902,12 @@ model GoodsReceipt {
   @@index([branchId, receivedAt])
   @@map("goods_receipts")
   gateDeliveries GateDelivery[]
+  // Zinox edition: receipts against purchase orders and shipments, with incoming QC
+  purchaseOrderId String?
+  shipmentId      String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+  shipment        Shipment?      @relation(fields: [shipmentId], references: [id])
+  inspection      IncomingInspection?
 }
 
 // One line per part on a delivery. quantityReceivedInUnit and unitUsed are
@@ -1894,6 +1942,8 @@ model GoodsReceiptLine {
   @@index([goodsReceiptId])
   @@index([partId])
   @@map("goods_receipt_lines")
+  // Zinox edition
+  finishedUnits FinishedUnit[]
 }
 
 // ----------------------------------------------------------------------------
@@ -2281,6 +2331,7 @@ model PartType {
 enum WarrantyKind {
   ASSET
   PART
+  PRODUCT
 }
 
 // PENDING_VERIFICATION → ACTIVE (a second person verifies a manually
@@ -2390,6 +2441,8 @@ model WarrantyPolicy {
 
   @@index([organisationId])
   @@map("warranty_policies")
+  // Zinox edition
+  products Product[] @relation("ProductDefaultPolicy")
 }
 
 // One warranty = one number (WR-2026-000001), one certificate. Terms are
@@ -2452,6 +2505,9 @@ model Warranty {
   @@map("warranties")
   claims WarrantyClaim[]
   coveredEstimateLines EstimateLineItem[] @relation("EstimateLineCoveringWarranty")
+  // Zinox edition: a finished unit (by serial) under warranty
+  finishedUnitId String?
+  finishedUnit   FinishedUnit? @relation(fields: [finishedUnitId], references: [id])
 }
 
 // The branch chain for warranty decisions: Warranty staff request →
@@ -4101,4 +4157,1398 @@ model SiteVisit {
   @@index([organisationId, startedAt])
   @@index([visitorHash, day])
   @@map("site_visits")
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ZINOX EDITION — manufacturing, warehouses, sales, procurement, service, projects
+// (docs/ZINOX_DOMAIN.md). Records are numbered PREFIX-YYYY-000001 per organisation
+// from document_sequences (atomic), scoped to a branch like the rest of the platform.
+// Actor stamps that the pages only ever show by name are plain user ids
+// (lib/zinox/people.ts resolves them); the main author of each record is a relation.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Atomic per-organisation, per-prefix, per-year counters for record numbers. */
+model DocumentSequence {
+  organisationId String
+  prefix         String
+  year           Int
+  last           Int    @default(0)
+
+  @@id([organisationId, prefix, year])
+  @@map("document_sequences")
+}
+
+// ── Catalogue ──────────────────────────────────────────────────────────────
+
+enum ProductFamily {
+  LAPTOP
+  DESKTOP
+  ALL_IN_ONE
+  TABLET
+  MONITOR
+  SMART_BOARD
+  SERVER
+  INVERTER
+  BATTERY
+  SOLAR_PANEL
+  SOLAR_KIT
+  GENERATOR
+  TELEVISION
+  FAN
+  STABILISER
+  AIR_CONDITIONER
+  REFRIGERATOR
+  MICROWAVE
+  ACCESSORY
+  OTHER
+}
+
+enum SubBrand {
+  ZINOX
+  IPOWER
+  ITEC
+}
+
+/** ASSEMBLED on the line from a BOM; FINISHED_IMPORT bought finished; KIT assembled from finished products (a solar kit). */
+enum ProductSource {
+  ASSEMBLED
+  FINISHED_IMPORT
+  KIT
+}
+
+model Product {
+  id                    String        @id @default(cuid())
+  organisationId        String
+  sku                   String
+  name                  String
+  family                ProductFamily
+  subBrand              SubBrand      @default(ZINOX)
+  source                ProductSource @default(FINISHED_IMPORT)
+  description           String?
+  baseUnitOfMeasure     String        @default("Each")
+  // Every computer, tablet, inverter, generator and television is serialised.
+  serialised            Boolean       @default(true)
+  defaultWarrantyMonths Int           @default(12)
+  warrantyPolicyId      String?
+  // Headline specification shown on quotations and the portal (free form, keyed).
+  specs                 Json?
+  imageUrl              String?
+  isActive              Boolean       @default(true)
+  createdById           String
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy      User           @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  warrantyPolicy WarrantyPolicy? @relation("ProductDefaultPolicy", fields: [warrantyPolicyId], references: [id])
+  configurations ProductConfiguration[]
+  productionUnits ProductionUnit[]
+  finishedUnits  FinishedUnit[]
+  priceItems     PriceListItem[]
+  quotationLines QuotationLine[]
+  orderLines     SalesOrderLine[]
+  requisitionLines PurchaseRequisitionLine[]
+  purchaseLines  PurchaseOrderLine[]
+  transferLines  TransferLine[]
+  deliverables   ProjectDeliverable[]
+
+  @@unique([organisationId, sku])
+  @@index([organisationId, family, isActive])
+  @@map("products")
+}
+
+/** A sellable variant: RAM, storage, OS edition, keyboard layout; its own SKU suffix and BOM. */
+model ProductConfiguration {
+  id        String  @id @default(cuid())
+  productId String
+  code      String
+  name      String
+  specs     Json?
+  isDefault Boolean @default(false)
+  isActive  Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
+  bomLines  BomLine[]
+  packages  ConfigurationPackage[]
+  buildOrders BuildOrder[]
+  productionUnits ProductionUnit[]
+  finishedUnits FinishedUnit[]
+  priceItems PriceListItem[]
+  quotationLines QuotationLine[]
+  orderLines SalesOrderLine[]
+  deliverables ProjectDeliverable[]
+
+  @@unique([productId, code])
+  @@map("product_configurations")
+}
+
+/** One component line of a configuration's Bill of Materials (parts live in the components warehouse: Part). */
+model BomLine {
+  id              String   @id @default(cuid())
+  configurationId String
+  partId          String
+  quantity        Decimal  @db.Decimal(12, 3)
+  // The line station that fits it (ASSEMBLY, SOFTWARE, PACKING …), for the traveller.
+  station         String   @default("ASSEMBLY")
+  isOptional      Boolean  @default(false)
+  notes           String?
+
+  configuration ProductConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  part          Part                 @relation(fields: [partId], references: [id])
+
+  @@unique([configurationId, partId])
+  @@map("bom_lines")
+}
+
+enum SoftwareKind {
+  IMAGE
+  APPLICATION
+  DRIVER
+  AGENT
+}
+
+/** Software the line installs and the line supervisor confirms: the Windows image, Office, antivirus, the Zinox Care agent. */
+model SoftwarePackage {
+  id              String       @id @default(cuid())
+  organisationId  String
+  name            String
+  version         String?
+  kind            SoftwareKind @default(APPLICATION)
+  licenceRequired Boolean      @default(false)
+  isActive        Boolean      @default(true)
+  createdAt       DateTime     @default(now())
+
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  configurations ConfigurationPackage[]
+
+  @@unique([organisationId, name, version])
+  @@map("software_packages")
+}
+
+model ConfigurationPackage {
+  configurationId String
+  packageId       String
+  required        Boolean @default(true)
+
+  configuration ProductConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
+  package       SoftwarePackage      @relation(fields: [packageId], references: [id], onDelete: Cascade)
+
+  @@id([configurationId, packageId])
+  @@map("configuration_packages")
+}
+
+enum CheckStage {
+  LINE_CHECK
+  QA
+}
+
+/** The checklist items per family and stage (what the line supervisor confirms, what QA tests). */
+model CheckTemplate {
+  id             String         @id @default(cuid())
+  organisationId String
+  family         ProductFamily?
+  stage          CheckStage
+  item           String
+  sortOrder      Int            @default(0)
+  isActive       Boolean        @default(true)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, stage, family])
+  @@map("check_templates")
+}
+
+// ── Production ─────────────────────────────────────────────────────────────
+
+enum BuildOrderStatus {
+  PLANNED
+  MATERIALS_CHECKED
+  RELEASED
+  IN_PROGRESS
+  QA
+  ON_HOLD
+  COMPLETED
+  CLOSED
+  CANCELLED
+}
+
+enum BuildPurpose {
+  TO_STOCK
+  FOR_ORDER
+}
+
+model BuildOrder {
+  id              String           @id @default(cuid())
+  number          String           @unique
+  branchId        String
+  configurationId String
+  quantity        Int
+  purpose         BuildPurpose     @default(TO_STOCK)
+  salesOrderId    String?
+  projectId       String?
+  priority        Int              @default(3)
+  dueDate         DateTime?
+  status          BuildOrderStatus @default(PLANNED)
+  // Customer-specific requirements for the line (software, asset tags, branding).
+  instructions    String?
+  shortageNote    String?
+  plannedById     String
+  releasedById    String?
+  releasedAt      DateTime?
+  completedAt     DateTime?
+  closedById      String?
+  closedAt        DateTime?
+  holdReason      String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  branch        Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  configuration ProductConfiguration @relation(fields: [configurationId], references: [id])
+  salesOrder    SalesOrder?          @relation(fields: [salesOrderId], references: [id])
+  project       Project?             @relation(fields: [projectId], references: [id])
+  plannedBy     User                 @relation("BuildOrderPlannedBy", fields: [plannedById], references: [id])
+  materialIssues MaterialIssue[]
+  units         ProductionUnit[]
+  requisitions  PurchaseRequisition[]
+
+  @@index([branchId, status, createdAt])
+  @@map("build_orders")
+}
+
+/** Components the parts warehouse issued to the line against a build order. */
+model MaterialIssue {
+  id           String   @id @default(cuid())
+  buildOrderId String
+  partId       String
+  quantity     Decimal  @db.Decimal(12, 3)
+  lotOrSerials String?
+  issuedById   String
+  issuedAt     DateTime @default(now())
+  notes        String?
+
+  buildOrder BuildOrder @relation(fields: [buildOrderId], references: [id], onDelete: Cascade)
+  part       Part       @relation(fields: [partId], references: [id])
+
+  @@index([buildOrderId])
+  @@map("material_issues")
+}
+
+enum UnitStage {
+  ASSEMBLY
+  SOFTWARE
+  LINE_CHECK
+  QA
+  REWORK
+  PACKING
+  RELEASED
+  SCRAPPED
+}
+
+/** One unit on the line: its serial, who built, imaged, checked, tested and packed it, and every component inside it. */
+model ProductionUnit {
+  id              String    @id @default(cuid())
+  number          String    @unique
+  serialNumber    String    @unique
+  branchId        String
+  buildOrderId    String?
+  productId       String
+  configurationId String?
+  stage           UnitStage @default(ASSEMBLY)
+  assembledById   String?
+  assembledAt     DateTime?
+  imagedById      String?
+  imagedAt        DateTime?
+  lineCheckedById String?
+  lineCheckedAt   DateTime?
+  lineCheckPassed Boolean?
+  qaById          String?
+  qaAt            DateTime?
+  qaPassed        Boolean?
+  qaNotes         String?
+  burnInHours     Decimal?  @db.Decimal(6, 2)
+  reworkCount     Int       @default(0)
+  reworkNotes     String?
+  packedById      String?
+  packedAt        DateTime?
+  releasedById    String?
+  releasedAt      DateTime?
+  scrapReason     String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  branch        Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  buildOrder    BuildOrder?           @relation(fields: [buildOrderId], references: [id])
+  product       Product               @relation(fields: [productId], references: [id])
+  configuration ProductConfiguration? @relation(fields: [configurationId], references: [id])
+  components    UnitComponent[]
+  checks        UnitCheck[]
+  finishedUnit  FinishedUnit?
+
+  @@index([buildOrderId, stage])
+  @@index([branchId, stage])
+  @@map("production_units")
+}
+
+model UnitComponent {
+  id           String  @id @default(cuid())
+  unitId       String
+  partId       String
+  serialNumber String?
+  lotNumber    String?
+  fittedById   String?
+  fittedAt     DateTime @default(now())
+
+  unit ProductionUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  part Part           @relation(fields: [partId], references: [id])
+
+  @@index([unitId])
+  @@index([serialNumber])
+  @@map("unit_components")
+}
+
+enum CheckResult {
+  PASS
+  FAIL
+  NA
+}
+
+model UnitCheck {
+  id          String      @id @default(cuid())
+  unitId      String
+  stage       CheckStage
+  item        String
+  result      CheckResult
+  note        String?
+  checkedById String
+  checkedAt   DateTime    @default(now())
+
+  unit ProductionUnit @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@index([unitId, stage])
+  @@map("unit_checks")
+}
+
+// ── Finished goods ─────────────────────────────────────────────────────────
+
+enum FgLocationKind {
+  WAREHOUSE
+  SHOWROOM
+  CONSIGNMENT
+  TRANSIT
+  SERVICE
+  QUARANTINE
+}
+
+model FgLocation {
+  id       String         @id @default(cuid())
+  branchId String
+  name     String
+  kind     FgLocationKind @default(WAREHOUSE)
+  isActive Boolean        @default(true)
+
+  branch        Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  units         FinishedUnit[]
+  transfersFrom StockTransfer[] @relation("TransferFrom")
+  transfersTo   StockTransfer[] @relation("TransferTo")
+
+  @@unique([branchId, name])
+  @@map("fg_locations")
+}
+
+enum FinishedUnitStatus {
+  IN_STOCK
+  RESERVED
+  PICKED
+  RELEASED
+  DISPATCHED
+  SOLD
+  RETURNED
+  QUARANTINE
+  IN_SERVICE
+  SCRAPPED
+}
+
+/** Every finished unit the organisation holds or has sold, by serial, for life. */
+model FinishedUnit {
+  id                 String             @id @default(cuid())
+  serialNumber       String             @unique
+  productId          String
+  configurationId    String?
+  locationId         String
+  status             FinishedUnitStatus @default(IN_STOCK)
+  productionUnitId   String?            @unique
+  goodsReceiptLineId String?
+  salesOrderId       String?
+  salesOrderLineId   String?
+  dispatchId         String?
+  customerId         String?
+  costPrice          Decimal?           @db.Decimal(14, 2)
+  soldAt             DateTime?
+  receivedAt         DateTime           @default(now())
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  product        Product               @relation(fields: [productId], references: [id])
+  configuration  ProductConfiguration? @relation(fields: [configurationId], references: [id])
+  location       FgLocation            @relation(fields: [locationId], references: [id])
+  productionUnit ProductionUnit?       @relation(fields: [productionUnitId], references: [id])
+  goodsReceiptLine GoodsReceiptLine?   @relation(fields: [goodsReceiptLineId], references: [id])
+  salesOrder     SalesOrder?           @relation(fields: [salesOrderId], references: [id])
+  salesOrderLine SalesOrderLine?       @relation(fields: [salesOrderLineId], references: [id])
+  dispatch       Dispatch?             @relation(fields: [dispatchId], references: [id])
+  customer       Customer?             @relation(fields: [customerId], references: [id])
+  warranties     Warranty[]
+  releaseLines   ReleaseLine[]
+  transferLines  TransferLine[]
+  serviceJobs    ServiceJob[]
+  returns        SalesReturn[]
+
+  @@index([productId, status])
+  @@index([locationId, status])
+  @@index([customerId])
+  @@map("finished_units")
+}
+
+enum TransferStatus {
+  DRAFT
+  DISPATCHED
+  RECEIVED
+  CANCELLED
+}
+
+model StockTransfer {
+  id             String         @id @default(cuid())
+  number         String         @unique
+  fromLocationId String
+  toLocationId   String
+  status         TransferStatus @default(DRAFT)
+  reason         String?
+  requestedById  String
+  dispatchedById String?
+  dispatchedAt   DateTime?
+  receivedById   String?
+  receivedAt     DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  fromLocation FgLocation     @relation("TransferFrom", fields: [fromLocationId], references: [id])
+  toLocation   FgLocation     @relation("TransferTo", fields: [toLocationId], references: [id])
+  requestedBy  User           @relation("TransferRequestedBy", fields: [requestedById], references: [id])
+  lines        TransferLine[]
+
+  @@index([status, createdAt])
+  @@map("stock_transfers")
+}
+
+model TransferLine {
+  id             String  @id @default(cuid())
+  transferId     String
+  productId      String
+  finishedUnitId String?
+  quantity       Int     @default(1)
+
+  transfer     StockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product      Product       @relation(fields: [productId], references: [id])
+  finishedUnit FinishedUnit? @relation(fields: [finishedUnitId], references: [id])
+
+  @@index([transferId])
+  @@map("transfer_lines")
+}
+
+// ── Procurement ────────────────────────────────────────────────────────────
+
+model Supplier {
+  id             String   @id @default(cuid())
+  organisationId String
+  name           String
+  country        String?
+  currency       String   @default("USD")
+  contactName    String?
+  email          String?
+  phone          String?
+  address        String?
+  paymentTerms   String?
+  leadTimeDays   Int?
+  isActive       Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation   Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  purchaseOrders PurchaseOrder[]
+  claims         SupplierClaim[]
+
+  @@unique([organisationId, name])
+  @@map("suppliers")
+}
+
+enum RequisitionStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  REJECTED
+  ORDERED
+  CANCELLED
+}
+
+model PurchaseRequisition {
+  id             String            @id @default(cuid())
+  number         String            @unique
+  branchId       String
+  status         RequisitionStatus @default(DRAFT)
+  reason         String
+  neededBy       DateTime?
+  buildOrderId   String?
+  raisedById     String
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedAt     DateTime?
+  rejectedReason String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  branch     Branch                    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  buildOrder BuildOrder?               @relation(fields: [buildOrderId], references: [id])
+  raisedBy   User                      @relation("RequisitionRaisedBy", fields: [raisedById], references: [id])
+  lines      PurchaseRequisitionLine[]
+  purchaseOrders PurchaseOrder[]
+
+  @@index([branchId, status])
+  @@map("purchase_requisitions")
+}
+
+model PurchaseRequisitionLine {
+  id                String   @id @default(cuid())
+  requisitionId     String
+  partId            String?
+  productId         String?
+  description       String
+  quantity          Decimal  @db.Decimal(12, 3)
+  estimatedUnitCost Decimal? @db.Decimal(14, 2)
+  currency          String   @default("NGN")
+
+  requisition PurchaseRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  part        Part?               @relation(fields: [partId], references: [id])
+  product     Product?            @relation(fields: [productId], references: [id])
+
+  @@index([requisitionId])
+  @@map("purchase_requisition_lines")
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  APPROVED
+  SENT
+  PARTLY_RECEIVED
+  RECEIVED
+  CLOSED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id            String              @id @default(cuid())
+  number        String              @unique
+  branchId      String
+  supplierId    String
+  requisitionId String?
+  status        PurchaseOrderStatus @default(DRAFT)
+  currency      String              @default("USD")
+  exchangeRate  Decimal?            @db.Decimal(14, 4)
+  incoterms     String?
+  paymentTerms  String?
+  expectedDate  DateTime?
+  total         Decimal             @default(0) @db.Decimal(16, 2)
+  notes         String?
+  raisedById    String
+  approvedById  String?
+  approvedAt    DateTime?
+  sentAt        DateTime?
+  closedAt      DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  branch        Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  supplier      Supplier             @relation(fields: [supplierId], references: [id])
+  requisition   PurchaseRequisition? @relation(fields: [requisitionId], references: [id])
+  raisedBy      User                 @relation("PurchaseOrderRaisedBy", fields: [raisedById], references: [id])
+  lines         PurchaseOrderLine[]
+  shipments     Shipment[]
+  goodsReceipts GoodsReceipt[]
+  claims        SupplierClaim[]
+
+  @@index([branchId, status])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderLine {
+  id               String  @id @default(cuid())
+  purchaseOrderId  String
+  partId           String?
+  productId        String?
+  description      String
+  quantity         Decimal @db.Decimal(12, 3)
+  receivedQuantity Decimal @default(0) @db.Decimal(12, 3)
+  unitCost         Decimal @db.Decimal(14, 2)
+
+  purchaseOrder PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  part          Part?         @relation(fields: [partId], references: [id])
+  product       Product?      @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@map("purchase_order_lines")
+}
+
+enum ShipmentMode {
+  SEA
+  AIR
+  ROAD
+}
+
+enum ShipmentStatus {
+  BOOKED
+  IN_TRANSIT
+  ARRIVED_PORT
+  CUSTOMS
+  CLEARED
+  DELIVERED
+}
+
+model Shipment {
+  id               String         @id @default(cuid())
+  number           String         @unique
+  purchaseOrderId  String
+  mode             ShipmentMode   @default(SEA)
+  carrier          String?
+  reference        String?
+  containerNumbers String?
+  etd              DateTime?
+  eta              DateTime?
+  arrivedAt        DateTime?
+  clearedAt        DateTime?
+  dutyPaid         Decimal?       @db.Decimal(16, 2)
+  status           ShipmentStatus @default(BOOKED)
+  notes            String?
+  createdById      String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  purchaseOrder PurchaseOrder  @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  goodsReceipts GoodsReceipt[]
+
+  @@index([purchaseOrderId, status])
+  @@map("shipments")
+}
+
+/** Incoming quality control on a goods receipt: a sample tested, pass or fail, quarantine on fail. */
+model IncomingInspection {
+  id             String   @id @default(cuid())
+  goodsReceiptId String   @unique
+  inspectedById  String
+  inspectedAt    DateTime @default(now())
+  sampleSize     Int
+  defects        Int      @default(0)
+  passed         Boolean
+  quarantined    Boolean  @default(false)
+  notes          String?
+
+  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+
+  @@map("incoming_inspections")
+}
+
+enum SupplierClaimStatus {
+  OPEN
+  SENT
+  ACCEPTED
+  REJECTED
+  SETTLED
+  CLOSED
+}
+
+/** Shortage, damage or a component failure charged back to the supplier. */
+model SupplierClaim {
+  id              String              @id @default(cuid())
+  number          String              @unique
+  supplierId      String
+  purchaseOrderId String?
+  goodsReceiptId  String?
+  warrantyClaimId String?
+  status          SupplierClaimStatus @default(OPEN)
+  description     String
+  amount          Decimal             @default(0) @db.Decimal(16, 2)
+  currency        String              @default("USD")
+  raisedById      String
+  settledAt       DateTime?
+  reference       String?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  supplier      Supplier       @relation(fields: [supplierId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
+
+  @@index([supplierId, status])
+  @@map("supplier_claims")
+}
+
+// ── Channels, dealers and pricing ──────────────────────────────────────────
+
+enum SalesChannel {
+  RETAIL
+  DEALER
+  CORPORATE
+  GOVERNMENT
+  DISTRIBUTOR
+  ONLINE
+  PROJECT
+}
+
+enum DealerTier {
+  TIER_1
+  TIER_2
+  TIER_3
+}
+
+/** A customer who buys to resell (dealer, wholesaler, distributor such as TD Africa): tier, credit and the daily price broadcast. */
+model DealerAccount {
+  id                     String       @id @default(cuid())
+  customerId             String       @unique
+  channel                SalesChannel @default(DEALER)
+  tier                   DealerTier?
+  territory              String?
+  creditLimit            Decimal      @default(0) @db.Decimal(16, 2)
+  creditDays             Int          @default(0)
+  onHold                 Boolean      @default(false)
+  holdReason             String?
+  receivesPriceBroadcast Boolean      @default(true)
+  accountManagerId       String?
+  approvedById           String?
+  approvedAt             DateTime?
+  createdAt              DateTime     @default(now())
+  updatedAt              DateTime     @updatedAt
+
+  customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@index([channel, tier])
+  @@map("dealer_accounts")
+}
+
+enum PriceListStatus {
+  DRAFT
+  ACTIVE
+  RETIRED
+}
+
+model PriceList {
+  id             String          @id @default(cuid())
+  organisationId String
+  number         String          @unique
+  name           String
+  channel        SalesChannel
+  tier           DealerTier?
+  currency       String          @default("NGN")
+  effectiveFrom  DateTime
+  effectiveTo    DateTime?
+  status         PriceListStatus @default(DRAFT)
+  createdById    String
+  approvedById   String?
+  approvedAt     DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User            @relation("PriceListCreatedBy", fields: [createdById], references: [id])
+  items        PriceListItem[]
+  quotations   Quotation[]
+  broadcasts   PriceBroadcast[]
+
+  @@index([organisationId, channel, status])
+  @@map("price_lists")
+}
+
+model PriceListItem {
+  id              String  @id @default(cuid())
+  priceListId     String
+  productId       String
+  configurationId String?
+  unitPrice       Decimal @db.Decimal(14, 2)
+  minQuantity     Int     @default(1)
+
+  priceList     PriceList             @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  product       Product               @relation(fields: [productId], references: [id])
+  configuration ProductConfiguration? @relation(fields: [configurationId], references: [id])
+
+  @@unique([priceListId, productId, configurationId, minQuantity])
+  @@map("price_list_items")
+}
+
+/** The daily dealer price broadcast: which list went out, when, to how many, and what changed. */
+model PriceBroadcast {
+  id              String   @id @default(cuid())
+  number          String   @unique
+  organisationId  String
+  priceListId     String
+  publishedById   String
+  publishedAt     DateTime @default(now())
+  summary         String
+  changes         Json?
+  recipientsCount Int      @default(0)
+  emailed         Boolean  @default(false)
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  priceList    PriceList    @relation(fields: [priceListId], references: [id])
+
+  @@index([organisationId, publishedAt])
+  @@map("price_broadcasts")
+}
+
+// ── Sales (order to cash) ──────────────────────────────────────────────────
+
+enum QuotationStatus {
+  DRAFT
+  PENDING_DISCOUNT_APPROVAL
+  SENT
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CONVERTED
+  CANCELLED
+}
+
+model Quotation {
+  id                    String          @id @default(cuid())
+  number                String          @unique
+  branchId              String
+  customerId            String
+  channel               SalesChannel    @default(RETAIL)
+  priceListId           String?
+  projectId             String?
+  status                QuotationStatus @default(DRAFT)
+  validUntil            DateTime?
+  subtotal              Decimal         @default(0) @db.Decimal(16, 2)
+  discountTotal         Decimal         @default(0) @db.Decimal(16, 2)
+  taxRatePercent        Decimal         @default(7.5) @db.Decimal(5, 2)
+  taxTotal              Decimal         @default(0) @db.Decimal(16, 2)
+  total                 Decimal         @default(0) @db.Decimal(16, 2)
+  discountApproverId    String?
+  discountApprovedAt    DateTime?
+  discountRejectedReason String?
+  notes                 String?
+  preparedById          String
+  sentAt                DateTime?
+  createdAt             DateTime        @default(now())
+  updatedAt             DateTime        @updatedAt
+
+  branch     Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer   Customer        @relation(fields: [customerId], references: [id])
+  priceList  PriceList?      @relation(fields: [priceListId], references: [id])
+  project    Project?        @relation(fields: [projectId], references: [id])
+  preparedBy User            @relation("QuotationPreparedBy", fields: [preparedById], references: [id])
+  lines      QuotationLine[]
+  salesOrder SalesOrder?
+
+  @@index([branchId, status, createdAt])
+  @@index([customerId])
+  @@map("quotations")
+}
+
+model QuotationLine {
+  id              String  @id @default(cuid())
+  quotationId     String
+  productId       String
+  configurationId String?
+  description     String
+  quantity        Int
+  unitPrice       Decimal @db.Decimal(14, 2)
+  discountPercent Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal       Decimal @db.Decimal(16, 2)
+  notes           String?
+
+  quotation     Quotation             @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product       Product               @relation(fields: [productId], references: [id])
+  configuration ProductConfiguration? @relation(fields: [configurationId], references: [id])
+
+  @@index([quotationId])
+  @@map("quotation_lines")
+}
+
+enum SalesOrderStatus {
+  CONFIRMED
+  AWAITING_PAYMENT
+  PAID
+  IN_PRODUCTION
+  READY
+  RELEASED
+  DISPATCHED
+  DELIVERED
+  INVOICED
+  CLOSED
+  CANCELLED
+}
+
+enum PaymentTerms {
+  PREPAID
+  CREDIT
+}
+
+model SalesOrder {
+  id                 String           @id @default(cuid())
+  number             String           @unique
+  branchId           String
+  customerId         String
+  quotationId        String?          @unique
+  projectId          String?
+  channel            SalesChannel     @default(RETAIL)
+  status             SalesOrderStatus @default(CONFIRMED)
+  paymentTerms       PaymentTerms     @default(PREPAID)
+  subtotal           Decimal          @default(0) @db.Decimal(16, 2)
+  discountTotal      Decimal          @default(0) @db.Decimal(16, 2)
+  taxTotal           Decimal          @default(0) @db.Decimal(16, 2)
+  total              Decimal          @default(0) @db.Decimal(16, 2)
+  amountPaid         Decimal          @default(0) @db.Decimal(16, 2)
+  creditApprovedById String?
+  clearedById        String?
+  clearedAt          DateTime?
+  deliveryAddress    String?
+  customerReference  String?
+  notes              String?
+  confirmedById      String
+  cancelledReason    String?
+  closedAt           DateTime?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer    Customer         @relation(fields: [customerId], references: [id])
+  quotation   Quotation?       @relation(fields: [quotationId], references: [id])
+  project     Project?         @relation(fields: [projectId], references: [id])
+  confirmedBy User             @relation("SalesOrderConfirmedBy", fields: [confirmedById], references: [id])
+  lines       SalesOrderLine[]
+  proFormas   ProFormaInvoice[]
+  payments    SalesPayment[]
+  releases    GoodsReleaseNote[]
+  dispatches  Dispatch[]
+  invoices    SalesInvoice[]
+  buildOrders BuildOrder[]
+  units       FinishedUnit[]
+  returns     SalesReturn[]
+
+  @@index([branchId, status, createdAt])
+  @@index([customerId])
+  @@map("sales_orders")
+}
+
+model SalesOrderLine {
+  id                String  @id @default(cuid())
+  salesOrderId      String
+  productId         String
+  configurationId   String?
+  description       String
+  quantity          Int
+  unitPrice         Decimal @db.Decimal(14, 2)
+  discountPercent   Decimal @default(0) @db.Decimal(5, 2)
+  lineTotal         Decimal @db.Decimal(16, 2)
+  fulfilledQuantity Int     @default(0)
+  notes             String?
+
+  salesOrder    SalesOrder            @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  product       Product               @relation(fields: [productId], references: [id])
+  configuration ProductConfiguration? @relation(fields: [configurationId], references: [id])
+  units         FinishedUnit[]
+  releaseLines  ReleaseLine[]
+
+  @@index([salesOrderId])
+  @@map("sales_order_lines")
+}
+
+enum ProFormaStatus {
+  ISSUED
+  PAID
+  EXPIRED
+  CANCELLED
+}
+
+model ProFormaInvoice {
+  id           String         @id @default(cuid())
+  number       String         @unique
+  salesOrderId String
+  status       ProFormaStatus @default(ISSUED)
+  issuedById   String
+  issuedAt     DateTime       @default(now())
+  dueDate      DateTime?
+  total        Decimal        @db.Decimal(16, 2)
+  bankDetails  String?
+  notes        String?
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  @@index([salesOrderId])
+  @@map("pro_forma_invoices")
+}
+
+enum SalesPaymentMethod {
+  BANK_TRANSFER
+  CASH
+  POS
+  CHEQUE
+  ONLINE
+}
+
+enum SalesPaymentStatus {
+  PENDING
+  CONFIRMED
+  REJECTED
+}
+
+model SalesPayment {
+  id            String             @id @default(cuid())
+  salesOrderId  String
+  amount        Decimal            @db.Decimal(16, 2)
+  method        SalesPaymentMethod @default(BANK_TRANSFER)
+  reference     String?
+  paidAt        DateTime           @default(now())
+  status        SalesPaymentStatus @default(PENDING)
+  proofNote     String?
+  recordedById  String?
+  // A dealer or customer uploading proof on the portal records it as themselves.
+  recordedByCustomerId String?
+  confirmedById String?
+  confirmedAt   DateTime?
+  rejectedReason String?
+  createdAt     DateTime           @default(now())
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  @@index([salesOrderId, status])
+  @@map("sales_payments")
+}
+
+enum ReleaseStatus {
+  ISSUED
+  PICKED
+  RELEASED
+  CANCELLED
+}
+
+/** Finance has cleared the order: the warehouse picks the serials and prints the release note. */
+model GoodsReleaseNote {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  salesOrderId String
+  status       ReleaseStatus @default(ISSUED)
+  clearedById  String
+  issuedById   String
+  issuedAt     DateTime      @default(now())
+  pickedById   String?
+  pickedAt     DateTime?
+  releasedById String?
+  releasedAt   DateTime?
+  notes        String?
+
+  salesOrder SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  lines      ReleaseLine[]
+  dispatch   Dispatch?
+
+  @@index([salesOrderId, status])
+  @@map("goods_release_notes")
+}
+
+model ReleaseLine {
+  id               String  @id @default(cuid())
+  releaseNoteId    String
+  salesOrderLineId String
+  finishedUnitId   String?
+  quantity         Int     @default(1)
+
+  releaseNote    GoodsReleaseNote @relation(fields: [releaseNoteId], references: [id], onDelete: Cascade)
+  salesOrderLine SalesOrderLine   @relation(fields: [salesOrderLineId], references: [id])
+  finishedUnit   FinishedUnit?    @relation(fields: [finishedUnitId], references: [id])
+
+  @@index([releaseNoteId])
+  @@map("release_lines")
+}
+
+enum DispatchStatus {
+  DISPATCHED
+  DELIVERED
+  FAILED
+}
+
+model Dispatch {
+  id             String         @id @default(cuid())
+  number         String         @unique
+  releaseNoteId  String         @unique
+  salesOrderId   String
+  status         DispatchStatus @default(DISPATCHED)
+  vehiclePlate   String?
+  driverName     String?
+  driverPhone    String?
+  carrier        String?
+  waybill        String?
+  dispatchedById String
+  dispatchedAt   DateTime       @default(now())
+  deliveredAt    DateTime?
+  receivedByName String?
+  deliveryNotes  String?
+
+  releaseNote GoodsReleaseNote @relation(fields: [releaseNoteId], references: [id])
+  salesOrder  SalesOrder       @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  units       FinishedUnit[]
+
+  @@index([salesOrderId, status])
+  @@map("dispatches")
+}
+
+enum InvoiceStatus {
+  ISSUED
+  EXPORTED
+  CANCELLED
+}
+
+model SalesInvoice {
+  id           String        @id @default(cuid())
+  number       String        @unique
+  salesOrderId String
+  status       InvoiceStatus @default(ISSUED)
+  issuedById   String
+  issuedAt     DateTime      @default(now())
+  subtotal     Decimal       @db.Decimal(16, 2)
+  taxTotal     Decimal       @db.Decimal(16, 2)
+  total        Decimal       @db.Decimal(16, 2)
+  exportedAt   DateTime?
+  exportReference String?
+
+  salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+
+  @@index([salesOrderId])
+  @@map("sales_invoices")
+}
+
+enum SalesReturnStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+  RECEIVED
+  RESOLVED
+}
+
+enum ReturnResolution {
+  REPLACE
+  REFUND
+  CREDIT_NOTE
+  REPAIR
+}
+
+/** Dead on arrival or wrong item: approved by the Sales Manager, received into quarantine. */
+model SalesReturn {
+  id             String            @id @default(cuid())
+  number         String            @unique
+  salesOrderId   String
+  finishedUnitId String?
+  reason         String
+  status         SalesReturnStatus @default(REQUESTED)
+  resolution     ReturnResolution?
+  requestedById  String?
+  approvedById   String?
+  approvedAt     DateTime?
+  receivedById   String?
+  receivedAt     DateTime?
+  resolvedAt     DateTime?
+  notes          String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  salesOrder   SalesOrder    @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
+  finishedUnit FinishedUnit? @relation(fields: [finishedUnitId], references: [id])
+
+  @@index([salesOrderId, status])
+  @@map("sales_returns")
+}
+
+// ── Service centre ─────────────────────────────────────────────────────────
+
+enum ServiceJobKind {
+  WARRANTY
+  PAID
+  GOODWILL
+}
+
+enum ServiceJobStatus {
+  OPEN
+  ASSIGNED
+  DIAGNOSED
+  AWAITING_PARTS
+  REPAIRING
+  QA
+  READY
+  RETURNED
+  CLOSED
+  CANCELLED
+}
+
+enum WarrantyCostCentre {
+  PRODUCTION_DEFECT
+  COMPONENT_SUPPLIER
+  TRANSIT_DAMAGE
+  USER_DAMAGE
+  GOODWILL
+}
+
+model ServiceJob {
+  id              String           @id @default(cuid())
+  number          String           @unique
+  branchId        String
+  finishedUnitId  String?
+  serialNumber    String
+  productName     String
+  customerId      String?
+  warrantyClaimId String?
+  kind            ServiceJobKind   @default(WARRANTY)
+  status          ServiceJobStatus @default(OPEN)
+  fault           String
+  diagnosis       String?
+  resolution      String?
+  costCentre      WarrantyCostCentre?
+  technicianId    String?
+  supervisorId    String?
+  openedById      String
+  assignedAt      DateTime?
+  diagnosedAt     DateTime?
+  repairedAt      DateTime?
+  qaPassed        Boolean?
+  qaById          String?
+  qaAt            DateTime?
+  returnedAt      DateTime?
+  quotedAmount    Decimal?         @db.Decimal(16, 2)
+  paidAmount      Decimal          @default(0) @db.Decimal(16, 2)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  branch       Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  finishedUnit FinishedUnit?  @relation(fields: [finishedUnitId], references: [id])
+  customer     Customer?      @relation(fields: [customerId], references: [id])
+  openedBy     User           @relation("ServiceJobOpenedBy", fields: [openedById], references: [id])
+  parts        ServicePart[]
+  ledger       WarrantyLedgerEntry[]
+
+  @@index([branchId, status])
+  @@index([serialNumber])
+  @@map("service_jobs")
+}
+
+model ServicePart {
+  id           String  @id @default(cuid())
+  serviceJobId String
+  partId       String
+  quantity     Decimal @db.Decimal(12, 3)
+  unitCost     Decimal @default(0) @db.Decimal(14, 2)
+  usedById     String
+  usedAt       DateTime @default(now())
+
+  serviceJob ServiceJob @relation(fields: [serviceJobId], references: [id], onDelete: Cascade)
+  part       Part       @relation(fields: [partId], references: [id])
+
+  @@index([serviceJobId])
+  @@map("service_parts")
+}
+
+/** What a warranty case cost and which department carries it. */
+model WarrantyLedgerEntry {
+  id           String             @id @default(cuid())
+  serviceJobId String
+  costCentre   WarrantyCostCentre
+  amount       Decimal            @db.Decimal(16, 2)
+  note         String?
+  recordedById String
+  recordedAt   DateTime           @default(now())
+
+  serviceJob ServiceJob @relation(fields: [serviceJobId], references: [id], onDelete: Cascade)
+
+  @@index([serviceJobId])
+  @@map("warranty_ledger_entries")
+}
+
+// ── Projects ───────────────────────────────────────────────────────────────
+
+enum ProjectKind {
+  GOVERNMENT
+  CORPORATE
+  EDUCATION
+  NGO
+}
+
+enum ProjectStatus {
+  TENDER
+  AWARDED
+  IN_PROGRESS
+  DELIVERED
+  ACCEPTED
+  CLOSED
+  LOST
+}
+
+model Project {
+  id              String        @id @default(cuid())
+  number          String        @unique
+  organisationId  String
+  name            String
+  customerId      String
+  kind            ProjectKind   @default(CORPORATE)
+  tenderReference String?
+  contractValue   Decimal       @default(0) @db.Decimal(18, 2)
+  currency        String        @default("NGN")
+  startDate       DateTime?
+  endDate         DateTime?
+  status          ProjectStatus @default(TENDER)
+  managerId       String
+  description     String?
+  createdById     String
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  organisation Organisation         @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  customer     Customer             @relation(fields: [customerId], references: [id])
+  manager      User                 @relation("ProjectManagedBy", fields: [managerId], references: [id])
+  milestones   ProjectMilestone[]
+  deliverables ProjectDeliverable[]
+  quotations   Quotation[]
+  salesOrders  SalesOrder[]
+  buildOrders  BuildOrder[]
+
+  @@index([organisationId, status])
+  @@map("projects")
+}
+
+model ProjectMilestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  dueDate     DateTime?
+  completedAt DateTime?
+  notes       String?
+  sortOrder   Int       @default(0)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_milestones")
+}
+
+model ProjectDeliverable {
+  id                String  @id @default(cuid())
+  projectId         String
+  productId         String
+  configurationId   String?
+  quantity          Int
+  deliveredQuantity Int     @default(0)
+  siteName          String?
+  acceptedAt        DateTime?
+
+  project       Project               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  product       Product               @relation(fields: [productId], references: [id])
+  configuration ProductConfiguration? @relation(fields: [configurationId], references: [id])
+
+  @@index([projectId])
+  @@map("project_deliverables")
 }
