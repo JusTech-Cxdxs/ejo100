@@ -7,7 +7,7 @@ import { f, mouthShape, SMILE, syllable, type MouthShape } from './avatar-mouth'
  * Enyo, drawn: an original vector character — a fair, warm complexion, a soft
  * oval face, almond eyes with lashes and brown irises, full rose lips, dark
  * hair (straight or curls), small gold earrings, optional round glasses, a
- * JusTech-green top. Layered parts so each mood moves only what it needs:
+ * Zinox-red top. Layered parts so each mood moves only what it needs:
  *
  *   idle       breathing, a slow sway, natural blinks, the eyes glance about;
  *              the lips are CLOSED in a soft smile
@@ -52,8 +52,8 @@ const LIP_LINE = '#8f3446';
 const MOUTH = '#5e1f2c';
 const TEETH = '#fffaf5';
 const TONGUE = '#de7783';
-const TOP = '#22983f';
-const TOP_SHADE = '#1a7c33';
+const TOP = '#e10600';
+const TOP_SHADE = '#b40000';
 const GOLD = '#e2b04a';
 const GOLD_SHINE = '#f7dc8f';
 const BROW = '#3b241b';
@@ -64,9 +64,9 @@ const PUPIL = '#170d09';
 
 /** Styles shared by every avatar on the page (React hoists and de-duplicates this tag). */
 const CSS = `
-.enyo-av{--enyo-av-bg:#dcefe3;--enyo-av-ring:#22983f;display:inline-block;flex:none;line-height:0}
-:root[data-theme='dark'] .enyo-av{--enyo-av-bg:#285a3e}
-@media (prefers-color-scheme: dark){:root:not([data-theme='light']) .enyo-av{--enyo-av-bg:#285a3e}}
+.enyo-av{--enyo-av-bg:#fde8e8;--enyo-av-ring:#e10600;display:inline-block;flex:none;line-height:0}
+:root[data-theme='dark'] .enyo-av{--enyo-av-bg:#5a1a1a}
+@media (prefers-color-scheme: dark){:root:not([data-theme='light']) .enyo-av{--enyo-av-bg:#5a1a1a}}
 .enyo-av svg{display:block;overflow:visible}
 .enyo-av g,.enyo-av path,.enyo-av circle,.enyo-av ellipse,.enyo-av rect{transform-box:view-box}
 .enyo-av .av-body{transform-origin:60px 112px;animation:enyo-av-breathe 4.8s ease-in-out infinite}
@@ -290,11 +290,11 @@ export function EnyoAvatar({ mood, size = 48, level = 0, hair = 'straight', glas
               )}
             </g>
 
-            {/* Neck and shoulders: the green top */}
+            {/* Neck and shoulders: the red top */}
             <path fill={TOP} d="M12 124C13.6 103.4 27.4 91.4 46.6 88.2L60 101.6L73.4 88.2C92.6 91.4 106.4 103.4 108 124Z" />
             <path fill={SKIN_SHADE} d="M47.2 88.1L60 100.9L72.8 88.1C70.4 87.4 68.6 86.6 68.5 85.6C66 89.2 62.8 90.6 60 90.6S54 89.2 51.5 85.6C51.4 86.6 49.6 87.4 47.2 88.1Z" />
             <path fill={TOP_SHADE} d="M46.6 88.2L60 101.6L73.4 88.2L76.2 88.8L60 105.2L43.8 88.8Z" />
-            <path fill="none" stroke="#3fb35c" strokeWidth=".8" strokeLinecap="round" opacity=".55" d="M30 104Q36 98 44 95.4M90 104Q84 98 76 95.4" />
+            <path fill="none" stroke="#ff6b6b" strokeWidth=".8" strokeLinecap="round" opacity=".55" d="M30 104Q36 98 44 95.4M90 104Q84 98 76 95.4" />
             {/* A thin gold chain */}
             <path d="M51.2 88.6Q60 98.6 68.8 88.6" fill="none" stroke={GOLD} strokeWidth="1" strokeLinecap="round" opacity=".95" />
             <circle cx="60" cy="96" r="1.5" fill={GOLD} />

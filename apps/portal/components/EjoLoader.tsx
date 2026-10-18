@@ -44,7 +44,7 @@ export function EjoLoader() {
           transition={{ duration: PULSE_DURATION, repeat: Infinity, ease: 'easeInOut' }}
         >
           <svg width="32" height="32" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" stroke={GLOW_COLOR} strokeWidth="1.5" fill="rgba(34,197,94,0.15)" />
+            <path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" stroke={GLOW_COLOR} strokeWidth="1.5" fill="rgba(255,59,59,0.15)" />
             <circle cx="12" cy="12" r="3" fill={GLOW_COLOR} />
           </svg>
         </motion.div>

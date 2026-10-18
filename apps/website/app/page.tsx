@@ -1,21 +1,9 @@
-import { HeroSlider } from '@/components/site/HeroSlider';
-import { StatsSection } from '@/components/site/StatsSection';
-import { AboutSection } from '@/components/site/AboutSection';
-import { BusinessUnitsSection } from '@/components/site/BusinessUnitsSection';
-import { NewsSection } from '@/components/site/NewsSection';
-import { PartnersMarquee } from '@/components/site/PartnersMarquee';
-import { CTASection } from '@/components/site/CTASection';
+import { redirect } from 'next/navigation';
 
+/**
+ * The Zinox edition has no public marketing site: this app is the customer
+ * and dealer portal. The root goes straight to its sign-in page.
+ */
 export default function HomePage() {
-  return (
-    <main>
-      <HeroSlider />
-      <StatsSection />
-      <AboutSection />
-      <BusinessUnitsSection />
-      <NewsSection />
-      <PartnersMarquee />
-      <CTASection />
-    </main>
-  );
+  redirect('/customer-portal');
 }

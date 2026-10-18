@@ -9,6 +9,7 @@
  */
 import { PrismaClient, ModuleStatus } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
+import { seedZinoxCatalogue } from './seed-zinox-catalogue';
 
 const prisma = new PrismaClient();
 
@@ -43,13 +44,18 @@ async function main() {
     { key: 'dashboard', name: 'Dashboard', status: 'LIVE', sortOrder: 0 },
     { key: 'organisation', name: 'Organisation', status: 'LIVE', sortOrder: 1 },
     { key: 'business-units', name: 'Business Units', status: 'LIVE', sortOrder: 2 },
-    { key: 'workshop', name: 'Workshop', status: 'LIVE', sortOrder: 10 },
-    { key: 'inventory', name: 'Inventory', status: 'COMING_SOON', sortOrder: 11 },
-    { key: 'procurement', name: 'Procurement', status: 'COMING_SOON', sortOrder: 12 },
+    { key: 'workshop', name: 'Workshop', status: 'DISABLED', sortOrder: 10 },
+    { key: 'inventory', name: 'Components store', status: 'LIVE', sortOrder: 11 },
+    { key: 'procurement', name: 'Procurement', status: 'LIVE', sortOrder: 12 },
+    { key: 'catalogue', name: 'Catalogue', status: 'LIVE', sortOrder: 3 },
+    { key: 'production', name: 'Production', status: 'LIVE', sortOrder: 4 },
+    { key: 'warehouse', name: 'Warehouses', status: 'LIVE', sortOrder: 5 },
+    { key: 'sales', name: 'Sales', status: 'LIVE', sortOrder: 6 },
+    { key: 'service', name: 'Service Centre', status: 'LIVE', sortOrder: 7 },
+    { key: 'projects', name: 'Projects', status: 'LIVE', sortOrder: 8 },
     { key: 'finance', name: 'Finance', status: 'COMING_SOON', sortOrder: 13 },
     { key: 'hr', name: 'HR', status: 'COMING_SOON', sortOrder: 14 },
     { key: 'payroll', name: 'Payroll', status: 'COMING_SOON', sortOrder: 15 },
-    { key: 'manufacturing', name: 'Manufacturing', status: 'COMING_SOON', sortOrder: 16 },
   ];
   for (const m of modules) {
     await prisma.platformModule.upsert({
@@ -59,19 +65,23 @@ async function main() {
     });
   }
 
-  // --- Kewalram Nigeria hierarchy ------------------------------------------
+  // --- Zinox Technologies hierarchy ----------------------------------------
   const organisation = await prisma.organisation.upsert({
-    where: { slug: 'kewalram-nigeria' },
+    where: { slug: 'zinox-technologies' },
     update: {},
     create: {
-      name: 'Kewalram Nigeria',
-      slug: 'kewalram-nigeria',
-      legalName: 'Kewalram Chanrai Group Nigeria',
+      name: 'Zinox Technologies',
+      slug: 'zinox-technologies',
+      legalName: 'Zinox Technologies Limited',
+      website: 'www.zinoxtechnologies.com',
+      email: 'info@zinoxtechnologies.com',
+      hqAddress: '5 Redemption Crescent, Gbagada Industrial Layout, Gbagada, Lagos',
+      hotlines: ['+234 1 342 8686', '0700 ZINOX NG'],
       branding: {
         create: {
-          primaryColor: '#16A34A',
-          secondaryColor: '#0F172A',
-          accentColor: '#22C55E',
+          primaryColor: '#E10600',
+          secondaryColor: '#1A1A1A',
+          accentColor: '#FF3B3B',
         },
       },
     },
@@ -83,82 +93,62 @@ async function main() {
     create: { name: 'Nigeria', isoCode: 'NG' },
   });
 
-  const automobile = await prisma.businessUnit.upsert({
-    where: { organisationId_slug: { organisationId: organisation.id, slug: 'automobile-division' } },
+  const group = await prisma.businessUnit.upsert({
+    where: { organisationId_slug: { organisationId: organisation.id, slug: 'zinox' } },
     update: {},
-    create: { organisationId: organisation.id, name: 'Automobile Division', slug: 'automobile-division' },
+    create: { organisationId: organisation.id, name: 'Zinox Technologies', slug: 'zinox' },
   });
 
   await prisma.countryLink.upsert({
-    where: { businessUnitId_countryId: { businessUnitId: automobile.id, countryId: nigeria.id } },
+    where: { businessUnitId_countryId: { businessUnitId: group.id, countryId: nigeria.id } },
     update: {},
-    create: { businessUnitId: automobile.id, countryId: nigeria.id },
+    create: { businessUnitId: group.id, countryId: nigeria.id },
   });
 
-  const lagos = await prisma.state.upsert({
-    where: { countryId_name: { countryId: nigeria.id, name: 'Lagos State' } },
+  const lagos = await prisma.state.upsert({ where: { countryId_name: { countryId: nigeria.id, name: 'Lagos State' } }, update: {}, create: { countryId: nigeria.id, name: 'Lagos State' } });
+  const fct = await prisma.state.upsert({ where: { countryId_name: { countryId: nigeria.id, name: 'Federal Capital Territory' } }, update: {}, create: { countryId: nigeria.id, name: 'Federal Capital Territory' } });
+  const gbagada = await prisma.city.upsert({ where: { stateId_name: { stateId: lagos.id, name: 'Gbagada' } }, update: {}, create: { stateId: lagos.id, name: 'Gbagada' } });
+  const garki = await prisma.city.upsert({ where: { stateId_name: { stateId: fct.id, name: 'Garki, Abuja' } }, update: {}, create: { stateId: fct.id, name: 'Garki, Abuja' } });
+
+  // The plant, both warehouses, the showroom and the head office are on one site in Gbagada;
+  // Abuja is the northern sales and service office.
+  const hq = await prisma.branch.upsert({
+    where: { id: `${group.id}-gbagada-seed` },
     update: {},
-    create: { countryId: nigeria.id, name: 'Lagos State' },
+    create: { id: `${group.id}-gbagada-seed`, businessUnitId: group.id, cityId: gbagada.id, name: 'Gbagada Plant & Head Office', code: 'ZNX-HQ', address: '5 Redemption Crescent, Gbagada Industrial Layout, Lagos', email: 'lagos@zinoxtechnologies.com', hotlines: ['+234 1 342 8686'] },
+  });
+  const abuja = await prisma.branch.upsert({
+    where: { id: `${group.id}-abuja-seed` },
+    update: {},
+    create: { id: `${group.id}-abuja-seed`, businessUnitId: group.id, cityId: garki.id, name: 'Abuja Regional Office', code: 'ZNX-ABJ', address: '20 Port Harcourt Crescent, Off Gimbiya Street, Garki Area 11, Abuja', email: 'abuja@zinoxtechnologies.com', hotlines: ['+234 9 290 4512'] },
   });
 
-  const isolo = await prisma.city.upsert({
-    where: { stateId_name: { stateId: lagos.id, name: 'Isolo' } },
-    update: {},
-    create: { stateId: lagos.id, name: 'Isolo' },
-  });
+  // Department slugs 'workshop' and 'store' are what the platform's shared code looks up
+  // (the Service Centre and the Components Store play those parts at Zinox).
+  const departments: [string, string][] = [
+    ['workshop', 'Service Centre'], ['store', 'Components Store'], ['production', 'Production'], ['finished-goods', 'Finished Goods Warehouse'],
+    ['sales', 'Sales'], ['showroom', 'Showroom'], ['billing', 'Billing & Finance'], ['procurement', 'Procurement'], ['projects', 'Projects'],
+    ['security', 'Security'], ['customer-care', 'Customer Care'], ['it', 'IT'],
+  ];
+  for (const branch of [hq, abuja]) {
+    for (const [slug, name] of departments) {
+      if (branch.id === abuja.id && ['production', 'finished-goods', 'procurement', 'projects'].includes(slug)) continue;
+      await prisma.department.upsert({ where: { branchId_slug: { branchId: branch.id, slug } }, update: {}, create: { branchId: branch.id, name, slug } });
+    }
+  }
+  console.log(`Seeded Zinox Technologies: ${hq.name} (${hq.id}) and ${abuja.name} (${abuja.id})`);
 
-  const isoloBranch = await prisma.branch.upsert({
-    where: { id: `${automobile.id}-isolo-seed` }, // placeholder unique lookup for idempotency
-    update: {},
-    create: {
-      id: `${automobile.id}-isolo-seed`,
-      businessUnitId: automobile.id,
-      cityId: isolo.id,
-      name: 'Isolo Branch',
-      code: 'KWL-WS',
-    },
-  });
-
-  await prisma.department.upsert({
-    where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop' } },
-    update: {},
-    create: { branchId: isoloBranch.id, name: 'Workshop', slug: 'workshop' },
-  });
-
-  // Store: a sibling of Workshop under the same branch, not a sub-department.
-  await prisma.department.upsert({
-    where: { branchId_slug: { branchId: isoloBranch.id, slug: 'store' } },
-    update: {},
-    create: { branchId: isoloBranch.id, name: 'Store', slug: 'store' },
-  });
-
-  // The two operational Workshop departments (Passenger and Commercial), each
-  // with its own supervisor. Job Cards route to one of them by vehicle type.
-  // The original "workshop" department stays: getWorkshopBranchId() resolves
-  // the branch through it.
-  const [passengerWorkshop, commercialWorkshop] = await Promise.all([
-    prisma.department.upsert({
-      where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop-passenger' } },
-      update: {},
-      create: { branchId: isoloBranch.id, name: 'Passenger Vehicle Workshop', slug: 'workshop-passenger' },
-    }),
-    prisma.department.upsert({
-      where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop-commercial' } },
-      update: {},
-      create: { branchId: isoloBranch.id, name: 'Commercial Vehicle Workshop', slug: 'workshop-commercial' },
-    }),
-  ]);
-  // eslint-disable-next-line no-console
-  console.log(`Seeded Workshop departments: ${passengerWorkshop.name} (${passengerWorkshop.id}), ${commercialWorkshop.name} (${commercialWorkshop.id})`);
-
-  // --- Baseline roles (system roles, cannot be deleted) --------------------
-  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer', 'Warranty HOD', 'Warranty Officer', 'Department Head', 'Chief Security Officer', 'Security Officer', 'Receptionist', 'Calendar User', 'Scheduling Admin', 'Broadcaster', 'Customer Care', 'Customer Care Lead', 'Executive', 'IT Administrator'];
+  const roleNames = ['Administrator', 'Workshop Manager', 'Workshop Supervisor', 'Technician', 'Store Manager', 'Store Officer', 'Finance Officer', 'Warranty HOD', 'Warranty Officer', 'Department Head', 'Chief Security Officer', 'Security Officer', 'Receptionist', 'Calendar User', 'Scheduling Admin', 'Broadcaster', 'Customer Care', 'Customer Care Lead', 'Executive', 'IT Administrator',
+    // Zinox edition
+    'Sales Officer', 'Showroom Officer', 'Key Account Manager', 'Sales Manager', 'Commercial Director', 'Billing Officer', 'Credit Controller', 'Finance Manager',
+    'Production Planner', 'Assembler', 'Line Supervisor', 'QA Inspector', 'Production Manager', 'Parts Warehouse Officer', 'Finished Goods Officer', 'Dispatch Officer', 'Warehouse Manager',
+    'Procurement Officer', 'Procurement Head', 'Service Technician', 'Service Supervisor', 'Warranty Manager', 'Project Manager'];
   for (const name of roleNames) {
     await prisma.role.upsert({
       where: { organisationId_slug: { organisationId: organisation.id, slug: slugify(name) } },
       update: {},
       // A Manager runs a branch (the role keeps its stable slug).
-      create: { organisationId: organisation.id, name: name === 'Workshop Manager' ? 'Manager' : name, slug: slugify(name), isSystem: true },
+      create: { organisationId: organisation.id, name: name === 'Workshop Manager' ? 'Manager' : name === 'Procurement Head' ? 'Head of Procurement' : name === 'Finished Goods Officer' ? 'Finished Goods Officer' : name, slug: name === 'Finished Goods Officer' ? 'fg-warehouse-officer' : slugify(name), isSystem: true },
     });
   }
 
@@ -230,7 +220,9 @@ async function main() {
   }
 
   // eslint-disable-next-line no-console
-  console.log(`Seed complete: module registry + Kewalram Nigeria hierarchy + Master Administrator (${MASTER_ADMIN.email}).`);
+  await seedZinoxCatalogue(prisma, organisation.id, hq.id, masterAdminUser.id);
+
+  console.log(`Seed complete: module registry + Zinox Technologies hierarchy + Master Administrator (${MASTER_ADMIN.email}).`);
 }
 
 function slugify(value: string): string {

@@ -33,7 +33,7 @@ export function DashboardTrendChart({ data, showRevenue }: { data: DashboardTren
         />
         <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
         <Bar yAxisId="count" dataKey="jobCardsOpened" name="Job Cards opened" stackId="opened" fill="url(#ejo-jc)" radius={[0, 0, 0, 0]} maxBarSize={36} />
-        <Bar yAxisId="count" dataKey="servicesOpened" name="Vehicle Services opened" stackId="opened" fill="#86efac" radius={[4, 4, 0, 0]} maxBarSize={36} />
+        <Bar yAxisId="count" dataKey="servicesOpened" name="Vehicle Services opened" stackId="opened" fill="#fca5a5" radius={[4, 4, 0, 0]} maxBarSize={36} />
         {showRevenue ? <Line yAxisId="money" type="monotone" dataKey="collected" name="Collected" stroke="#64748b" strokeWidth={2} dot={false} activeDot={{ r: 4 }} /> : null}
         {showRevenue ? <Line yAxisId="money" type="monotone" dataKey="refunded" name="Refunded" stroke="var(--ejo-error)" strokeWidth={2} strokeDasharray="4 3" dot={false} activeDot={{ r: 4 }} /> : null}
       </ComposedChart>

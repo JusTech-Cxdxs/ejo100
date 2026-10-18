@@ -74,7 +74,7 @@ export default async function PrintExternalProcurementRequestPage({
         documentTitle={isOrgCopy ? 'External Procurement Request' : 'Procurement Disbursement Receipt'}
         referenceNumber={request.referenceNumber}
         statusLabel="Disbursed"
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>

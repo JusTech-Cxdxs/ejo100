@@ -106,12 +106,12 @@ export const AREA_LABEL: Record<string, string> = { WORKSHOP: 'Workshop', STORE:
 export type CategoryMeta = { label: string; icon: string; chip: string; bar: string; emailColor: string; heading: string };
 export const BROADCAST_CATEGORY: Record<string, CategoryMeta> = {
   NEWS: { label: 'News', icon: '📰', chip: 'bg-[var(--ejo-info)]/15 text-[var(--ejo-info)]', bar: 'border-l-[var(--ejo-info)]', emailColor: '#2563EB', heading: 'News' },
-  ANNOUNCEMENT: { label: 'Announcement', icon: '📢', chip: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', bar: 'border-l-[var(--ejo-primary)]', emailColor: '#16A34A', heading: 'Announcement' },
+  ANNOUNCEMENT: { label: 'Announcement', icon: '📢', chip: 'bg-[var(--ejo-primary)]/15 text-[var(--ejo-primary)]', bar: 'border-l-[var(--ejo-primary)]', emailColor: '#E10600', heading: 'Announcement' },
   IMPORTANT: { label: 'Important', icon: '⭐', chip: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning)]', bar: 'border-l-[var(--ejo-warning)]', emailColor: '#D97706', heading: 'Important notice' },
   URGENT: { label: 'Urgent', icon: '⚠️', chip: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]', bar: 'border-l-[var(--ejo-error)]', emailColor: '#DC2626', heading: 'Urgent' },
   SECURITY_ALERT: { label: 'Security alert', icon: '🚨', chip: 'bg-[var(--ejo-error)]/20 text-[var(--ejo-error)]', bar: 'border-l-[var(--ejo-error)]', emailColor: '#B91C1C', heading: 'Security alert' },
   MAINTENANCE: { label: 'Maintenance', icon: '🛠️', chip: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]', bar: 'border-l-[var(--ejo-text-muted)]', emailColor: '#475569', heading: 'Planned maintenance' },
-  GREETING: { label: 'Greeting', icon: '🎉', chip: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]', bar: 'border-l-[var(--ejo-success)]', emailColor: '#059669', heading: 'Greetings' },
+  GREETING: { label: 'Greeting', icon: '🎉', chip: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]', bar: 'border-l-[var(--ejo-success)]', emailColor: '#b40000', heading: 'Greetings' },
 };
 export const BROADCAST_CATEGORIES = Object.keys(BROADCAST_CATEGORY);
 

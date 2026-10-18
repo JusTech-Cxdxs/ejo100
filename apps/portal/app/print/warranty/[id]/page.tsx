@@ -60,7 +60,7 @@ export default async function PrintWarrantyPage({ params, searchParams }: { para
         documentTitle={isOrgCopy ? 'Warranty Certificate — Organisation Copy' : 'Warranty Certificate'}
         referenceNumber={w.warrantyNumber}
         statusLabel={WARRANTY_STATE_LABEL[cov.state]}
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
       {w.policy.isSample ? (
         <p style={{ marginTop: '12px', padding: '6px 10px', border: '1px solid #FCD34D', background: '#FFFBEB', fontSize: '11px', color: '#92400E' }}>

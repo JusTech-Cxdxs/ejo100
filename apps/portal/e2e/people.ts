@@ -35,6 +35,30 @@ export const PEOPLE: readonly Person[] = [
   { email: 'supermanager@e2e.test', name: 'Mike Supermanager', role: 'workshop-supervisor', dept: 'workshop-passenger', extraRoles: ['workshop-manager'] },
   // Only for user-administration tests (given roles / switched off during the run).
   { email: 'switchable@e2e.test', name: 'Sola Switchable', role: 'calendar-user' },
+  // Zinox edition: sales, billing, production, warehouses, procurement, service, projects.
+  { email: 'sales@e2e.test', name: 'Seun Salesofficer', role: 'sales-officer', dept: 'sales' },
+  { email: 'showroom@e2e.test', name: 'Shade Showroom', role: 'showroom-officer', dept: 'showroom' },
+  { email: 'kam@e2e.test', name: 'Kola Keyaccount', role: 'key-account-manager', dept: 'sales' },
+  { email: 'salesmanager@e2e.test', name: 'Sandra Salesmanager', role: 'sales-manager', dept: 'sales' },
+  { email: 'commercial@e2e.test', name: 'Chuka Commercialdirector', role: 'commercial-director', dept: 'sales' },
+  { email: 'billing@e2e.test', name: 'Bisi Billing', role: 'billing-officer', dept: 'billing' },
+  { email: 'credit@e2e.test', name: 'Charles Creditcontroller', role: 'credit-controller', dept: 'billing' },
+  { email: 'financemanager@e2e.test', name: 'Funke Financemanager', role: 'finance-manager', dept: 'billing' },
+  { email: 'planner@e2e.test', name: 'Peter Planner', role: 'production-planner', dept: 'production' },
+  { email: 'assembler@e2e.test', name: 'Ayo Assembler', role: 'assembler', dept: 'production' },
+  { email: 'linesupervisor@e2e.test', name: 'Lanre Linesupervisor', role: 'line-supervisor', dept: 'production' },
+  { email: 'qa@e2e.test', name: 'Queen Qainspector', role: 'qa-inspector', dept: 'production' },
+  { email: 'productionmanager@e2e.test', name: 'Paul Productionmanager', role: 'production-manager', dept: 'production' },
+  { email: 'partswarehouse@e2e.test', name: 'Precious Partswarehouse', role: 'parts-warehouse-officer', dept: 'store' },
+  { email: 'fgwarehouse@e2e.test', name: 'Felix Finishedgoods', role: 'fg-warehouse-officer', dept: 'finished-goods' },
+  { email: 'dispatch@e2e.test', name: 'Dapo Dispatch', role: 'dispatch-officer', dept: 'finished-goods' },
+  { email: 'warehousemanager@e2e.test', name: 'Wale Warehousemanager', role: 'warehouse-manager', dept: 'finished-goods' },
+  { email: 'procurement@e2e.test', name: 'Pelumi Procurement', role: 'procurement-officer', dept: 'procurement' },
+  { email: 'procurementhead@e2e.test', name: 'Hassan Procurementhead', role: 'procurement-head', dept: 'procurement' },
+  { email: 'servicetech@e2e.test', name: 'Segun Servicetech', role: 'service-technician', dept: 'workshop' },
+  { email: 'servicesupervisor@e2e.test', name: 'Sarah Servicesupervisor', role: 'service-supervisor', dept: 'workshop' },
+  { email: 'warrantymanager@e2e.test', name: 'Wole Warrantymanager', role: 'warranty-manager', dept: 'workshop' },
+  { email: 'projectmanager@e2e.test', name: 'Priya Projectmanager', role: 'project-manager', dept: 'projects' },
 ];
 /** Only for the forgot-password test (its password changes during the run). */
 export const RESET: Person = { email: 'reset@e2e.test', name: 'Rita Reset', role: 'calendar-user' };

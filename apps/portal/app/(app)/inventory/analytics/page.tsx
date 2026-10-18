@@ -20,8 +20,8 @@ const STATUS: Record<StockStatus, { label: string; colour: string; chip: string 
   OUT_OF_STOCK: { label: 'Out of stock', colour: '#DC2626', chip: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' },
   BELOW_SAFETY: { label: 'Below safety stock', colour: '#F97316', chip: 'bg-[var(--ejo-error)]/15 text-[var(--ejo-error)]' },
   BELOW_REORDER: { label: 'At / below reorder point', colour: '#F59E0B', chip: 'bg-[var(--ejo-warning)]/15 text-[var(--ejo-warning-text)]' },
-  HEALTHY: { label: 'Healthy', colour: '#16A34A', chip: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' },
-  OVERSTOCK: { label: 'Overstocked', colour: '#86EFAC', chip: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]' },
+  HEALTHY: { label: 'Healthy', colour: '#E10600', chip: 'bg-[var(--ejo-success)]/15 text-[var(--ejo-success)]' },
+  OVERSTOCK: { label: 'Overstocked', colour: '#FCA5A5', chip: 'bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]' },
   DEAD: { label: 'Dead stock', colour: '#6B7280', chip: 'bg-[var(--ejo-text-muted)]/15 text-[var(--ejo-text-muted)]' },
   NO_DEMAND: { label: 'No recent demand', colour: '#CBD5E1', chip: 'bg-[var(--ejo-text-muted)]/10 text-[var(--ejo-text-muted)]' },
 };
@@ -191,9 +191,9 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
           <div className={card}>
             <CardTitle icon="star">ABC analysis (share of yearly consumption value)</CardTitle>
             <Donut centre="ABC" slices={[
-              { label: `A — top 80% of value (${pluralize(st.abcCount.A, 'part')})`, value: st.abcValue.A, colour: '#15803D', note: naira(st.abcValue.A) },
-              { label: `B — next 15% (${pluralize(st.abcCount.B, 'part')})`, value: st.abcValue.B, colour: '#4ADE80', note: naira(st.abcValue.B) },
-              { label: `C — the rest (${pluralize(st.abcCount.C, 'part')})`, value: st.abcValue.C, colour: '#BBF7D0', note: naira(st.abcValue.C) },
+              { label: `A — top 80% of value (${pluralize(st.abcCount.A, 'part')})`, value: st.abcValue.A, colour: '#B40000', note: naira(st.abcValue.A) },
+              { label: `B — next 15% (${pluralize(st.abcCount.B, 'part')})`, value: st.abcValue.B, colour: '#F87171', note: naira(st.abcValue.B) },
+              { label: `C — the rest (${pluralize(st.abcCount.C, 'part')})`, value: st.abcValue.C, colour: '#FECACA', note: naira(st.abcValue.C) },
             ]} />
             <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">Watch A parts closely (tight levels, frequent review); C parts can be ordered in larger, rarer batches.</p>
           </div>

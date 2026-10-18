@@ -5,7 +5,7 @@ import type { VehicleFindingsBreakdown } from '@/lib/actions/vehicle-service';
 
 // Same severity colours as the inspection workspace and prints.
 const SEVERITY_COLORS = {
-  Good: '#16A34A',
+  Good: '#E10600',
   Attention: '#CA8A04',
   'Service Required': '#EA580C',
   Critical: '#DC2626',

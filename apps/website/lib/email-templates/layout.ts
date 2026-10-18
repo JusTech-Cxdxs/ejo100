@@ -67,9 +67,9 @@ export function html(strings: TemplateStringsArray, ...values: HtmlValue[]): Saf
 export const EMAIL_FONT = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
 
 const C = {
-  brand: '#22983f', // the logo green: wordmark rule and top bar
-  button: '#15803d', // a shade darker than --ejo-primary so white text passes contrast
-  link: '#15803d',
+  brand: '#e10600', // the logo green: wordmark rule and top bar
+  button: '#b40000', // a shade darker than --ejo-primary so white text passes contrast
+  link: '#b40000',
   page: '#f1f5f4',
   card: '#ffffff',
   surface: '#f8fafc',
@@ -83,7 +83,7 @@ const C = {
 export type EmailTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 const TONES: Record<EmailTone, { bg: string; fg: string; dot: string; border: string }> = {
-  success: { bg: '#dcfce7', fg: '#166534', dot: '#16a34a', border: '#bbf7d0' },
+  success: { bg: '#fee2e2', fg: '#991b1b', dot: '#e10600', border: '#fecaca' },
   warning: { bg: '#fef3c7', fg: '#92400e', dot: '#f59e0b', border: '#fde68a' },
   danger: { bg: '#fee2e2', fg: '#991b1b', dot: '#dc2626', border: '#fecaca' },
   info: { bg: '#dbeafe', fg: '#1e40af', dot: '#2563eb', border: '#bfdbfe' },
@@ -382,18 +382,18 @@ const STYLE_DARK = `
     .ejo-strong, .ejo-h1 { color: #f1f5f9 !important; }
     .ejo-body { color: #cbd5e1 !important; }
     .ejo-muted { color: #94a3b8 !important; }
-    .ejo-link { color: #4ade80 !important; }
-    .ejo-callout-success { background-color: #0f2e1d !important; border-color: #22c55e !important; }
+    .ejo-link { color: #f87171 !important; }
+    .ejo-callout-success { background-color: #2e0f0f !important; border-color: #ff3b3b !important; }
     .ejo-callout-warning { background-color: #33240a !important; border-color: #f59e0b !important; }
     .ejo-callout-danger { background-color: #3a1214 !important; border-color: #ef4444 !important; }
     .ejo-callout-info { background-color: #10213f !important; border-color: #3b82f6 !important; }
     .ejo-callout-neutral { background-color: #172036 !important; border-color: #475569 !important; }
-    .ejo-callout-success .ejo-callout-text { color: #bbf7d0 !important; }
+    .ejo-callout-success .ejo-callout-text { color: #fecaca !important; }
     .ejo-callout-warning .ejo-callout-text { color: #fde68a !important; }
     .ejo-callout-danger .ejo-callout-text { color: #fecaca !important; }
     .ejo-callout-info .ejo-callout-text { color: #bfdbfe !important; }
     .ejo-callout-neutral .ejo-callout-text { color: #cbd5e1 !important; }
-    .ejo-chip-success { background-color: #0f2e1d !important; color: #86efac !important; }
+    .ejo-chip-success { background-color: #2e0f0f !important; color: #fca5a5 !important; }
     .ejo-chip-warning { background-color: #33240a !important; color: #fcd34d !important; }
     .ejo-chip-danger { background-color: #3a1214 !important; color: #fca5a5 !important; }
     .ejo-chip-info { background-color: #10213f !important; color: #93c5fd !important; }
@@ -419,7 +419,7 @@ const STYLE_MOTION = `
   @keyframes ejo-sheen { from { background-position: 100% 0; } to { background-position: 0 0; } }
   @media (prefers-reduced-motion: no-preference) {
     .ejo-rule { transform-origin: left center; animation: ejo-draw 900ms cubic-bezier(0.2, 0.7, 0.2, 1) 200ms both; }
-    .ejo-topbar { background-image: linear-gradient(90deg, #22983f 0%, #22983f 40%, #4ade80 50%, #22983f 60%, #22983f 100%); background-size: 250% 100%; animation: ejo-sheen 1600ms ease-out 300ms both; }
+    .ejo-topbar { background-image: linear-gradient(90deg, #e10600 0%, #e10600 40%, #f87171 50%, #e10600 60%, #e10600 100%); background-size: 250% 100%; animation: ejo-sheen 1600ms ease-out 300ms both; }
     .ejo-chip { animation: ejo-fade 600ms ease-out 350ms both; }
   }`;
 

@@ -9,7 +9,7 @@ import { newRef } from '@/lib/errors';
  * and dark), layout and a gentle motion that stops for reduced-motion users.
  */
 const CSS = `
-:root{--bg:#f8fafc;--card:#fff;--text:#0f172a;--muted:#475569;--border:#e2e8f0;--green:#16a34a;--amber:#b45309;--amber-bg:#fef3c7}
+:root{--bg:#f8fafc;--card:#fff;--text:#0f172a;--muted:#475569;--border:#e2e8f0;--green:#e10600;--amber:#b45309;--amber-bg:#fef3c7}
 @media (prefers-color-scheme:dark){:root{--bg:#0b1220;--card:#111a2b;--text:#e2e8f0;--muted:#94a3b8;--border:#1e293b;--amber:#f59e0b;--amber-bg:rgba(245,158,11,.15)}}
 *{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px 16px;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;overflow-x:hidden}

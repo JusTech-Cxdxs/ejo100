@@ -22,7 +22,7 @@ export function LearningAccuracyChart({ data }: { data: WeekPoint[] }) {
           labelStyle={{ color: 'var(--ejo-text)', fontWeight: 600 }}
         />
         <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" iconSize={8} />
-        <Bar yAxisId="count" dataKey="resolved" name="Resolved" fill="#dcfce7" stroke="#86efac" radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
+        <Bar yAxisId="count" dataKey="resolved" name="Resolved" fill="#fee2e2" stroke="#fca5a5" radius={[4, 4, 0, 0]} maxBarSize={28} isAnimationActive={false} />
         <Line yAxisId="pct" type="monotone" dataKey="precision" name="Precision" stroke="var(--ejo-primary)" strokeWidth={2.5} dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
         <Line yAxisId="pct" type="monotone" dataKey="recall" name="Recall" stroke="#64748b" strokeWidth={2} strokeDasharray="5 3" dot={{ r: 3 }} connectNulls={false} isAnimationActive={false} />
       </ComposedChart>

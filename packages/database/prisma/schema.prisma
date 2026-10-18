@@ -65,10 +65,10 @@ model Branding {
   logoDarkUrl String?
   faviconUrl  String?
 
-  primaryColor   String @default("#16A34A") // brand green
+  primaryColor   String @default("#E10600") // brand green
   secondaryColor String @default("#0F172A")
-  accentColor    String @default("#22C55E")
-  successColor   String @default("#16A34A")
+  accentColor    String @default("#FF3B3B")
+  successColor   String @default("#E10600")
   warningColor   String @default("#F59E0B")
   errorColor     String @default("#DC2626")
   infoColor      String @default("#2563EB")

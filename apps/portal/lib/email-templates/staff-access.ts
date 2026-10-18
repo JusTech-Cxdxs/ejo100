@@ -37,7 +37,7 @@ function accessBlock(o: StaffAccessEmailOptions) {
   const groups = o.access.filter((g) => g.lines.length);
   if (!groups.length) return para('For now you can request your own exit passes. Your administrator will give you a role for your work.');
   return groups.map((g) => html`
-    <p class="ejo-strong" style="margin: 16px 0 6px 0; font-family: ${raw(EMAIL_FONT)}; font-size: 13px; font-weight: 700; color: #15803d;">${g.module}</p>
+    <p class="ejo-strong" style="margin: 16px 0 6px 0; font-family: ${raw(EMAIL_FONT)}; font-size: 13px; font-weight: 700; color: #b40000;">${g.module}</p>
     ${list(g.lines.map((l) => html`${l.label}${l.where ? html` <span class="ejo-muted" style="color: #64748b;">(${l.where})</span>` : ''}${l.added ? html` <span style="color: #b45309; font-size: 12px;">added by your administrator</span>` : ''}`))}`);
 }
 

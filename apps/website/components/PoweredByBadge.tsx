@@ -7,7 +7,7 @@ export function PoweredByBadge() {
           d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z"
           stroke="var(--ejo-accent)"
           strokeWidth="1.5"
-          fill="rgba(34,197,94,0.15)"
+          fill="rgba(255,59,59,0.15)"
         />
         <circle cx="12" cy="12" r="3" fill="var(--ejo-accent)" />
       </svg>

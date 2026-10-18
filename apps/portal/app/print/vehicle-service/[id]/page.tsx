@@ -101,7 +101,7 @@ export default async function PrintVehicleServicePage({
         documentTitle={isOrgCopy ? 'Vehicle Service — Vehicle Collection Record' : 'Vehicle Collection Receipt'}
         referenceNumber={service.serviceNumber}
         statusLabel="Checked Out"
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>

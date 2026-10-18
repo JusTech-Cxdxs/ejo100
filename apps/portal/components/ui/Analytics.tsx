@@ -9,8 +9,8 @@ import { Icon } from './Icon';
  */
 export const CHART = {
   primary: 'var(--ejo-primary)',
-  primarySoft: '#86efac',
-  primaryPale: '#dcfce7',
+  primarySoft: '#fca5a5',
+  primaryPale: '#fee2e2',
   neutral: '#94a3b8',
   neutralSoft: '#cbd5e1',
   warning: 'var(--ejo-warning)',

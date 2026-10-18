@@ -14,7 +14,7 @@ on:
       organisation:
         description: "Organisation slug (Organisation page → Organisation ID for the website)"
         required: true
-        default: kewalram-nigeria
+        default: zinox-technologies
       tasks:
         description: "Comma-separated tasks, empty for all (JOB_DURATION, ESTIMATE_LINES, PARTS_DEMAND, PRICE_ANOMALY, COMPLAINT_THEMES, DECISION_RISK)"
         required: false
@@ -52,7 +52,7 @@ jobs:
         env:
           PORTAL_URL: ${{ secrets.PORTAL_URL }}
           ML_SERVICE_TOKEN: ${{ secrets.ML_SERVICE_TOKEN }}
-          ORGANISATION: ${{ inputs.organisation || 'kewalram-nigeria' }}
+          ORGANISATION: ${{ inputs.organisation || 'zinox-technologies' }}
           TASKS: ${{ inputs.tasks }}
           DRY_RUN: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: |

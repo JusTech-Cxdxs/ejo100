@@ -37,7 +37,7 @@ export function linkify(text: string): SafeHtml {
     parts.push(text.slice(last, i));
     const v = m[0];
     const href = v.includes('@') && !/^https?:/i.test(v) ? `mailto:${v}` : v;
-    parts.push(html`<a href="${href}" style="color: #15803d; text-decoration: underline;">${v}</a>`);
+    parts.push(html`<a href="${href}" style="color: #b40000; text-decoration: underline;">${v}</a>`);
     last = i + v.length;
   }
   parts.push(text.slice(last));
@@ -54,8 +54,8 @@ function signature(s: Sender): SafeHtml {
   const lines = [second, s.branch, s.phone].filter((x): x is string => Boolean(x && x.trim()));
   return html`
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 22px 0 4px 0;">
-      <tr><td style="border-left: 3px solid #22983f; padding: 2px 0 2px 12px; font-family: ${raw(EMAIL_FONT)}; font-size: 13px; line-height: 1.55; color: #334155;">
-        <strong class="ejo-strong" style="font-size: 14px; color: #0f172a;">${s.name}</strong>${lines.map((l) => html`<br /><span class="ejo-muted" style="color: #64748b;">${l}</span>`)}<br /><a href="mailto:${s.email}" style="color: #15803d; text-decoration: none;">${s.email}</a>
+      <tr><td style="border-left: 3px solid #e10600; padding: 2px 0 2px 12px; font-family: ${raw(EMAIL_FONT)}; font-size: 13px; line-height: 1.55; color: #334155;">
+        <strong class="ejo-strong" style="font-size: 14px; color: #0f172a;">${s.name}</strong>${lines.map((l) => html`<br /><span class="ejo-muted" style="color: #64748b;">${l}</span>`)}<br /><a href="mailto:${s.email}" style="color: #b40000; text-decoration: none;">${s.email}</a>
       </td></tr>
     </table>`;
 }

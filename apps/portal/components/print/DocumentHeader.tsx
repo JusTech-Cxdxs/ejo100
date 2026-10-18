@@ -1,4 +1,4 @@
-import { PLATFORM } from '@/lib/brand';
+import { LOGO, PLATFORM } from '@/lib/brand';
 type OrganisationInfo = {
   name: string;
   legalName: string | null;
@@ -60,6 +60,9 @@ export function DocumentHeader({
   const nameWords = organisation.name.trim().split(/\s+/);
   const wordmarkTop = nameWords[0] ?? organisation.name;
   const wordmarkBottom = nameWords.slice(1).join(' ');
+  // The logo's printed size: 47px tall, width from its own aspect ratio (a wide mark prints wide).
+  const logoHeight = 47;
+  const logoWidth = Math.round(logoHeight * (LOGO.width / LOGO.height));
 
   return (
     <div>
@@ -69,11 +72,26 @@ export function DocumentHeader({
             <td style={{ verticalAlign: 'middle', padding: 0 }}>
               {/* Flex, not table cells, so the 4px gap beside the logo
                   matches the 4px gap between the two wordmark lines. */}
+              {LOGO.carriesFirstWord ? (
+                // The logo spells the first word itself: the mark above, the rest of the name beneath the rule, flush to the mark's width.
+                <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch', width: `${logoWidth}px` }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={logoUrl} alt={organisation.name} style={{ width: `${logoWidth}px`, height: `${logoHeight}px`, display: 'block' }} />
+                  {wordmarkBottom ? (
+                    <div style={{ display: 'flex', alignItems: 'center', marginTop: '4px' }}>
+                      <div style={{ flex: 1, borderBottom: `1.25px solid ${accentColor}`, marginRight: '6px' }} />
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#334155', whiteSpace: 'nowrap' }}>{wordmarkBottom}</span>
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
               <div style={{ display: 'flex', alignItems: 'center' }}>
+                {/* Flex, not table cells, so the 4px gap beside the logo
+                    matches the 4px gap between the two wordmark lines. */}
                 {/* Fixed width and height (the logo's aspect ratio): some PDF engines
                     squash an image with width:auto. Height equals the wordmark's. */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={logoUrl} alt={organisation.name} style={{ width: '39px', height: '47px', display: 'block', marginRight: '4px' }} />
+                <img src={logoUrl} alt={organisation.name} style={{ width: `${logoWidth}px`, height: `${logoHeight}px`, display: 'block', marginRight: '4px' }} />
                 <div style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'stretch' }}>
                   <div style={{ fontSize: '26px', fontWeight: 800, color: '#0F172A', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>{wordmarkTop}</div>
                   {wordmarkBottom ? (
@@ -86,6 +104,7 @@ export function DocumentHeader({
                   ) : null}
                 </div>
               </div>
+              )}
             </td>
             <td style={{ verticalAlign: 'top', textAlign: 'right', whiteSpace: 'nowrap' }}>
               <div style={{ fontSize: '15px', fontWeight: 700, color: accentColor }}>{documentTitle}</div>

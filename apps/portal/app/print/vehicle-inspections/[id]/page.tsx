@@ -15,7 +15,7 @@ const SEVERITY_LABEL: Record<string, string> = {
   CRITICAL: 'Critical',
 };
 const SEVERITY_COLOR: Record<string, string> = {
-  GOOD: '#16A34A',
+  GOOD: '#E10600',
   ATTENTION: '#CA8A04',
   SERVICE_REQUIRED: '#EA580C',
   CRITICAL: '#DC2626',
@@ -135,7 +135,7 @@ export default async function PrintVehicleInspectionPage({
         documentTitle="Vehicle Inspection Report"
         referenceNumber={service.serviceNumber}
         statusLabel={statusLabel}
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
@@ -156,7 +156,7 @@ export default async function PrintVehicleInspectionPage({
       </div>
 
       {reviewedItems.length > 0 ? (
-        <ItemsZone title="Reviewed" backgroundColor="#F0FDF4" borderColor="#BBF7D0" items={reviewedItems} showNotes={isOrgCopy} />
+        <ItemsZone title="Reviewed" backgroundColor="#FEF2F2" borderColor="#FECACA" items={reviewedItems} showNotes={isOrgCopy} />
       ) : (
         <div style={{ marginTop: '20px', padding: '14px 16px', border: '1px solid #E2E8F0', borderRadius: '8px', backgroundColor: '#F8FAFC', fontSize: '12px', color: '#475569' }}>
           No items have been reviewed on this inspection yet.

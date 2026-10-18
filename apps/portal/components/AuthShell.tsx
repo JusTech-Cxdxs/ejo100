@@ -15,17 +15,18 @@ interface AuthShellProps {
 const ic = (d: ReactNode) => d;
 /** What the platform runs — every module a member of staff may meet (each shows only what their role allows). */
 const MODULES: { title: string; text: string; icon: ReactNode }[] = [
-  { title: 'Workshop', text: 'Job Cards and vehicle services, estimates, approvals, hand-over.', icon: ic(<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.4-.6-.6-2.4 2.5-2.5z" />) },
-  { title: 'Store & purchasing', text: 'Parts, stock, goods receipts, outside purchases.', icon: ic(<><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></>) },
-  { title: 'Warranty', text: 'Warranties issued, claims approved, providers paid.', icon: ic(<><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" /></>) },
-  { title: 'Customers & support', text: 'Customer records, the support centre, complaints.', icon: ic(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>) },
+  { title: 'Production', text: 'Build orders, the line, unit travellers, line checks and QA.', icon: ic(<><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" /></>) },
+  { title: 'Warehouses & store', text: 'Components in, finished units by serial, releases and dispatch.', icon: ic(<><path d="M21 8 12 3 3 8v8l9 5 9-5V8z" /><path d="M3 8l9 5 9-5M12 13v8" /></>) },
+  { title: 'Sales & dealers', text: 'Quotations, orders, pro-forma invoices, dealer prices every morning.', icon: ic(<><path d="M4 3h16v18l-3-2-3 2-3-2-3 2-3-2z" /><path d="M8 8h8M8 12h8M8 16h5" /></>) },
+  { title: 'Procurement', text: 'Requisitions, purchase orders, shipments and customs.', icon: ic(<><circle cx="9" cy="21" r="1" /><circle cx="20" cy="21" r="1" /><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6" /></>) },
+  { title: 'Warranty & service', text: 'Every serial under warranty, claims, repairs and replacements.', icon: ic(<><path d="M12 3l8 3v6c0 4.5-3.4 8.2-8 9-4.6-.8-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5 4.5-5" /></>) },
+  { title: 'Customers & projects', text: 'Retail, corporate, government and distributor accounts; tenders and deliveries.', icon: ic(<><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></>) },
   { title: 'Security & gate', text: 'Visitors, exit passes, deliveries, incidents.', icon: ic(<><rect x="4" y="11" width="16" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4" /></>) },
   { title: 'Headquarters & analytics', text: 'Every branch side by side; money, work and teams.', icon: ic(<><path d="M3 3v18h18" /><path d="M7 15l4-4 3 3 5-6" /></>) },
-  { title: 'IT & audit', text: 'People and roles, error log, audit trail, system health.', icon: ic(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>) },
   { title: 'Enyo, the assistant', text: 'Briefings by voice, answers from your own records.', icon: ic(<><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5l-1.9-4.6L5.5 9l4.6-1.4z" /><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z" /></>) },
 ];
 
-const ROLES = ['Directors', 'Managers', 'Front desk', 'Technicians', 'Store', 'Finance', 'Warranty', 'Customer care', 'Security', 'IT'];
+const ROLES = ['Directors', 'Sales', 'Billing & finance', 'Planners', 'The line', 'QA', 'Warehouses', 'Procurement', 'Service centre', 'Projects', 'Security', 'IT'];
 
 /** What is true of every account, kept true to what the platform enforces. */
 const PROMISES = ['Access follows your role', 'Nobody approves their own request', 'Every action on the audit trail', 'Sessions end when access ends'];

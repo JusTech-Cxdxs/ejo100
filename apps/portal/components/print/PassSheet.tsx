@@ -2,7 +2,7 @@ import { portalBaseUrl } from '@/lib/portal-url';
 import type { ReactNode } from 'react';
 import { PLATFORM } from '@/lib/brand';
 
-const ACCENT = '#16A34A';
+const ACCENT = '#E10600';
 
 /**
  * A pass on a POS receipt roll (58 / 80 mm): fills the roll's width, with

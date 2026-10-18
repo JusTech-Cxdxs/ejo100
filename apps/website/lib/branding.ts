@@ -9,10 +9,10 @@ import type { BrandingTokens } from '@ejo/types';
 export function getActiveBranding(): BrandingTokens {
   return {
     organisationSlug: process.env.NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG ?? '',
-    primaryColor: '#16A34A', // brand green
+    primaryColor: '#E10600', // brand green
     secondaryColor: '#0F172A',
-    accentColor: '#22C55E',
-    successColor: '#16A34A',
+    accentColor: '#FF3B3B',
+    successColor: '#E10600',
     warningColor: '#F59E0B',
     errorColor: '#DC2626',
     infoColor: '#2563EB',

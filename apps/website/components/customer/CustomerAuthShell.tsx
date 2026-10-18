@@ -11,7 +11,7 @@ const HIGHLIGHTS: { title: string; text: string; icon: IconName }[] = [
   { title: 'Estimates & payments', text: 'Approve estimates, see what is due, keep every receipt.', icon: 'wallet' },
   { title: 'Warranties', text: 'What is covered, for how long, and how to claim.', icon: 'shield' },
   { title: 'Service reminders', text: 'When your next service is due, before it is late.', icon: 'calendarCheck' },
-  { title: 'Ask Enyo, any time', text: 'Our assistant answers about your own vehicles, day or night.', icon: 'sparkles' },
+  { title: 'Ask Enyo, any time', text: 'Our assistant answers about your own devices and orders, day or night.', icon: 'sparkles' },
   { title: 'Talk to a person', text: 'Open a request or complaint; our customer care replies by email or phone.', icon: 'chat' },
 ];
 
@@ -39,7 +39,7 @@ export function CustomerAuthShell({ title, subtitle, children, footer }: { title
 
         <div className="ejo-rise relative max-w-md" style={{ animationDelay: '80ms' }}>
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--ejo-accent)]">Customer portal</p>
-          <h2 className="mt-3 text-[2rem] font-bold leading-tight xl:text-4xl">Your vehicle, every step of the way.</h2>
+          <h2 className="mt-3 text-[2rem] font-bold leading-tight xl:text-4xl">Your devices, every step of the way.</h2>
           <p className="mt-3 text-sm leading-relaxed text-white/70">Track your repairs and services, approve estimates, see what you owe and when your car is ready to collect — any time, from any device.</p>
           <ul className="mt-7 grid grid-cols-2 gap-x-5 gap-y-4">
             {HIGHLIGHTS.map((h, i) => (
@@ -88,7 +88,7 @@ export function CustomerAuthShell({ title, subtitle, children, footer }: { title
           <ThemeSwitch tone="onDark" />
         </div>
         <p className="relative mt-5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--ejo-accent)]">Customer portal</p>
-        <p className="relative mt-1 text-lg font-semibold leading-snug">Your vehicle, every step of the way.</p>
+        <p className="relative mt-1 text-lg font-semibold leading-snug">Your devices, every step of the way.</p>
       </section>
 
       {/* Form panel */}

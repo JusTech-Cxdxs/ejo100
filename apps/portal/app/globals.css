@@ -4,14 +4,15 @@
    feel like one ecosystem, per the branding spec. See that app's
    globals.css comment for the full explanation. */
 :root {
-  --ejo-primary: #16a34a;
-  /* The exact green of the organisation's logo — the wordmark rule. */
-  --ejo-brand: #22983f;
+  --ejo-primary: #e10600;
+  /* The exact red of the organisation's logo — the wordmark rule. */
+  --ejo-brand: #e10600;
   --ejo-secondary: #0f172a;
-  --ejo-accent: #22c55e;
-  --ejo-success: #16a34a;
+  --ejo-accent: #ff3b3b;
+  /* Semantic 'done / good' — kept distinct from the brand red so approved and rejected never look alike. */
+  --ejo-success: #059669;
   --ejo-warning: #f59e0b;
-  --ejo-error: #dc2626;
+  --ejo-error: #9f1239;
   --ejo-info: #2563eb;
   /* Amber text that is readable on a light background (chips, hints). */
   --ejo-warning-text: #b45309;
@@ -67,7 +68,7 @@ html.ejo-theme-switching, html.ejo-theme-switching * {
 
 /* Base layer: utilities (border-[…], text-[…]) must always win over these.
    Unlayered rules beat every Tailwind utility in v4 — which is exactly why
-   coloured borders (the green rule under the wordmark, red error borders)
+   coloured borders (the red rule under the wordmark, red error borders)
    were all showing grey before. */
 @layer base {
   *, ::before, ::after {
@@ -93,10 +94,10 @@ body {
    panel until real photography is available. */
 .ejo-media-placeholder {
   background:
-    radial-gradient(circle at 20% 20%, rgba(34, 197, 94, 0.55), transparent 55%),
-    radial-gradient(circle at 80% 30%, rgba(21, 128, 61, 0.5), transparent 50%),
+    radial-gradient(circle at 20% 20%, rgba(225, 6, 0, 0.55), transparent 55%),
+    radial-gradient(circle at 80% 30%, rgba(180, 0, 0, 0.5), transparent 50%),
     radial-gradient(circle at 50% 90%, rgba(15, 23, 42, 0.6), transparent 60%),
-    linear-gradient(135deg, #0f2417 0%, #143d24 50%, #0b1a11 100%);
+    linear-gradient(135deg, #2a0606 0%, #4a0a0a 50%, #1a0404 100%);
 }
 
 @keyframes ejo-shimmer {
@@ -104,7 +105,7 @@ body {
   100% { background-position: 200% 0; }
 }
 .ejo-shimmer {
-  background: linear-gradient(90deg, var(--ejo-accent) 0%, #d1fae5 50%, var(--ejo-accent) 100%);
+  background: linear-gradient(90deg, var(--ejo-accent) 0%, #fee2e2 50%, var(--ejo-accent) 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -163,7 +164,7 @@ body {
 
 /* ── Live pages: the same calm motion as the roadmap ─────────────────── */
 
-/* Page hero (components/ui/PageHeader): a faint green wash. */
+/* Page hero (components/ui/PageHeader): a faint red wash. */
 .ejo-hero {
   background:
     radial-gradient(120% 140% at 100% 0%, color-mix(in srgb, var(--ejo-primary) 9%, transparent) 0%, transparent 55%),
@@ -347,7 +348,7 @@ body {
   .ejo-page form :is(button[type="submit"], button:not([type])) { min-height: 2.75rem; }
 }
 
-/* Keyboard focus: a clear green ring everywhere (in the base layer, so a
+/* Keyboard focus: a clear red ring everywhere (in the base layer, so a
    component's own focus style still wins). */
 @layer base {
   :where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {

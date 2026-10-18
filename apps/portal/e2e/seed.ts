@@ -46,7 +46,7 @@ async function customerAccount(customerId: string, password: string) {
 }
 
 async function main() {
-  const org = await prisma.organisation.findUniqueOrThrow({ where: { slug: 'kewalram-nigeria' } });
+  const org = await prisma.organisation.findUniqueOrThrow({ where: { slug: 'zinox-technologies' } });
   const branch = await prisma.branch.findFirstOrThrow({ where: { businessUnit: { organisationId: org.id } }, orderBy: { createdAt: 'asc' } });
   for (const p of [...PEOPLE, RESET]) await person(org.id, branch.id, p);
 

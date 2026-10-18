@@ -18,7 +18,7 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/customer-portal',
     display: 'standalone',
     orientation: 'any',
-    theme_color: '#16a34a',
+    theme_color: '#e10600',
     background_color: '#ffffff',
     categories: ['business', 'lifestyle'],
     icons: [

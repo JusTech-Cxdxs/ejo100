@@ -72,7 +72,7 @@ export default async function PrintJobCardPage({
   const coveredTotal = billingSplit(lineItems).covered;
   const totalPaid = jobCard.payments.reduce((sum: number, p: (typeof jobCard.payments)[number]) => sum + Number(p.amount), 0);
   const vehicleSummary = [jobCard.vehicle.year, jobCard.vehicle.make, jobCard.vehicle.model, jobCard.vehicle.engineType].filter(Boolean).join(' ') || 'No vehicle details on file';
-  const accentColor = wasCancelled ? '#DC2626' : '#16A34A';
+  const accentColor = wasCancelled ? '#DC2626' : '#E10600';
   // Working days up to check-out (lib/visit-durations, as on the Job Card
   // page). In Service ends at completion, cancellation or check-out.
   const durations = visitDurations({
@@ -200,7 +200,7 @@ export default async function PrintJobCardPage({
                   {isCustomerLine(line) ? (
                     line.amount !== null ? formatNaira(Number(line.amount)) : '—'
                   ) : (
-                    <span style={{ color: '#166534', fontSize: '11px' }}>
+                    <span style={{ color: '#991B1B', fontSize: '11px' }}>
                       {coveredLabel(line.billTo, line.coveringWarranty?.warrantyNumber)}
                       {isOrgCopy && line.amount !== null ? ` (${formatNaira(Number(line.amount))})` : ''}
                     </span>
@@ -211,7 +211,7 @@ export default async function PrintJobCardPage({
           </tbody>
           <tfoot>
             {coveredTotal > 0 ? (
-              <tr style={{ color: '#166534' }}>
+              <tr style={{ color: '#991B1B' }}>
                 <td style={{ padding: '6px 4px' }} colSpan={isOrgCopy ? 4 : 3}>Covered by warranty / goodwill (not charged)</td>
                 <td style={{ padding: '6px 4px', textAlign: 'right' }}>{formatNaira(coveredTotal)}</td>
               </tr>

@@ -30,6 +30,19 @@ export const PLATFORM = {
   website: 'https://justech-dev.vercel.app',
 } as const;
 
+/**
+ * The organisation's logo file (public/images/logo/logo.png) and how the
+ * wordmark is set: Zinox's logo is a wide mark that already spells "Zinox",
+ * so the lockup shows the logo with the rest of the name ("Technologies")
+ * beneath it, after the brand rule — the same on screen and on paper.
+ */
+export const LOGO = {
+  width: 1727,
+  height: 846,
+  /** The logo already shows the first word of the organisation's name. */
+  carriesFirstWord: true,
+} as const;
+
 /** "Kewalram Chanrai Group" → "KCG": the installed app's home-screen name. */
 export function appShortName(organisationName: string, override?: string | null): string {
   const o = (override ?? '').trim();

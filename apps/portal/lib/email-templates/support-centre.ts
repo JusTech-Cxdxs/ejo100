@@ -29,7 +29,7 @@ const marker = () => html`<p class="ejo-muted" style="margin: 0 0 14px 0; font-f
 function buttons(rows: { label: string; url: string; tone: 'primary' | 'plain' }[]): SafeHtml {
   return html`
     <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin: 18px 0 6px 0;"><tr>
-      ${rows.map((b) => html`<td style="padding: 0 8px 8px 0;"><a href="${b.url}" style="display: inline-block; padding: 10px 16px; border-radius: 10px; font-family: ${raw(EMAIL_FONT)}; font-size: 14px; font-weight: 600; text-decoration: none; ${raw(b.tone === 'primary' ? 'background: #15803d; color: #ffffff;' : 'background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0;')}">${b.label}</a></td>`)}
+      ${rows.map((b) => html`<td style="padding: 0 8px 8px 0;"><a href="${b.url}" style="display: inline-block; padding: 10px 16px; border-radius: 10px; font-family: ${raw(EMAIL_FONT)}; font-size: 14px; font-weight: 600; text-decoration: none; ${raw(b.tone === 'primary' ? 'background: #b40000; color: #ffffff;' : 'background: #f1f5f9; color: #0f172a; border: 1px solid #e2e8f0;')}">${b.label}</a></td>`)}
     </tr></table>`;
 }
 

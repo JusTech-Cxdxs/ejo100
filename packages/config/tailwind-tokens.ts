@@ -10,10 +10,10 @@
  */
 export const baseTokens = {
   colors: {
-    primary: '#16A34A', // default brand green; overridden per organisation
+    primary: '#E10600', // default brand green; overridden per organisation
     secondary: '#0F172A',
-    accent: '#22C55E',
-    success: '#16A34A',
+    accent: '#FF3B3B',
+    success: '#E10600',
     warning: '#F59E0B',
     error: '#DC2626',
     info: '#2563EB',

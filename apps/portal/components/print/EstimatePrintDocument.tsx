@@ -229,7 +229,7 @@ export function EstimatePrintDocument({
         documentTitle={isOrgCopy ? `${kindLabel} Estimate — Organisation Copy` : 'Customer Estimate'}
         referenceNumber={referenceNumber}
         statusLabel="Approved"
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>

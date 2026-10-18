@@ -427,7 +427,7 @@ export function EnyoPanel({ userId, userName, roleName, canManage }: { userId: s
             aria-haspopup="dialog"
             title={`${name} (Ctrl+J)`}
             data-enyo-launcher=""
-            className={`enyo-launcher pointer-events-auto relative inline-flex h-14 w-14 items-center justify-center rounded-full border-2 border-[var(--ejo-bg)] bg-[var(--ejo-bg)] shadow-[0_10px_28px_-10px_rgba(22,163,74,0.55),0_2px_6px_rgba(15,23,42,0.18)] ring-2 ring-[color-mix(in_srgb,var(--ejo-primary)_55%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--ejo-primary)] ${ready ? '' : 'opacity-70 grayscale-[0.6]'}`}
+            className={`enyo-launcher pointer-events-auto relative inline-flex h-14 w-14 items-center justify-center rounded-full border-2 border-[var(--ejo-bg)] bg-[var(--ejo-bg)] shadow-[0_10px_28px_-10px_rgba(225,6,0,0.55),0_2px_6px_rgba(15,23,42,0.18)] ring-2 ring-[color-mix(in_srgb,var(--ejo-primary)_55%,transparent)] focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--ejo-primary)] ${ready ? '' : 'opacity-70 grayscale-[0.6]'}`}
           >
             <EnyoAvatar mood={wave ? 'wave' : 'idle'} size={50} hair={prefs.hair} glasses={prefs.glasses} />
           </button>

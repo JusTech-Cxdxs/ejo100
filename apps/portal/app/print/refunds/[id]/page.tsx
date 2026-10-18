@@ -49,7 +49,7 @@ export default async function PrintRefundPage({ params, searchParams }: { params
         documentTitle={isOrgCopy ? 'Refund Receipt — Organisation Copy' : 'Refund Receipt'}
         referenceNumber={refund.referenceNumber}
         statusLabel="Refunded"
-        accentColor="#16A34A"
+        accentColor="#E10600"
       />
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px 24px', marginTop: '20px' }}>
         <Field label="CUSTOMER" value={record.customer.fullName} />

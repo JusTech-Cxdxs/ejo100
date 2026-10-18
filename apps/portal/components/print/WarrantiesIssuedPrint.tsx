@@ -22,7 +22,7 @@ export function WarrantiesIssuedPrint({ warranties }: { warranties: Row[] }) {
   const cell = { padding: '4px 6px', borderBottom: '1px solid #E2E8F0', fontSize: '11px', verticalAlign: 'top' } as const;
   return (
     <div style={{ marginTop: '16px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: '#166534', letterSpacing: '0.04em' }}>WARRANTIES ISSUED</div>
+      <div style={{ fontSize: '11px', fontWeight: 700, color: '#991B1B', letterSpacing: '0.04em' }}>WARRANTIES ISSUED</div>
       <table role="presentation" style={{ width: '100%', borderCollapse: 'collapse', marginTop: '4px' }}>
         <tbody>
           <tr>
