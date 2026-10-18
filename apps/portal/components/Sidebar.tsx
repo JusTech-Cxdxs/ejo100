@@ -16,6 +16,7 @@ import { isApproval } from '@/lib/approvals';
 const GROUPS: { title: string; keys: string[] }[] = [
   { title: 'Overview', keys: ['dashboard', 'approvals', 'notifications', 'mail', 'reminders', 'analytics'] },
   { title: 'Operations', keys: [] },
+  { title: 'Commercial', keys: ['sales', 'crm', 'projects', 'service', 'warranty'] },
   { title: 'Administration', keys: ['organisation', 'structure', 'branches', 'users', 'roles', 'permissions', 'audit-logs', 'recycle-bin', 'settings'] },
 ];
 

@@ -10,13 +10,17 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { getMyPending } from '@/lib/actions/pending';
 import { WaitingOnOthers } from '@/components/WaitingOnOthers';
 
-const AREA_ICON: Record<ApprovalArea, IconName> = { Workshop: 'wrench', Store: 'package', Money: 'money', Warranty: 'shield-check', Security: 'lock' };
+const AREA_ICON: Record<ApprovalArea, IconName> = { Workshop: 'wrench', Store: 'package', Money: 'money', Warranty: 'shield-check', Security: 'lock', Sales: 'receipt', Procurement: 'cart', Production: 'bolt', Warehouse: 'boxes' };
 const AREA_HINT: Record<ApprovalArea, string> = {
   Workshop: 'Estimates, jobs to supervise, closing and cancelling',
   Store: 'Parts requests',
   Money: 'Outside purchases',
   Warranty: 'Warranties to verify, claims, policy and provider removals',
   Security: 'Exit passes, road tests and contractor passes',
+  Sales: 'Discounts beyond limits, credit sales and returns',
+  Procurement: 'Requisitions and purchase orders',
+  Production: 'Build orders to release, rework and scrap, QA decisions',
+  Warehouse: 'Transfers and stock adjustments',
 };
 
 /**

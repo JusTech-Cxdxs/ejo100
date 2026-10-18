@@ -30,6 +30,25 @@ export const REFERENCE_TYPES = [
   { prefix: 'BC', model: 'Broadcast', group: 'Broadcasts', path: (id: string) => `/notifications/broadcasts/${id}` },
   // Support tickets: customers and website visitors handed over by Enyo (numbered by the website).
   { prefix: 'SUP', model: 'SupportTicket', group: 'Support tickets', path: (id: string) => `/crm/support/${id}` },
+  // Zinox edition
+  { prefix: 'BLD', model: 'BuildOrder', group: 'Build orders', path: (id: string) => `/production/build-orders/${id}` },
+  { prefix: 'UNT', model: 'ProductionUnit', group: 'Unit travellers', path: (id: string) => `/production/units/${id}` },
+  { prefix: 'TRF', model: 'StockTransfer', group: 'Stock transfers', path: (id: string) => `/warehouse/transfers/${id}` },
+  { prefix: 'PRQ', model: 'PurchaseRequisition', group: 'Requisitions', path: (id: string) => `/procurement/requisitions/${id}` },
+  { prefix: 'PO', model: 'PurchaseOrder', group: 'Purchase orders', path: (id: string) => `/procurement/orders/${id}` },
+  { prefix: 'SHP', model: 'Shipment', group: 'Shipments', path: (id: string) => `/procurement/shipments/${id}` },
+  { prefix: 'SCL', model: 'SupplierClaim', group: 'Supplier claims', path: (id: string) => `/procurement/claims/${id}` },
+  { prefix: 'QTE', model: 'Quotation', group: 'Quotations', path: (id: string) => `/sales/quotations/${id}` },
+  { prefix: 'SO', model: 'SalesOrder', group: 'Sales orders', path: (id: string) => `/sales/orders/${id}` },
+  { prefix: 'PFI', model: 'ProFormaInvoice', group: 'Pro-forma invoices', path: (id: string) => `/sales/orders/${id}` },
+  { prefix: 'REL', model: 'GoodsReleaseNote', group: 'Goods release notes', path: (id: string) => `/warehouse/releases/${id}` },
+  { prefix: 'DSP', model: 'Dispatch', group: 'Dispatches', path: (id: string) => `/warehouse/dispatches/${id}` },
+  { prefix: 'INV', model: 'SalesInvoice', group: 'Invoices', path: (id: string) => `/sales/orders/${id}` },
+  { prefix: 'RMA', model: 'SalesReturn', group: 'Returns', path: (id: string) => `/sales/returns/${id}` },
+  { prefix: 'PL', model: 'PriceList', group: 'Price lists', path: (id: string) => `/sales/price-lists/${id}` },
+  { prefix: 'PB', model: 'PriceBroadcast', group: 'Price broadcasts', path: (id: string) => `/sales/price-lists/${id}` },
+  { prefix: 'SVC', model: 'ServiceJob', group: 'Service jobs', path: (id: string) => `/service/jobs/${id}` },
+  { prefix: 'PRJ', model: 'Project', group: 'Projects', path: (id: string) => `/projects/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

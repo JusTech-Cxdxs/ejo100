@@ -21,7 +21,7 @@ const PRISMA: Record<string, string> = {
   P2024: 'The system is very busy right now. Please try again in a moment.',
 };
 /** Server-generated, "latest + 1" reference columns (RF-…, JC-…, VIS-…). */
-const GENERATED_NUMBER = /(?<![A-Za-z])(referenceNumber|jobNumber|serviceNumber|appointmentNumber|visitNumber|passNumber|claimNumber|warrantyNumber|exitNumber|permitNumber|incidentNumber|deliveryNumber|broadcastNumber)(?![A-Za-z])/;
+const GENERATED_NUMBER = /(?<![A-Za-z])(referenceNumber|jobNumber|serviceNumber|appointmentNumber|visitNumber|passNumber|claimNumber|warrantyNumber|exitNumber|permitNumber|incidentNumber|deliveryNumber|broadcastNumber|number|serialNumber|sku)(?![A-Za-z])/;
 /** Text that must never reach a person: library internals, stack frames, runtime errors, SQL. */
 export const TECHNICAL = /prisma|invocation|Invalid `|Unknown argument|Argument `|Cannot read propert|Cannot set propert|undefined is not|null is not|is not a function|is not defined|is not iterable|Maximum call stack|ECONN|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|fetch failed|Failed to fetch|socket|stack|SyntaxError|TypeError|ReferenceError|RangeError|Unexpected token|JSON\.parse|\bat [\w.<>]+ \(|\bat async\b|\.tsx?:\d+|\.js:\d+|node_modules|ERR_[A-Z_]+|violates (foreign key|unique|check|not-null) constraint|relation "|column "|duplicate key value|deadlock detected|could not serialize|connection (pool|terminated|refused)|query engine/i;
 

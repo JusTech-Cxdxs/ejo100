@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
   ...(serverActionOrigins.length > 0 ? { experimental: { serverActions: { allowedOrigins: serverActionOrigins } } } : {}),
   // Addresses of modules planned next open their roadmap page.
   async redirects() {
-    const planned = ['hr', 'payroll', 'finance', 'procurement', 'suppliers', 'warehouse', 'manufacturing', 'documents', 'reports', 'branding', 'help'];
+    const planned = ['hr', 'payroll', 'finance', 'documents', 'reports', 'branding', 'help'];
     return [
       ...planned.map((k) => ({ source: `/${k}`, destination: `/roadmap/${k}`, permanent: false })),
       { source: '/module-registry', destination: '/roadmap', permanent: false },

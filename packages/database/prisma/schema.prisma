@@ -9,7 +9,7 @@ generator client {
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL") // pooled connection (used at runtime)
-  directUrl = env("DIRECT_URL")   // direct connection (used for migrations / prisma db push)
+  directUrl = env("DIRECT_URL") // direct connection (used for migrations / prisma db push)
 }
 
 // ----------------------------------------------------------------------------
@@ -41,12 +41,12 @@ model PlatformModule {
 // Per-organisation override of a module's status (e.g. COMING_SOON platform-wide
 // but LIVE for one organisation).
 model OrganisationModule {
-  id        String       @id @default(cuid())
+  id             String         @id @default(cuid())
   organisationId String
-  moduleId  String
-  status    ModuleStatus
-  organisation Organisation        @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  module    PlatformModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  moduleId       String
+  status         ModuleStatus
+  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  module         PlatformModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
 
   @@unique([organisationId, moduleId])
   @@map("organisation_modules")
@@ -57,26 +57,26 @@ model OrganisationModule {
 // colours from here.
 // ----------------------------------------------------------------------------
 model Branding {
-  id              String   @id @default(cuid())
-  organisationId       String   @unique
-  organisation Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  organisationId String       @unique
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
 
-  logoUrl         String?
-  logoDarkUrl     String?
-  faviconUrl      String?
+  logoUrl     String?
+  logoDarkUrl String?
+  faviconUrl  String?
 
-  primaryColor    String   @default("#16A34A") // brand green
-  secondaryColor  String   @default("#0F172A")
-  accentColor     String   @default("#22C55E")
-  successColor    String   @default("#16A34A")
-  warningColor    String   @default("#F59E0B")
-  errorColor      String   @default("#DC2626")
-  infoColor       String   @default("#2563EB")
+  primaryColor   String @default("#16A34A") // brand green
+  secondaryColor String @default("#0F172A")
+  accentColor    String @default("#22C55E")
+  successColor   String @default("#16A34A")
+  warningColor   String @default("#F59E0B")
+  errorColor     String @default("#DC2626")
+  infoColor      String @default("#2563EB")
 
-  fontFamily      String   @default("Inter")
+  fontFamily String @default("Inter")
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("branding")
 }
@@ -89,70 +89,70 @@ model Branding {
 // ----------------------------------------------------------------------------
 
 model Organisation {
-  id          String   @id @default(cuid())
-  name        String
-  slug        String   @unique
-  legalName   String?
-  website     String?
+  id                         String   @id @default(cuid())
+  name                       String
+  slug                       String   @unique
+  legalName                  String?
+  website                    String?
   // Contact and registration details printed on letterheads and receipts.
   // All optional. Hotlines are a string array, printed in order.
-  hotlines    String[] @default([])
-  hqAddress   String?
-  poBox       String?
-  rcNumber    String?
-  email       String?
+  hotlines                   String[] @default([])
+  hqAddress                  String?
+  poBox                      String?
+  rcNumber                   String?
+  email                      String?
   // Primary Service interval ("whichever comes first"), the basis for
   // next-service predictions. Null until the organisation sets it; no
   // prediction is made without it.
   primaryServiceIntervalKm   Int?
   primaryServiceIntervalDays Int?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isActive                   Boolean  @default(true)
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
 
-  branding      Branding?
-  businessUnits BusinessUnit[]
+  branding            Branding?
+  businessUnits       BusinessUnit[]
   organisationModules OrganisationModule[]
-  users         User[]
-  roles         Role[]
-  customers     Customer[]
-  announcements Announcement[]
+  users               User[]
+  roles               Role[]
+  customers           Customer[]
+  announcements       Announcement[]
+  broadcasts          Broadcast[]
+  // Zinox edition
+  products            Product[]
+  softwarePackages    SoftwarePackage[]
+  checkTemplates      CheckTemplate[]
+  suppliers           Supplier[]
+  priceLists          PriceList[]
+  priceBroadcasts     PriceBroadcast[]
+  projects            Project[]
 
   @@map("organisations")
-  broadcasts Broadcast[]
-  // Zinox edition
-  products Product[]
-  softwarePackages SoftwarePackage[]
-  checkTemplates CheckTemplate[]
-  suppliers Supplier[]
-  priceLists PriceList[]
-  priceBroadcasts PriceBroadcast[]
-  projects Project[]
 }
 
 model BusinessUnit {
-  id        String   @id @default(cuid())
+  id             String   @id @default(cuid())
   organisationId String
-  name      String   // e.g. "Automobile Division", "Afprint", "Sunola Foods"
-  slug      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  name           String // e.g. "Automobile Division", "Afprint", "Sunola Foods"
+  slug           String
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  countries CountryLink[]
-  branches  Branch[]
+  organisation Organisation  @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  countries    CountryLink[]
+  branches     Branch[]
 
   @@unique([organisationId, slug])
   @@map("business_units")
 }
 
 model Country {
-  id       String @id @default(cuid())
-  name     String @unique // e.g. "Nigeria"
-  isoCode  String @unique // e.g. "NG"
+  id      String @id @default(cuid())
+  name    String @unique // e.g. "Nigeria"
+  isoCode String @unique // e.g. "NG"
 
-  states       State[]
+  states        State[]
   businessUnits CountryLink[]
 
   @@map("countries")
@@ -171,12 +171,12 @@ model CountryLink {
 }
 
 model State {
-  id        String   @id @default(cuid())
+  id        String @id @default(cuid())
   countryId String
-  name      String   // e.g. "Lagos State"
+  name      String // e.g. "Lagos State"
 
-  country   Country   @relation(fields: [countryId], references: [id], onDelete: Cascade)
-  cities    City[]
+  country Country @relation(fields: [countryId], references: [id], onDelete: Cascade)
+  cities  City[]
 
   @@unique([countryId, name])
   @@map("states")
@@ -195,72 +195,72 @@ model City {
 }
 
 model Branch {
-  id             String   @id @default(cuid())
-  businessUnitId String
-  cityId         String
-  name           String   // e.g. "Isolo Branch"
-  code           String?  // short code used in document numbering, e.g. "KWL-WS"
-  address        String?
+  id                String   @id @default(cuid())
+  businessUnitId    String
+  cityId            String
+  name              String // e.g. "Isolo Branch"
+  code              String? // short code used in document numbering, e.g. "KWL-WS"
+  address           String?
   // The branch's own hotlines, printed separately from the organisation's
   // (e.g. head office and a workshop branch on the same Job Card).
-  hotlines       String[] @default([])
-  email          String?
+  hotlines          String[] @default([])
+  email             String?
   // The branch's own bank account for customer deposits and payments —
   // printed on every estimate email, PDF and print-out for this branch.
   bankName          String?
   bankAccountName   String?
   bankAccountNumber String?
-  isActive       Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
-  businessUnit BusinessUnit @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
-  city         City         @relation(fields: [cityId], references: [id], onDelete: Cascade)
-  departments  Department[]
-  users        User[]
-  jobCards     JobCard[]
-  parts          Part[]
-  goodsReceipts  GoodsReceipt[]
-  partRequestSlips PartRequestSlip[]
+  businessUnit                BusinessUnit                 @relation(fields: [businessUnitId], references: [id], onDelete: Cascade)
+  city                        City                         @relation(fields: [cityId], references: [id], onDelete: Cascade)
+  departments                 Department[]
+  users                       User[]
+  jobCards                    JobCard[]
+  parts                       Part[]
+  goodsReceipts               GoodsReceipt[]
+  partRequestSlips            PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
-  partCategories PartCategory[]
-  partTypes      PartType[]
-  vehicleServices VehicleService[]
+  partCategories              PartCategory[]
+  partTypes                   PartType[]
+  vehicleServices             VehicleService[]
+  visits                      Visit[]
+  exitPasses                  ExitPass[]
+  vehicleGateExits            VehicleGateExit[]
+  roadTestPermits             RoadTestPermit[]
+  meetingRooms                MeetingRoom[]
+  appointments                Appointment[]
+  securityIncidents           SecurityIncident[]
+  gateDeliveries              GateDelivery[]
+  contractorPasses            ContractorPass[]
+  // Zinox edition
+  buildOrders                 BuildOrder[]
+  productionUnits             ProductionUnit[]
+  fgLocations                 FgLocation[]
+  purchaseRequisitions        PurchaseRequisition[]
+  purchaseOrders              PurchaseOrder[]
+  quotations                  Quotation[]
+  salesOrders                 SalesOrder[]
+  serviceJobs                 ServiceJob[]
 
   @@map("branches")
-  visits Visit[]
-  exitPasses ExitPass[]
-  vehicleGateExits VehicleGateExit[]
-  roadTestPermits RoadTestPermit[]
-  meetingRooms MeetingRoom[]
-  appointments Appointment[]
-  securityIncidents SecurityIncident[]
-  gateDeliveries GateDelivery[]
-  contractorPasses ContractorPass[]
-  // Zinox edition
-  buildOrders BuildOrder[]
-  productionUnits ProductionUnit[]
-  fgLocations FgLocation[]
-  purchaseRequisitions PurchaseRequisition[]
-  purchaseOrders PurchaseOrder[]
-  quotations Quotation[]
-  salesOrders SalesOrder[]
-  serviceJobs ServiceJob[]
 }
 
 model Department {
   id        String   @id @default(cuid())
   branchId  String
-  name      String   // e.g. "Workshop", "HR", "Finance", "Store"
+  name      String // e.g. "Workshop", "HR", "Finance", "Store"
   slug      String
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  branch Branch @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  teams  Team[]
-  users  User[]
-  jobCards JobCard[]
+  branch          Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  teams           Team[]
+  users           User[]
+  jobCards        JobCard[]
   vehicleServices VehicleService[]
 
   @@unique([branchId, slug])
@@ -270,7 +270,7 @@ model Department {
 model Team {
   id           String   @id @default(cuid())
   departmentId String
-  name         String   // e.g. "Technicians", "Store Officers"
+  name         String // e.g. "Technicians", "Store Officers"
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -299,168 +299,168 @@ enum AccountType {
 }
 
 model User {
-  id            String      @id @default(cuid())
+  id             String  @id @default(cuid())
   // Nullable: an account may exist before an administrator places it in an
   // organisation. Such a user sees nothing beyond their own account settings.
-  organisationId     String?
-  branchId      String?
-  departmentId  String?
-  teamId        String?
+  organisationId String?
+  branchId       String?
+  departmentId   String?
+  teamId         String?
 
-  accountType   AccountType @default(EMPLOYEE)
+  accountType AccountType @default(EMPLOYEE)
 
-  employeeId    String?     @unique // human-facing staff number
+  employeeId    String? @unique // human-facing staff number
   fullName      String
-  email         String      @unique
-  emailVerified Boolean     @default(false) // required by Better Auth
-  image         String?                     // required by Better Auth (avatar URL)
+  email         String  @unique
+  emailVerified Boolean @default(false) // required by Better Auth
+  image         String? // required by Better Auth (avatar URL)
   phone         String?
   photoUrl      String?
 
-  isActive      Boolean     @default(true)
-  lastLoginAt   DateTime?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
 
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organisation Organisation?    @relation(fields: [organisationId], references: [id])
-  branch     Branch?     @relation(fields: [branchId], references: [id])
-  department Department? @relation(fields: [departmentId], references: [id])
-  team       Team?       @relation(fields: [teamId], references: [id])
+  organisation Organisation? @relation(fields: [organisationId], references: [id])
+  branch       Branch?       @relation(fields: [branchId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
+  team         Team?         @relation(fields: [teamId], references: [id])
 
-  roles           UserRole[]
-  sessions        Session[]
-  accounts        Account[]
-  employeeProfile EmployeeProfile?
-  jobCardsAssigned JobCard[] @relation("JobCardTechnician")
-  jobCardsSupervised JobCard[] @relation("JobCardSupervisor")
-  jobCardsApproved JobCard[] @relation("JobCardApprovedBy")
-  estimateLineItemsEntered EstimateLineItem[]
-  estimatesCreated Estimate[] @relation("EstimateCreatedBy")
-  estimatesApproved Estimate[] @relation("EstimateApprovedBy")
-  estimatesManagerApproved Estimate[] @relation("EstimateManagerApprovedBy")
-  estimatesCustomerNotified Estimate[] @relation("EstimateCustomerNotifiedBy")
-  estimatesMatchingRequested Estimate[] @relation("EstimateMatchingRequestedBy")
-  paymentsRecorded Payment[]
-  cancellationRequestsMade CancellationRequest[] @relation("CancellationRequestedBy")
-  cancellationRequestsDecided CancellationRequest[] @relation("CancellationDecidedBy")
-  closeRequestsMade CloseRequest[] @relation("CloseRequestedBy")
-  closeRequestsDecided CloseRequest[] @relation("CloseDecidedBy")
-  pricingAlertsResolved PricingAlert[] @relation("PricingAlertResolvedBy")
-  announcementsCreated Announcement[] @relation("AnnouncementCreatedBy")
-  vehicleServicesCreated VehicleService[] @relation("VehicleServiceCreatedBy")
-  vehicleServicesAssigned VehicleService[] @relation("VehicleServiceTechnician")
-  vehicleServicesSupervised VehicleService[] @relation("VehicleServiceSupervisor")
-  vehicleServicesApproved VehicleService[] @relation("VehicleServiceApprovedBy")
-  vehicleInspections VehicleInspection[] @relation("VehicleInspectionInspector")
-  serviceEstimatesCreated ServiceEstimate[] @relation("ServiceEstimateCreatedBy")
-  serviceEstimatesApproved ServiceEstimate[] @relation("ServiceEstimateApprovedBy")
-  serviceEstimatesManagerApproved ServiceEstimate[] @relation("ServiceEstimateManagerApprovedBy")
-  serviceEstimatesCustomerNotified ServiceEstimate[] @relation("ServiceEstimateCustomerNotifiedBy")
-  vehicleServiceCloseRequestsMade VehicleServiceCloseRequest[] @relation("VehicleServiceCloseRequestedBy")
-  vehicleServiceCloseRequestsDecided VehicleServiceCloseRequest[] @relation("VehicleServiceCloseDecidedBy")
-  refundsRecorded Refund[] @relation("RefundRecordedBy")
-  vehicleServiceCancellationRequestsMade VehicleServiceCancellationRequest[] @relation("VehicleServiceCancellationRequestedBy")
-  vehicleServiceCancellationRequestsDecided VehicleServiceCancellationRequest[] @relation("VehicleServiceCancellationDecidedBy")
-  serviceEstimatesMatchingRequested ServiceEstimate[] @relation("ServiceEstimateMatchingRequestedBy")
-  serviceEstimateLinesEntered ServiceEstimateLineItem[] @relation("ServiceEstimateLineEnteredBy")
-  jobCardsCreated  JobCard[] @relation("JobCardCreatedBy")
-  customersCreated Customer[] @relation("CustomerCreatedBy")
-  vehiclesCreated  CustomerVehicle[] @relation("VehicleCreatedBy")
-  partsCreated       Part[] @relation("PartCreatedBy")
-  partCategoriesCreated PartCategory[] @relation("PartCategoryCreatedBy")
-  partTypesCreated      PartType[] @relation("PartTypeCreatedBy")
-  goodsReceiptsTaken GoodsReceipt[] @relation("GoodsReceiptReceivedBy")
-  partRequestSlipsRequested    PartRequestSlip[] @relation("PartRequestSlipRequestedBy")
-  partRequestSlipsHodApproved  PartRequestSlip[] @relation("PartRequestSlipHodApprovedBy")
-  partRequestSlipsStoreApproved PartRequestSlip[] @relation("PartRequestSlipStoreApprovedBy")
-  partRequestSlipsReleased     PartRequestSlip[] @relation("PartRequestSlipReleasedBy")
-  partRequestSlipsRejected     PartRequestSlip[] @relation("PartRequestSlipRejectedBy")
-  partRequestSlipsReceived     PartRequestSlip[] @relation("PartRequestSlipReceivedBy")
-  externalProcurementRequested       ExternalProcurementRequest[] @relation("ExternalProcurementRequestedBy")
-  externalProcurementFinanceReviewed ExternalProcurementRequest[] @relation("ExternalProcurementFinanceReviewedBy")
-  externalProcurementManagerApproved ExternalProcurementRequest[] @relation("ExternalProcurementManagerApprovedBy")
-  externalProcurementDisbursed        ExternalProcurementRequest[] @relation("ExternalProcurementDisbursedBy")
-  externalProcurementRejected         ExternalProcurementRequest[] @relation("ExternalProcurementRejectedBy")
-  externalProcurementRetired          ExternalProcurementRequest[] @relation("ExternalProcurementRetiredBy")
+  roles                                      UserRole[]
+  sessions                                   Session[]
+  accounts                                   Account[]
+  employeeProfile                            EmployeeProfile?
+  jobCardsAssigned                           JobCard[]                              @relation("JobCardTechnician")
+  jobCardsSupervised                         JobCard[]                              @relation("JobCardSupervisor")
+  jobCardsApproved                           JobCard[]                              @relation("JobCardApprovedBy")
+  estimateLineItemsEntered                   EstimateLineItem[]
+  estimatesCreated                           Estimate[]                             @relation("EstimateCreatedBy")
+  estimatesApproved                          Estimate[]                             @relation("EstimateApprovedBy")
+  estimatesManagerApproved                   Estimate[]                             @relation("EstimateManagerApprovedBy")
+  estimatesCustomerNotified                  Estimate[]                             @relation("EstimateCustomerNotifiedBy")
+  estimatesMatchingRequested                 Estimate[]                             @relation("EstimateMatchingRequestedBy")
+  paymentsRecorded                           Payment[]
+  cancellationRequestsMade                   CancellationRequest[]                  @relation("CancellationRequestedBy")
+  cancellationRequestsDecided                CancellationRequest[]                  @relation("CancellationDecidedBy")
+  closeRequestsMade                          CloseRequest[]                         @relation("CloseRequestedBy")
+  closeRequestsDecided                       CloseRequest[]                         @relation("CloseDecidedBy")
+  pricingAlertsResolved                      PricingAlert[]                         @relation("PricingAlertResolvedBy")
+  announcementsCreated                       Announcement[]                         @relation("AnnouncementCreatedBy")
+  vehicleServicesCreated                     VehicleService[]                       @relation("VehicleServiceCreatedBy")
+  vehicleServicesAssigned                    VehicleService[]                       @relation("VehicleServiceTechnician")
+  vehicleServicesSupervised                  VehicleService[]                       @relation("VehicleServiceSupervisor")
+  vehicleServicesApproved                    VehicleService[]                       @relation("VehicleServiceApprovedBy")
+  vehicleInspections                         VehicleInspection[]                    @relation("VehicleInspectionInspector")
+  serviceEstimatesCreated                    ServiceEstimate[]                      @relation("ServiceEstimateCreatedBy")
+  serviceEstimatesApproved                   ServiceEstimate[]                      @relation("ServiceEstimateApprovedBy")
+  serviceEstimatesManagerApproved            ServiceEstimate[]                      @relation("ServiceEstimateManagerApprovedBy")
+  serviceEstimatesCustomerNotified           ServiceEstimate[]                      @relation("ServiceEstimateCustomerNotifiedBy")
+  vehicleServiceCloseRequestsMade            VehicleServiceCloseRequest[]           @relation("VehicleServiceCloseRequestedBy")
+  vehicleServiceCloseRequestsDecided         VehicleServiceCloseRequest[]           @relation("VehicleServiceCloseDecidedBy")
+  refundsRecorded                            Refund[]                               @relation("RefundRecordedBy")
+  vehicleServiceCancellationRequestsMade     VehicleServiceCancellationRequest[]    @relation("VehicleServiceCancellationRequestedBy")
+  vehicleServiceCancellationRequestsDecided  VehicleServiceCancellationRequest[]    @relation("VehicleServiceCancellationDecidedBy")
+  serviceEstimatesMatchingRequested          ServiceEstimate[]                      @relation("ServiceEstimateMatchingRequestedBy")
+  serviceEstimateLinesEntered                ServiceEstimateLineItem[]              @relation("ServiceEstimateLineEnteredBy")
+  jobCardsCreated                            JobCard[]                              @relation("JobCardCreatedBy")
+  customersCreated                           Customer[]                             @relation("CustomerCreatedBy")
+  vehiclesCreated                            CustomerVehicle[]                      @relation("VehicleCreatedBy")
+  partsCreated                               Part[]                                 @relation("PartCreatedBy")
+  partCategoriesCreated                      PartCategory[]                         @relation("PartCategoryCreatedBy")
+  partTypesCreated                           PartType[]                             @relation("PartTypeCreatedBy")
+  goodsReceiptsTaken                         GoodsReceipt[]                         @relation("GoodsReceiptReceivedBy")
+  partRequestSlipsRequested                  PartRequestSlip[]                      @relation("PartRequestSlipRequestedBy")
+  partRequestSlipsHodApproved                PartRequestSlip[]                      @relation("PartRequestSlipHodApprovedBy")
+  partRequestSlipsStoreApproved              PartRequestSlip[]                      @relation("PartRequestSlipStoreApprovedBy")
+  partRequestSlipsReleased                   PartRequestSlip[]                      @relation("PartRequestSlipReleasedBy")
+  partRequestSlipsRejected                   PartRequestSlip[]                      @relation("PartRequestSlipRejectedBy")
+  partRequestSlipsReceived                   PartRequestSlip[]                      @relation("PartRequestSlipReceivedBy")
+  externalProcurementRequested               ExternalProcurementRequest[]           @relation("ExternalProcurementRequestedBy")
+  externalProcurementFinanceReviewed         ExternalProcurementRequest[]           @relation("ExternalProcurementFinanceReviewedBy")
+  externalProcurementManagerApproved         ExternalProcurementRequest[]           @relation("ExternalProcurementManagerApprovedBy")
+  externalProcurementDisbursed               ExternalProcurementRequest[]           @relation("ExternalProcurementDisbursedBy")
+  externalProcurementRejected                ExternalProcurementRequest[]           @relation("ExternalProcurementRejectedBy")
+  externalProcurementRetired                 ExternalProcurementRequest[]           @relation("ExternalProcurementRetiredBy")
   externalProcurementSupplementaryLinesAdded ExternalProcurementSupplementaryLine[] @relation("ExternalProcurementSupplementaryLineAddedBy")
+  warrantyProvidersCreated                   WarrantyProvider[]                     @relation("WarrantyProviderCreatedBy")
+  warrantyPoliciesCreated                    WarrantyPolicy[]                       @relation("WarrantyPolicyCreatedBy")
+  warrantiesIssued                           Warranty[]                             @relation("WarrantyIssuedBy")
+  warrantiesVerified                         Warranty[]                             @relation("WarrantyVerifiedBy")
+  warrantyPolicyDeletionsRequested           WarrantyPolicyDeletionRequest[]        @relation("WarrantyPolicyDeletionRequestedBy")
+  warrantyPolicyDeletionsHodDecided          WarrantyPolicyDeletionRequest[]        @relation("WarrantyPolicyDeletionHodDecidedBy")
+  warrantyPolicyDeletionsManagerDecided      WarrantyPolicyDeletionRequest[]        @relation("WarrantyPolicyDeletionManagerDecidedBy")
+  warrantyClaimsCreated                      WarrantyClaim[]                        @relation("WarrantyClaimCreatedBy")
+  warrantyClaimsHodApproved                  WarrantyClaim[]                        @relation("WarrantyClaimHodApprovedBy")
+  warrantyClaimsManagerApproved              WarrantyClaim[]                        @relation("WarrantyClaimManagerApprovedBy")
+  warrantyClaimsSubmitted                    WarrantyClaim[]                        @relation("WarrantyClaimSubmittedBy")
+  warrantyClaimsDecided                      WarrantyClaim[]                        @relation("WarrantyClaimDecidedBy")
+  warrantyClaimsSettled                      WarrantyClaim[]                        @relation("WarrantyClaimSettledBy")
+  warrantyProviderDeletionsRequested         WarrantyProviderDeletionRequest[]      @relation("WarrantyProviderDeletionRequestedBy")
+  warrantyProviderDeletionsHodDecided        WarrantyProviderDeletionRequest[]      @relation("WarrantyProviderDeletionHodDecidedBy")
+  warrantyProviderDeletionsManagerDecided    WarrantyProviderDeletionRequest[]      @relation("WarrantyProviderDeletionManagerDecidedBy")
+  visitsHosted                               Visit[]                                @relation("VisitHost")
+  visitsRegistered                           Visit[]                                @relation("VisitRegisteredBy")
+  visitsCheckedIn                            Visit[]                                @relation("VisitCheckedInBy")
+  visitsCheckedOut                           Visit[]                                @relation("VisitCheckedOutBy")
+  exitPassesRequested                        ExitPass[]                             @relation("ExitPassRequestedBy")
+  exitPassesHeadApproved                     ExitPass[]                             @relation("ExitPassHeadApprovedBy")
+  exitPassesManagerApproved                  ExitPass[]                             @relation("ExitPassManagerApprovedBy")
+  visitsReceived                             Visit[]                                @relation("VisitReceivedBy")
+  exitPassesDeclined                         ExitPass[]                             @relation("ExitPassDeclinedBy")
+  exitPassesGateOut                          ExitPass[]                             @relation("ExitPassGateOutBy")
+  exitPassesGateIn                           ExitPass[]                             @relation("ExitPassGateInBy")
+  exitPassPersons                            ExitPassPerson[]                       @relation("ExitPassPersonUser")
+  roadTestPersons                            RoadTestPerson[]                       @relation("RoadTestPersonUser")
+  vehicleGateExits                           VehicleGateExit[]                      @relation("VehicleGateExitBy")
+  roadTestsRequested                         RoadTestPermit[]                       @relation("RoadTestRequestedBy")
+  roadTestsDriven                            RoadTestPermit[]                       @relation("RoadTestDriver")
+  roadTestsApproved                          RoadTestPermit[]                       @relation("RoadTestManagerApprovedBy")
+  roadTestsDeclined                          RoadTestPermit[]                       @relation("RoadTestDeclinedBy")
+  roadTestsGateOut                           RoadTestPermit[]                       @relation("RoadTestGateOutBy")
+  roadTestsGateIn                            RoadTestPermit[]                       @relation("RoadTestGateInBy")
+  calendarDelegatesAsOwner                   CalendarDelegate[]                     @relation("CalendarOwner")
+  calendarDelegatesAsAide                    CalendarDelegate[]                     @relation("CalendarDelegateUser")
+  calendarDelegatesCreated                   CalendarDelegate[]                     @relation("CalendarDelegateCreatedBy")
+  appointmentsOwned                          Appointment[]                          @relation("AppointmentOwner")
+  appointmentsCreated                        Appointment[]                          @relation("AppointmentCreatedBy")
+  appointmentParticipations                  AppointmentParticipant[]               @relation("AppointmentParticipantUser")
+  incidentsReported                          SecurityIncident[]                     @relation("IncidentReportedBy")
+  incidentsAssigned                          SecurityIncident[]                     @relation("IncidentAssignedTo")
+  incidentsClosed                            SecurityIncident[]                     @relation("IncidentClosedBy")
+  deliveriesRegistered                       GateDelivery[]                         @relation("DeliveryRegisteredBy")
+  deliveriesArrived                          GateDelivery[]                         @relation("DeliveryArrivedBy")
+  deliveriesReceived                         GateDelivery[]                         @relation("DeliveryReceivedBy")
+  deliveriesLeft                             GateDelivery[]                         @relation("DeliveryLeftBy")
+  contractorsHosted                          ContractorPass[]                       @relation("ContractorHost")
+  contractorsRequested                       ContractorPass[]                       @relation("ContractorRequestedBy")
+  contractorsApproved                        ContractorPass[]                       @relation("ContractorApprovedBy")
+  contractorsRevoked                         ContractorPass[]                       @relation("ContractorRevokedBy")
+  contractorSignIns                          ContractorAttendance[]                 @relation("ContractorSignedInBy")
+  contractorSignOuts                         ContractorAttendance[]                 @relation("ContractorSignedOutBy")
+  broadcastsCreated                          Broadcast[]                            @relation("BroadcastCreatedBy")
+  broadcastsStopped                          Broadcast[]                            @relation("BroadcastStoppedBy")
+  notificationReads                          NotificationRead[]                     @relation("NotificationReads")
+  customerNotes                              CustomerNote[]                         @relation("CustomerNoteAuthor")
+  assistsGiven                               AssistSession[]                        @relation("AssistSessionAssistant")
+  assistsReceived                            AssistSession[]                        @relation("AssistSessionSubject")
+  notificationPreference                     NotificationPreference?                @relation("NotificationPreference")
+  // Zinox edition
+  productsCreated                            Product[]                              @relation("ProductCreatedBy")
+  buildOrdersPlanned                         BuildOrder[]                           @relation("BuildOrderPlannedBy")
+  transfersRequested                         StockTransfer[]                        @relation("TransferRequestedBy")
+  requisitionsRaised                         PurchaseRequisition[]                  @relation("RequisitionRaisedBy")
+  purchaseOrdersRaised                       PurchaseOrder[]                        @relation("PurchaseOrderRaisedBy")
+  priceListsCreated                          PriceList[]                            @relation("PriceListCreatedBy")
+  quotationsPrepared                         Quotation[]                            @relation("QuotationPreparedBy")
+  salesOrdersConfirmed                       SalesOrder[]                           @relation("SalesOrderConfirmedBy")
+  serviceJobsOpened                          ServiceJob[]                           @relation("ServiceJobOpenedBy")
+  projectsManaged                            Project[]                              @relation("ProjectManagedBy")
 
   @@index([organisationId])
   @@index([branchId])
   @@map("users")
-  warrantyProvidersCreated WarrantyProvider[] @relation("WarrantyProviderCreatedBy")
-  warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreatedBy")
-  warrantiesIssued Warranty[] @relation("WarrantyIssuedBy")
-  warrantiesVerified Warranty[] @relation("WarrantyVerifiedBy")
-  warrantyPolicyDeletionsRequested WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionRequestedBy")
-  warrantyPolicyDeletionsHodDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionHodDecidedBy")
-  warrantyPolicyDeletionsManagerDecided WarrantyPolicyDeletionRequest[] @relation("WarrantyPolicyDeletionManagerDecidedBy")
-  warrantyClaimsCreated WarrantyClaim[] @relation("WarrantyClaimCreatedBy")
-  warrantyClaimsHodApproved WarrantyClaim[] @relation("WarrantyClaimHodApprovedBy")
-  warrantyClaimsManagerApproved WarrantyClaim[] @relation("WarrantyClaimManagerApprovedBy")
-  warrantyClaimsSubmitted WarrantyClaim[] @relation("WarrantyClaimSubmittedBy")
-  warrantyClaimsDecided WarrantyClaim[] @relation("WarrantyClaimDecidedBy")
-  warrantyClaimsSettled WarrantyClaim[] @relation("WarrantyClaimSettledBy")
-  warrantyProviderDeletionsRequested WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionRequestedBy")
-  warrantyProviderDeletionsHodDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionHodDecidedBy")
-  warrantyProviderDeletionsManagerDecided WarrantyProviderDeletionRequest[] @relation("WarrantyProviderDeletionManagerDecidedBy")
-  visitsHosted Visit[] @relation("VisitHost")
-  visitsRegistered Visit[] @relation("VisitRegisteredBy")
-  visitsCheckedIn Visit[] @relation("VisitCheckedInBy")
-  visitsCheckedOut Visit[] @relation("VisitCheckedOutBy")
-  exitPassesRequested ExitPass[] @relation("ExitPassRequestedBy")
-  exitPassesHeadApproved ExitPass[] @relation("ExitPassHeadApprovedBy")
-  exitPassesManagerApproved ExitPass[] @relation("ExitPassManagerApprovedBy")
-  visitsReceived Visit[] @relation("VisitReceivedBy")
-  exitPassesDeclined ExitPass[] @relation("ExitPassDeclinedBy")
-  exitPassesGateOut ExitPass[] @relation("ExitPassGateOutBy")
-  exitPassesGateIn ExitPass[] @relation("ExitPassGateInBy")
-  exitPassPersons ExitPassPerson[] @relation("ExitPassPersonUser")
-  roadTestPersons RoadTestPerson[] @relation("RoadTestPersonUser")
-  vehicleGateExits VehicleGateExit[] @relation("VehicleGateExitBy")
-  roadTestsRequested RoadTestPermit[] @relation("RoadTestRequestedBy")
-  roadTestsDriven RoadTestPermit[] @relation("RoadTestDriver")
-  roadTestsApproved RoadTestPermit[] @relation("RoadTestManagerApprovedBy")
-  roadTestsDeclined RoadTestPermit[] @relation("RoadTestDeclinedBy")
-  roadTestsGateOut RoadTestPermit[] @relation("RoadTestGateOutBy")
-  roadTestsGateIn RoadTestPermit[] @relation("RoadTestGateInBy")
-  calendarDelegatesAsOwner CalendarDelegate[] @relation("CalendarOwner")
-  calendarDelegatesAsAide CalendarDelegate[] @relation("CalendarDelegateUser")
-  calendarDelegatesCreated CalendarDelegate[] @relation("CalendarDelegateCreatedBy")
-  appointmentsOwned Appointment[] @relation("AppointmentOwner")
-  appointmentsCreated Appointment[] @relation("AppointmentCreatedBy")
-  appointmentParticipations AppointmentParticipant[] @relation("AppointmentParticipantUser")
-  incidentsReported SecurityIncident[] @relation("IncidentReportedBy")
-  incidentsAssigned SecurityIncident[] @relation("IncidentAssignedTo")
-  incidentsClosed SecurityIncident[] @relation("IncidentClosedBy")
-  deliveriesRegistered GateDelivery[] @relation("DeliveryRegisteredBy")
-  deliveriesArrived GateDelivery[] @relation("DeliveryArrivedBy")
-  deliveriesReceived GateDelivery[] @relation("DeliveryReceivedBy")
-  deliveriesLeft GateDelivery[] @relation("DeliveryLeftBy")
-  contractorsHosted ContractorPass[] @relation("ContractorHost")
-  contractorsRequested ContractorPass[] @relation("ContractorRequestedBy")
-  contractorsApproved ContractorPass[] @relation("ContractorApprovedBy")
-  contractorsRevoked ContractorPass[] @relation("ContractorRevokedBy")
-  contractorSignIns ContractorAttendance[] @relation("ContractorSignedInBy")
-  contractorSignOuts ContractorAttendance[] @relation("ContractorSignedOutBy")
-  broadcastsCreated Broadcast[] @relation("BroadcastCreatedBy")
-  broadcastsStopped Broadcast[] @relation("BroadcastStoppedBy")
-  notificationReads NotificationRead[] @relation("NotificationReads")
-  customerNotes     CustomerNote[]     @relation("CustomerNoteAuthor")
-  assistsGiven      AssistSession[]    @relation("AssistSessionAssistant")
-  assistsReceived   AssistSession[]    @relation("AssistSessionSubject")
-  notificationPreference NotificationPreference? @relation("NotificationPreference")
-  // Zinox edition
-  productsCreated Product[] @relation("ProductCreatedBy")
-  buildOrdersPlanned BuildOrder[] @relation("BuildOrderPlannedBy")
-  transfersRequested StockTransfer[] @relation("TransferRequestedBy")
-  requisitionsRaised PurchaseRequisition[] @relation("RequisitionRaisedBy")
-  purchaseOrdersRaised PurchaseOrder[] @relation("PurchaseOrderRaisedBy")
-  priceListsCreated PriceList[] @relation("PriceListCreatedBy")
-  quotationsPrepared Quotation[] @relation("QuotationPreparedBy")
-  salesOrdersConfirmed SalesOrder[] @relation("SalesOrderConfirmedBy")
-  serviceJobsOpened ServiceJob[] @relation("ServiceJobOpenedBy")
-  projectsManaged Project[] @relation("ProjectManagedBy")
 }
 
 // One-to-one HR extension of User, keeping the identity table small.
@@ -470,10 +470,10 @@ model EmployeeProfile {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Employment
-  jobTitle         String?
-  employmentType   String?   // Full-time, Part-time, Contract, Intern, NYSC, Consultant...
-  employmentStatus String?   // Active, Suspended, On Leave, Resigned, Retired, Terminated
-  dateEmployed     DateTime?
+  jobTitle           String?
+  employmentType     String? // Full-time, Part-time, Contract, Intern, NYSC, Consultant...
+  employmentStatus   String? // Active, Suspended, On Leave, Resigned, Retired, Terminated
+  dateEmployed       DateTime?
   reportingManagerId String?
 
   // Emergency contact (one per employee).
@@ -482,9 +482,9 @@ model EmployeeProfile {
   emergencyContactPhone        String?
 
   // Signature / notification preferences
-  signatureUrl               String?
-  notifyByEmail               Boolean @default(true)
-  notifyByInApp                Boolean @default(true)
+  signatureUrl  String?
+  notifyByEmail Boolean @default(true)
+  notifyByInApp Boolean @default(true)
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -499,36 +499,36 @@ model EmployeeDocument {
   employeeProfileId String
   employeeProfile   EmployeeProfile @relation(fields: [employeeProfileId], references: [id], onDelete: Cascade)
 
-  type    String // CV, Employment Letter, Contract, Certificate, Medical Fitness...
-  fileUrl String
+  type       String // CV, Employment Letter, Contract, Certificate, Medical Fitness...
+  fileUrl    String
   uploadedAt DateTime @default(now())
 
   @@map("employee_documents")
 }
 
 model Role {
-  id          String   @id @default(cuid())
-  organisationId   String
-  name        String   // e.g. "Technician", "Workshop Supervisor", "Administrator"
-  slug        String
-  description String?
-  isSystem    Boolean  @default(false) // true for built-in roles that can't be deleted
+  id             String  @id @default(cuid())
+  organisationId String
+  name           String // e.g. "Technician", "Workshop Supervisor", "Administrator"
+  slug           String
+  description    String?
+  isSystem       Boolean @default(false) // true for built-in roles that can't be deleted
   // Bypasses permission checks entirely: every current and future permission
   // without RolePermission rows. Only for the platform's Master Administrator
   // role; never grant it to organisation roles.
-  isSuperAdmin Boolean @default(false)
+  isSuperAdmin   Boolean @default(false)
 
-  organisation Organisation          @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  users       UserRole[]
-  permissions RolePermission[]
+  organisation Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  users        UserRole[]
+  permissions  RolePermission[]
 
   @@unique([organisationId, slug])
   @@map("roles")
 }
 
 model Permission {
-  id          String @id @default(cuid())
-  key         String @unique // e.g. "workshop.job_card.approve"
+  id          String  @id @default(cuid())
+  key         String  @unique // e.g. "workshop.job_card.approve"
   description String?
 
   roles RolePermission[]
@@ -574,8 +574,8 @@ enum CustomerType {
 }
 
 model Customer {
-  id            String       @id @default(cuid())
-  organisationId     String       // which organisation this customer belongs to
+  id             String @id @default(cuid())
+  organisationId String // which organisation this customer belongs to
 
   customerType  CustomerType @default(INDIVIDUAL)
   fullName      String
@@ -591,44 +591,44 @@ model Customer {
   // records may lack them and are flagged in the CRM).
   altPhone      String?
   // Free labels the organisation uses to group customers ("Fleet", "VIP").
-  tags          String[] @default([])
+  tags          String[]     @default([])
   // The customer's own choice: also receive updates by email.
-  notifyByEmail Boolean  @default(true)
+  notifyByEmail Boolean      @default(true)
 
-  isActive      Boolean  @default(true)
-  lastLoginAt   DateTime?
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
 
   // Nullable: customers who sign themselves up have no staff creator.
-  createdById   String?
-  createdBy     User?    @relation("CustomerCreatedBy", fields: [createdById], references: [id])
+  createdById String?
+  createdBy   User?   @relation("CustomerCreatedBy", fields: [createdById], references: [id])
 
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  organisation Organisation            @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  sessions   CustomerSession[]
-  accounts   CustomerAccount[]
+  organisation Organisation      @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  sessions     CustomerSession[]
+  accounts     CustomerAccount[]
 
-  customerCompany CustomerCompany?
-  vehicles        CustomerVehicle[]
-  addresses       CustomerAddress[]
-  contacts        CustomerContact[]
-  jobCards        JobCard[]
-  vehicleServices VehicleService[]
+  customerCompany   CustomerCompany?
+  vehicles          CustomerVehicle[]
+  addresses         CustomerAddress[]
+  contacts          CustomerContact[]
+  jobCards          JobCard[]
+  vehicleServices   VehicleService[]
+  warranties        Warranty[]
+  warrantyClaims    WarrantyClaim[]
+  notes             CustomerNote[]
+  notificationReads CustomerNotificationRead[]
+  // Zinox edition
+  dealerAccount     DealerAccount?
+  finishedUnits     FinishedUnit[]
+  quotations        Quotation[]
+  salesOrders       SalesOrder[]
+  serviceJobs       ServiceJob[]
+  projects          Project[]
 
   @@index([organisationId])
   @@map("customers")
-  warranties      Warranty[]
-  warrantyClaims WarrantyClaim[]
-  notes           CustomerNote[]
-  notificationReads CustomerNotificationRead[]
-  // Zinox edition
-  dealerAccount DealerAccount?
-  finishedUnits FinishedUnit[]
-  quotations Quotation[]
-  salesOrders SalesOrder[]
-  serviceJobs ServiceJob[]
-  projects Project[]
 }
 
 // Optional company details when the customer is a business (fleet account).
@@ -648,37 +648,37 @@ model CustomerVehicle {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  make         String?
-  model        String?
-  vehicleType  VehicleCategory? // Passenger vs Commercial — the Workshop's two operational sections
-  year         Int?
-  plateNumber  String?  @unique // no two vehicles may share a plate
-  chassisNumber String? @unique // VIN — globally unique per vehicle by definition
-  engineNumber String?
+  make                String?
+  model               String?
+  vehicleType         VehicleCategory? // Passenger vs Commercial — the Workshop's two operational sections
+  year                Int?
+  plateNumber         String?          @unique // no two vehicles may share a plate
+  chassisNumber       String?          @unique // VIN — globally unique per vehicle by definition
+  engineNumber        String?
   // Engine type (e.g. "ISF2.8", "4HK1"), the key for parts fitment. Not the
   // engine serial number (engineNumber). One model name can have different
   // engines, and different models can share one.
-  engineType   String?
-  mileage       Int?     // last known odometer reading, updated at each Job Card check-in
+  engineType          String?
+  mileage             Int? // last known odometer reading, updated at each Job Card check-in
   // The vehicle's own service interval, overriding the organisation's
   // default (Organisation.primaryServiceIntervalKm/Days) when set.
   serviceIntervalKm   Int?
   serviceIntervalDays Int?
 
   createdById String? // staff member who registered this vehicle
-  createdBy   User?   @relation("VehicleCreatedBy", fields: [createdById], references: [id])
-  createdAt    DateTime @default(now())
+  createdBy   User?    @relation("VehicleCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
 
-  jobCards JobCard[]
+  jobCards        JobCard[]
   vehicleServices VehicleService[]
-  reminderLogs ServiceReminderLog[]
+  reminderLogs    ServiceReminderLog[]
+  warranties      Warranty[]
+  warrantyClaims  WarrantyClaim[]
+  gateExits       VehicleGateExit[]
+  roadTestPermits RoadTestPermit[]
 
   @@index([customerId])
   @@map("customer_vehicles")
-  warranties Warranty[]
-  warrantyClaims WarrantyClaim[]
-  gateExits VehicleGateExit[]
-  roadTestPermits RoadTestPermit[]
 }
 
 enum VehicleCategory {
@@ -740,81 +740,85 @@ enum TechnicianAcceptanceStatus {
 }
 
 model JobCard {
-  id          String        @id @default(cuid())
-  jobNumber   String        @unique // human-facing, e.g. "JC-2026-000123" — generated server-side, never user-entered
-  branchId    String
-  customerId  String
-  vehicleId   String
+  id           String  @id @default(cuid())
+  jobNumber    String  @unique // human-facing, e.g. "JC-2026-000123" — generated server-side, never user-entered
+  branchId     String
+  customerId   String
+  vehicleId    String
   // Passenger or Commercial Workshop department, derived from
   // vehicle.vehicleType at creation. Nullable for Job Cards created before
   // the field existed.
   departmentId String?
 
-  complaint   String?       // legacy single-field complaint, kept for Job Cards created before per-item complaints existed — new Job Cards use `complaints` below instead
-  diagnosis   String?       // technician/service-advisor findings, filled in after inspection
+  complaint        String? // legacy single-field complaint, kept for Job Cards created before per-item complaints existed — new Job Cards use `complaints` below instead
+  diagnosis        String? // technician/service-advisor findings, filled in after inspection
   mileageAtCheckIn Int?
 
-  assignedTechnicianId String? // User.id — nullable until a technician is assigned
+  assignedTechnicianId       String? // User.id — nullable until a technician is assigned
   // Separate from status/approvalStatus: being assigned is not the same as
   // accepting. Null when no technician is assigned; PENDING when assigned;
   // cleared on reassignment.
-  technicianAcceptanceStatus   TechnicianAcceptanceStatus?
-  technicianRespondedAt       DateTime?
-  technicianRejectionReason   String? // required when the technician rejects, mirrors JobCard.rejectionReason's role for approval
+  technicianAcceptanceStatus TechnicianAcceptanceStatus?
+  technicianRespondedAt      DateTime?
+  technicianRejectionReason  String? // required when the technician rejects, mirrors JobCard.rejectionReason's role for approval
   // The Workshop Supervisor of the resolved department. createJobCard checks
   // the chosen supervisor belongs to that department.
-  supervisorId String?
-  createdById String        // User.id — staff member who opened this Job Card
+  supervisorId               String?
+  createdById                String // User.id — staff member who opened this Job Card
 
-  status      JobCardStatus @default(CHECKED_IN)
-  notes       String?
+  status JobCardStatus @default(CHECKED_IN)
+  notes  String?
 
   // Separate from status: a Job Card can be CHECKED_IN and PENDING approval at
   // once. Status is where the vehicle is in the workflow; approval is whether
   // the supervisor has signed off.
-  approvalStatus   JobCardApprovalStatus @default(PENDING)
-  approvedById     String?   // User.id — who approved or rejected it
-  approvedAt       DateTime? // when the current approvalStatus was set
-  rejectionReason  String?   // short, required when rejecting — e.g. "Incomplete vehicle information"
-  approvalNotes    String?   // optional longer commentary, on either an approval or a rejection
+  approvalStatus  JobCardApprovalStatus @default(PENDING)
+  approvedById    String? // User.id — who approved or rejected it
+  approvedAt      DateTime? // when the current approvalStatus was set
+  rejectionReason String? // short, required when rejecting — e.g. "Incomplete vehicle information"
+  approvalNotes   String? // optional longer commentary, on either an approval or a rejection
 
-  closedAt    DateTime?
+  closedAt             DateTime?
   // Set on entering READY_FOR_COLLECTION; anchors the collection grace period
   // (READY_FOR_COLLECTION_GRACE_WORKING_DAYS).
   readyForCollectionAt DateTime?
   // First time the Job Card reaches IN_PROGRESS (start of work). Not
   // overwritten when work resumes after AWAITING_PARTS.
-  workStartedAt DateTime?
+  workStartedAt        DateTime?
   // First time the Job Card reaches COMPLETED. With workStartedAt, measures
   // repair time, excluding the wait for collection.
-  completedAt DateTime?
+  completedAt          DateTime?
   // First time the Job Card reaches CHECKED_OUT: the vehicle left. This, not
   // closedAt, ends time in custody.
-  checkedOutAt DateTime?
+  checkedOutAt         DateTime?
   // Name of whoever collected the vehicle (the customer or someone they
   // sent). Free text: collectors usually have no account.
-  collectedByName String?
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
+  collectedByName      String?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
 
-  branch             Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  department         Department?         @relation(fields: [departmentId], references: [id])
-  customer           Customer            @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  vehicle            CustomerVehicle     @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
-  assignedTechnician User?               @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
-  supervisor         User?               @relation("JobCardSupervisor", fields: [supervisorId], references: [id])
-  approvedBy         User?               @relation("JobCardApprovedBy", fields: [approvedById], references: [id])
-  createdBy          User                @relation("JobCardCreatedBy", fields: [createdById], references: [id])
-  complaints         JobCardComplaint[]
-  estimate           Estimate?
-  payments           Payment[]
-  refunds Refund[]
-  cancellationRequests CancellationRequest[]
-  closeRequests        CloseRequest[]
-  partRequestSlips     PartRequestSlip[]
+  branch                      Branch                       @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  department                  Department?                  @relation(fields: [departmentId], references: [id])
+  customer                    Customer                     @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  vehicle                     CustomerVehicle              @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  assignedTechnician          User?                        @relation("JobCardTechnician", fields: [assignedTechnicianId], references: [id])
+  supervisor                  User?                        @relation("JobCardSupervisor", fields: [supervisorId], references: [id])
+  approvedBy                  User?                        @relation("JobCardApprovedBy", fields: [approvedById], references: [id])
+  createdBy                   User                         @relation("JobCardCreatedBy", fields: [createdById], references: [id])
+  complaints                  JobCardComplaint[]
+  estimate                    Estimate?
+  payments                    Payment[]
+  refunds                     Refund[]
+  cancellationRequests        CancellationRequest[]
+  closeRequests               CloseRequest[]
+  partRequestSlips            PartRequestSlip[]
   externalProcurementRequests ExternalProcurementRequest[]
   // Reverse side of VehicleService.escalatedToJobCard.
-  escalatedFromVehicleService VehicleService? @relation("VehicleServiceEscalatedJobCard")
+  escalatedFromVehicleService VehicleService?              @relation("VehicleServiceEscalatedJobCard")
+  warranties                  Warranty[]
+  warrantyClaims              WarrantyClaim[]
+  gateExit                    VehicleGateExit?
+  roadTestPermits             RoadTestPermit[]
 
   @@index([branchId, status])
   @@index([branchId, createdAt])
@@ -823,10 +827,6 @@ model JobCard {
   @@index([assignedTechnicianId])
   @@index([supervisorId])
   @@map("job_cards")
-  warranties Warranty[]
-  warrantyClaims WarrantyClaim[]
-  gateExit VehicleGateExit?
-  roadTestPermits RoadTestPermit[]
 }
 
 // One row per reported issue on a Job Card (e.g. "Fan not working",
@@ -856,40 +856,40 @@ enum EstimateStatus {
 }
 
 model Estimate {
-  id          String         @id @default(cuid())
-  jobCardId   String         @unique
-  status      EstimateStatus @default(DRAFT)
-  version     Int            @default(1)
-  submittedAt DateTime?
-  approvedAt  DateTime?
-  approvedById String?
+  id                    String         @id @default(cuid())
+  jobCardId             String         @unique
+  status                EstimateStatus @default(DRAFT)
+  version               Int            @default(1)
+  submittedAt           DateTime?
+  approvedAt            DateTime?
+  approvedById          String?
   // Workshop Manager's sign-off. Managers cover a whole branch, so
   // eligibility is by branch (listEligibleManagersForBranch).
-  managerApprovedAt   DateTime?
-  managerApprovedById String?
+  managerApprovedAt     DateTime?
+  managerApprovedById   String?
   // Set when the customer is notified. Separate from MANAGER_APPROVED: the
   // Job Card's creator decides when to tell the customer
   // (notifyCustomerOfApprovedEstimate).
-  customerNotifiedAt   DateTime?
-  customerNotifiedById String?
+  customerNotifiedAt    DateTime?
+  customerNotifiedById  String?
   // When the approval reminder was last sent; prevents duplicate sends.
-  reminderSentAt       DateTime?
+  reminderSentAt        DateTime?
   // When Store matching was requested. Store's queue shows only estimates with
   // this set, not every draft. Not cleared: Store Part lines added later
   // appear in the queue straight away.
   matchingRequestedAt   DateTime?
   matchingRequestedById String?
-  createdById String
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  createdById           String
+  createdAt             DateTime       @default(now())
+  updatedAt             DateTime       @updatedAt
 
-  jobCard     JobCard            @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  createdBy   User               @relation("EstimateCreatedBy", fields: [createdById], references: [id])
-  approvedBy  User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
-  managerApprovedBy User?        @relation("EstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  customerNotifiedBy User?       @relation("EstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
-  matchingRequestedBy User?      @relation("EstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
-  lineItems   EstimateLineItem[]
+  jobCard             JobCard            @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  createdBy           User               @relation("EstimateCreatedBy", fields: [createdById], references: [id])
+  approvedBy          User?              @relation("EstimateApprovedBy", fields: [approvedById], references: [id])
+  managerApprovedBy   User?              @relation("EstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  customerNotifiedBy  User?              @relation("EstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
+  matchingRequestedBy User?              @relation("EstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
+  lineItems           EstimateLineItem[]
 
   @@map("estimates")
 }
@@ -919,20 +919,20 @@ enum EstimateLineItemType {
 }
 
 model EstimateLineItem {
-  id          String               @id @default(cuid())
-  estimateId  String
-  type        EstimateLineItemType
-  description String
-  quantity    Int                  @default(1)
+  id            String               @id @default(cuid())
+  estimateId    String
+  type          EstimateLineItemType
+  description   String
+  quantity      Int                  @default(1)
   // Nullable while DRAFT. `amount` is computed server-side once quantity and
   // unitPrice are both known.
-  unitPrice   Decimal?             @db.Decimal(12, 2)
-  amount      Decimal?             @db.Decimal(12, 2)
-  enteredById String
-  createdAt   DateTime             @default(now())
+  unitPrice     Decimal?             @db.Decimal(12, 2)
+  amount        Decimal?             @db.Decimal(12, 2)
+  enteredById   String
+  createdAt     DateTime             @default(now())
   // @default(now()) gives existing rows a value when the column is added;
   // @updatedAt alone has no database default.
-  updatedAt   DateTime             @default(now()) @updatedAt
+  updatedAt     DateTime             @default(now()) @updatedAt
   // STORE_PART only: the part type the technician asked for, then the
   // catalogue part Store matched. Null until each step happens.
   partTypeId    String?
@@ -941,26 +941,26 @@ model EstimateLineItem {
   // other lines, entered with the line.
   unitOfMeasure String?
 
-  estimate    Estimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
-  enteredBy   User     @relation(fields: [enteredById], references: [id])
-  requestSlipLines PartRequestSlipLine[]
-  externalProcurementRequests ExternalProcurementRequest[]
+  estimate                        Estimate                         @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  enteredBy                       User                             @relation(fields: [enteredById], references: [id])
+  requestSlipLines                PartRequestSlipLine[]
+  externalProcurementRequests     ExternalProcurementRequest[]
   // Per-line link used by multi-line requests; separate from the legacy
   // request-level relation above.
   externalProcurementRequestLines ExternalProcurementRequestLine[] @relation("ExternalProcurementRequestLineEstimate")
-  partType    PartType? @relation(fields: [partTypeId], references: [id])
-  matchedPart Part?     @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
-
-  @@index([estimateId])
-  @@map("estimate_line_items")
+  partType                        PartType?                        @relation(fields: [partTypeId], references: [id])
+  matchedPart                     Part?                            @relation("EstimateLineItemMatchedPart", fields: [matchedPartId], references: [id])
   // Who pays for this line. CUSTOMER (default) counts towards what the
   // customer owes; WARRANTY lines are covered by a specific warranty (and
   // claimed from its provider); GOODWILL / INTERNAL are absorbed by the
   // business. Only the Warranty HOD / Branch Manager set it; audited.
-  billTo             EstimateBillTo @default(CUSTOMER)
-  coveringWarrantyId String?
-  billToNote         String?
-  coveringWarranty   Warranty?      @relation("EstimateLineCoveringWarranty", fields: [coveringWarrantyId], references: [id])
+  billTo                          EstimateBillTo                   @default(CUSTOMER)
+  coveringWarrantyId              String?
+  billToNote                      String?
+  coveringWarranty                Warranty?                        @relation("EstimateLineCoveringWarranty", fields: [coveringWarrantyId], references: [id])
+
+  @@index([estimateId])
+  @@map("estimate_line_items")
 }
 
 // Payments toward a Job Card's estimate (usually a deposit, then the
@@ -972,23 +972,23 @@ enum PaymentMethod {
 }
 
 model Payment {
-  id            String        @id @default(cuid())
+  id               String        @id @default(cuid())
   // Exactly one of jobCardId / vehicleServiceId is set (enforced in the app).
-  jobCardId     String?
+  jobCardId        String?
   vehicleServiceId String?
-  amount        Decimal       @db.Decimal(12, 2)
-  method        PaymentMethod
-  notes         String?       // e.g. a transfer reference or receipt number
-  recordedById  String
-  recordedAt    DateTime      @default(now())
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @default(now()) @updatedAt
+  amount           Decimal       @db.Decimal(12, 2)
+  method           PaymentMethod
+  notes            String? // e.g. a transfer reference or receipt number
+  recordedById     String
+  recordedAt       DateTime      @default(now())
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @default(now()) @updatedAt
   /// Operation id from the form — UNIQUE, so the same submission is never recorded twice.
-  idempotencyKey String? @unique
+  idempotencyKey   String?       @unique
 
   jobCard        JobCard?        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
-  recordedBy    User    @relation(fields: [recordedById], references: [id])
+  recordedBy     User            @relation(fields: [recordedById], references: [id])
 
   @@index([jobCardId])
   @@index([vehicleServiceId])
@@ -1018,7 +1018,7 @@ model Refund {
   createdAt        DateTime      @default(now())
   updatedAt        DateTime      @default(now()) @updatedAt
   /// Operation id from the form — UNIQUE, so the same submission is never recorded twice.
-  idempotencyKey String? @unique
+  idempotencyKey   String?       @unique
 
   jobCard        JobCard?        @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
   vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
@@ -1132,7 +1132,7 @@ model VehicleService {
   customerComplaint String?
   technicianNotes   String?
 
-  assignedTechnicianId String?
+  assignedTechnicianId       String?
   // Same as JobCard.technicianAcceptanceStatus: PENDING when assigned, null on
   // reassignment or rejection.
   technicianAcceptanceStatus TechnicianAcceptanceStatus?
@@ -1153,11 +1153,11 @@ model VehicleService {
   // Required at creation: every visit has an accountable supervisor from the start.
   supervisorId String?
 
-  approvalStatus   JobCardApprovalStatus @default(PENDING)
-  approvedById     String?
-  approvedAt       DateTime? // when the current approvalStatus was set
-  rejectionReason  String?
-  approvalNotes    String?
+  approvalStatus  JobCardApprovalStatus @default(PENDING)
+  approvedById    String?
+  approvedAt      DateTime? // when the current approvalStatus was set
+  rejectionReason String?
+  approvalNotes   String?
 
   // Set when a Job Card is created from this visit because the technician
   // found more than routine maintenance. The service stops progressing; the
@@ -1175,40 +1175,44 @@ model VehicleService {
   nextServiceDueOdometer Int?
   nextServiceDueDate     DateTime?
 
-  createdById String
-  createdAt   DateTime  @default(now())
-  checkedInAt DateTime?
-  completedAt DateTime?
+  createdById          String
+  createdAt            DateTime  @default(now())
+  checkedInAt          DateTime?
+  completedAt          DateTime?
   // When the customer was told the vehicle is ready for collection.
   readyForCollectionAt DateTime?
   // When a Manager approved the close (see VehicleServiceCloseRequest).
-  closedAt DateTime?
+  closedAt             DateTime?
   // collectedAt is when the vehicle left (checked out); collectedByName is who
   // took it, required at checkout as for Job Cards.
-  collectedAt DateTime?
-  collectedByName String?
-  cancelledAt DateTime?
+  collectedAt          DateTime?
+  collectedByName      String?
+  cancelledAt          DateTime?
   // When this service was handed over to a Job Card (status ESCALATED).
-  escalatedAt DateTime?
+  escalatedAt          DateTime?
 
-  branch      Branch          @relation(fields: [branchId], references: [id])
-  customer    Customer        @relation(fields: [customerId], references: [id])
-  vehicle     CustomerVehicle @relation(fields: [vehicleId], references: [id])
-  createdBy   User            @relation("VehicleServiceCreatedBy", fields: [createdById], references: [id])
-  assignedTechnician User?    @relation("VehicleServiceTechnician", fields: [assignedTechnicianId], references: [id])
-  department  Department?     @relation(fields: [departmentId], references: [id])
-  supervisor  User?           @relation("VehicleServiceSupervisor", fields: [supervisorId], references: [id])
-  approvedBy  User?           @relation("VehicleServiceApprovedBy", fields: [approvedById], references: [id])
-  escalatedToJobCard JobCard? @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
+  branch             Branch          @relation(fields: [branchId], references: [id])
+  customer           Customer        @relation(fields: [customerId], references: [id])
+  vehicle            CustomerVehicle @relation(fields: [vehicleId], references: [id])
+  createdBy          User            @relation("VehicleServiceCreatedBy", fields: [createdById], references: [id])
+  assignedTechnician User?           @relation("VehicleServiceTechnician", fields: [assignedTechnicianId], references: [id])
+  department         Department?     @relation(fields: [departmentId], references: [id])
+  supervisor         User?           @relation("VehicleServiceSupervisor", fields: [supervisorId], references: [id])
+  approvedBy         User?           @relation("VehicleServiceApprovedBy", fields: [approvedById], references: [id])
+  escalatedToJobCard JobCard?        @relation("VehicleServiceEscalatedJobCard", fields: [escalatedToJobCardId], references: [id])
 
-  complaints VehicleServiceComplaint[]
-  inspection VehicleInspection?
-  serviceEstimate ServiceEstimate?
-  partRequestSlips PartRequestSlip[]
-  payments Payment[]
-  refunds Refund[]
-  closeRequests VehicleServiceCloseRequest[]
+  complaints           VehicleServiceComplaint[]
+  inspection           VehicleInspection?
+  serviceEstimate      ServiceEstimate?
+  partRequestSlips     PartRequestSlip[]
+  payments             Payment[]
+  refunds              Refund[]
+  closeRequests        VehicleServiceCloseRequest[]
   cancellationRequests VehicleServiceCancellationRequest[]
+  warranties           Warranty[]
+  warrantyClaims       WarrantyClaim[]
+  gateExit             VehicleGateExit?
+  roadTestPermits      RoadTestPermit[]
 
   @@index([branchId, status])
   @@index([branchId, createdAt])
@@ -1217,10 +1221,6 @@ model VehicleService {
   @@index([assignedTechnicianId])
   @@index([supervisorId])
   @@map("vehicle_services")
-  warranties Warranty[]
-  warrantyClaims WarrantyClaim[]
-  gateExit VehicleGateExit?
-  roadTestPermits RoadTestPermit[]
 }
 
 // Vehicle Service version of CloseRequest, kept separate from the Job Card
@@ -1273,12 +1273,12 @@ model VehicleServiceCancellationRequest {
 // One row per thing the customer asked for this visit ("AC not cooling
 // well", "brake pedal feels soft"), like JobCardComplaint.
 model VehicleServiceComplaint {
-  id               String   @id @default(cuid())
+  id               String         @id @default(cuid())
   vehicleServiceId String
   vehicleService   VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
   sequenceNumber   Int
   description      String
-  createdAt        DateTime @default(now())
+  createdAt        DateTime       @default(now())
 
   @@map("vehicle_service_complaints")
 }
@@ -1288,18 +1288,18 @@ model VehicleServiceComplaint {
 // figures shown to the customer are stored as they were at send time,
 // because mileage and predictions change afterwards.
 model ServiceReminderLog {
-  id                     String   @id @default(cuid())
+  id                     String          @id @default(cuid())
   vehicleId              String
   vehicle                CustomerVehicle @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
   // 1 = friendly, 2 = follow-up, 3 = due, 4+ = overdue. Stored rather than
   // derived from sentAt, since stages can be skipped or the interval changed.
   reminderNumber         Int
-  sentAt                 DateTime @default(now())
+  sentAt                 DateTime        @default(now())
   estimatedDueOdometer   Int?
   estimatedDueDate       DateTime?
   recordedOdometerAtSend Int?
   trigger                String
-  deliveryStatus         String   @default("SENT")
+  deliveryStatus         String          @default("SENT")
 
   @@map("service_reminder_logs")
 }
@@ -1320,8 +1320,8 @@ model VehicleInspection {
   createdAt        DateTime                @default(now())
   updatedAt        DateTime                @updatedAt
 
-  vehicleService VehicleService @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
-  inspectedBy    User           @relation("VehicleInspectionInspector", fields: [inspectedById], references: [id])
+  vehicleService VehicleService          @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  inspectedBy    User                    @relation("VehicleInspectionInspector", fields: [inspectedById], references: [id])
   items          VehicleInspectionItem[]
 
   @@map("vehicle_inspections")
@@ -1335,8 +1335,8 @@ model VehicleInspection {
 model VehicleInspectionItem {
   id           String              @id @default(cuid())
   inspectionId String
-  section      String              // e.g. "Engine & Lubrication"
-  name         String              // e.g. "Engine Oil"
+  section      String // e.g. "Engine & Lubrication"
+  name         String // e.g. "Engine Oil"
   condition    String?
   severity     InspectionSeverity?
   action       String?
@@ -1361,36 +1361,36 @@ enum ServiceEstimateStatus {
 // sign-off, then the service's creator sends it to the customer. An
 // escalated visit uses the Job Card's estimate instead; never both.
 model ServiceEstimate {
-  id               String                @id @default(cuid())
-  vehicleServiceId String                @unique
-  status           ServiceEstimateStatus @default(DRAFT)
-  submittedAt      DateTime?
-  approvedAt       DateTime?
-  approvedById     String?
+  id                    String                @id @default(cuid())
+  vehicleServiceId      String                @unique
+  status                ServiceEstimateStatus @default(DRAFT)
+  submittedAt           DateTime?
+  approvedAt            DateTime?
+  approvedById          String?
   // The Workshop Manager's sign-off, separate from the supervisor's
   // approvedAt/approvedById.
-  managerApprovedAt   DateTime?
-  managerApprovedById String?
+  managerApprovedAt     DateTime?
+  managerApprovedById   String?
   // Set when the estimate is sent to the customer. Never automatic: Manager
   // approval means the numbers are right, not that the customer should be
   // told yet.
-  customerNotifiedAt   DateTime?
-  customerNotifiedById String?
+  customerNotifiedAt    DateTime?
+  customerNotifiedById  String?
   // Set when the technician or supervisor asks Store to match the Store Part
   // lines (as on Job Card estimates).
   matchingRequestedAt   DateTime?
   matchingRequestedById String?
-  createdById      String
-  createdAt        DateTime              @default(now())
-  updatedAt        DateTime              @updatedAt
+  createdById           String
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
 
-  vehicleService VehicleService        @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
-  createdBy      User                  @relation("ServiceEstimateCreatedBy", fields: [createdById], references: [id])
-  approvedBy     User?                 @relation("ServiceEstimateApprovedBy", fields: [approvedById], references: [id])
-  managerApprovedBy User?              @relation("ServiceEstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  customerNotifiedBy User?             @relation("ServiceEstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
-  matchingRequestedBy User?            @relation("ServiceEstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
-  lineItems      ServiceEstimateLineItem[]
+  vehicleService      VehicleService            @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  createdBy           User                      @relation("ServiceEstimateCreatedBy", fields: [createdById], references: [id])
+  approvedBy          User?                     @relation("ServiceEstimateApprovedBy", fields: [approvedById], references: [id])
+  managerApprovedBy   User?                     @relation("ServiceEstimateManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  customerNotifiedBy  User?                     @relation("ServiceEstimateCustomerNotifiedBy", fields: [customerNotifiedById], references: [id])
+  matchingRequestedBy User?                     @relation("ServiceEstimateMatchingRequestedBy", fields: [matchingRequestedById], references: [id])
+  lineItems           ServiceEstimateLineItem[]
 
   @@map("service_estimates")
 }
@@ -1405,16 +1405,16 @@ enum ServiceEstimateLineItemType {
 }
 
 model ServiceEstimateLineItem {
-  id           String                      @id @default(cuid())
-  estimateId   String
-  type         ServiceEstimateLineItemType
-  description  String
-  quantity     Decimal  @db.Decimal(10, 2)
-  unitPrice    Decimal? @db.Decimal(12, 2)
-  amount       Decimal? @db.Decimal(12, 2)
-  enteredById  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            String                      @id @default(cuid())
+  estimateId    String
+  type          ServiceEstimateLineItemType
+  description   String
+  quantity      Decimal                     @db.Decimal(10, 2)
+  unitPrice     Decimal?                    @db.Decimal(12, 2)
+  amount        Decimal?                    @db.Decimal(12, 2)
+  enteredById   String
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
   // STORE_PART only, as on Job Card estimates: the requester picks a part
   // type (e.g. "Engine Oil Filter"); Store matches a catalogue part, which
   // sets the price and unit. Both null for OTHER lines.
@@ -1422,10 +1422,10 @@ model ServiceEstimateLineItem {
   matchedPartId String?
   unitOfMeasure String?
 
-  estimate  ServiceEstimate @relation(fields: [estimateId], references: [id], onDelete: Cascade)
-  enteredBy User            @relation("ServiceEstimateLineEnteredBy", fields: [enteredById], references: [id])
-  partType  PartType?       @relation(fields: [partTypeId], references: [id])
-  matchedPart Part?         @relation(fields: [matchedPartId], references: [id])
+  estimate             ServiceEstimate       @relation(fields: [estimateId], references: [id], onDelete: Cascade)
+  enteredBy            User                  @relation("ServiceEstimateLineEnteredBy", fields: [enteredById], references: [id])
+  partType             PartType?             @relation(fields: [partTypeId], references: [id])
+  matchedPart          Part?                 @relation(fields: [matchedPartId], references: [id])
   partRequestSlipLines PartRequestSlipLine[]
 
   @@index([estimateId])
@@ -1439,12 +1439,12 @@ model CustomerAddress {
   // v28: when it was added (audit trail and CRM ordering).
   createdAt  DateTime @default(now())
 
-  label      String? // "Home", "Office"
-  line1      String
-  line2      String?
-  city       String?
-  state      String?
-  country    String?
+  label   String? // "Home", "Office"
+  line1   String
+  line2   String?
+  city    String?
+  state   String?
+  country String?
 
   @@index([customerId])
   @@map("customer_addresses")
@@ -1455,10 +1455,10 @@ model CustomerContact {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
-  name  String
-  phone String?
-  email String?
-  role  String? // e.g. "Fleet Manager"
+  name      String
+  phone     String?
+  email     String?
+  role      String? // e.g. "Fleet Manager"
   createdAt DateTime @default(now())
 
   @@index([customerId])
@@ -1492,8 +1492,8 @@ model Account {
   userId                String
   user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   accountId             String
-  providerId            String    // "credential", "google", "microsoft"...
-  password              String?   // password hash for the "credential" provider; Better Auth's field name, keep it
+  providerId            String // "credential", "google", "microsoft"...
+  password              String? // password hash for the "credential" provider; Better Auth's field name, keep it
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
@@ -1526,7 +1526,7 @@ model CustomerAccount {
   customer              Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
   accountId             String
   providerId            String
-  password              String?   // same field-name requirement as Account.password above
+  password              String? // same field-name requirement as Account.password above
   accessToken           String?
   refreshToken          String?
   accessTokenExpiresAt  DateTime?
@@ -1543,7 +1543,7 @@ model CustomerAccount {
 // (identifier, value), not by user. Customer links use CustomerVerification.
 model Verification {
   id         String   @id @default(cuid())
-  identifier String   // typically the email being verified/reset
+  identifier String // typically the email being verified/reset
   value      String
   expiresAt  DateTime
   createdAt  DateTime @default(now())
@@ -1552,7 +1552,6 @@ model Verification {
   updatedAt  DateTime @default(now()) @updatedAt
 
   @@index([identifier])
-
   @@map("verifications")
 }
 
@@ -1607,18 +1606,18 @@ model CustomerNotificationRead {
 // AUDIT LOG: append-only, timestamped history every module writes to.
 // ----------------------------------------------------------------------------
 model AuditLog {
-  id         String   @id @default(cuid())
+  id             String   @id @default(cuid())
   // Which organisation's history this row belongs to (stamped on every
   // write — see audit-journal.ts). Null only for the platform team's own
   // or unattributed system rows, which only the platform team sees.
   organisationId String?
-  userId     String?
-  action     String   // e.g. "user.created", "job_card.approved"
-  entityType String   // e.g. "JobCard"
-  entityId   String?
-  metadata   Json?
-  ipAddress  String?
-  createdAt  DateTime @default(now())
+  userId         String?
+  action         String // e.g. "user.created", "job_card.approved"
+  entityType     String // e.g. "JobCard"
+  entityId       String?
+  metadata       Json?
+  ipAddress      String?
+  createdAt      DateTime @default(now())
 
   // For the audit dashboard: a record's full history, a user's
   // activity, and date-range browsing — all indexed.
@@ -1641,13 +1640,13 @@ model AuditLog {
 // ----------------------------------------------------------------------------
 
 model Announcement {
-  id        String   @id @default(cuid())
+  id             String    @id @default(cuid())
   organisationId String
-  message   String
+  message        String
   // After this the announcement stops showing (e.g. a notice about Friday's
   // stock count). Null means active until switched off.
-  expiresAt DateTime?
-  isActive  Boolean  @default(true)
+  expiresAt      DateTime?
+  isActive       Boolean   @default(true)
 
   createdById String
   createdAt   DateTime @default(now())
@@ -1685,75 +1684,75 @@ enum PartSerialStatus {
 }
 
 model Part {
-  id          String @id @default(cuid())
-  branchId    String
-  name        String
-  description String?
+  id                  String           @id @default(cuid())
+  branchId            String
+  name                String
+  description         String?
   // Free-text browsing category used by the catalogue search. Structured
   // classification is partTypeId below.
-  category    String?
+  category            String?
   // Internal reference code. `barcode` below is reserved for barcode scanning.
-  partNumber  String?
-  barcode     String?
-  trackingType PartTrackingType @default(QUANTITY)
+  partNumber          String?
+  barcode             String?
+  trackingType        PartTrackingType @default(QUANTITY)
   // The unit stock is held in (e.g. "Liter" for engine oil, "Each" for brake
   // pads). Alternative units convert to this one.
-  baseUnitOfMeasure String
+  baseUnitOfMeasure   String
   // Reorder point and safety stock, set by Store (usually from the inventory
   // analytics suggestion).
-  reorderPoint Decimal? @db.Decimal(12, 3)
-  safetyStock  Decimal? @db.Decimal(12, 3)
+  reorderPoint        Decimal?         @db.Decimal(12, 3)
+  safetyStock         Decimal?         @db.Decimal(12, 3)
   // Price charged to customers per base unit, set by Store. Separate from the
   // goods receipt cost (what was paid). Store matching requires it and never
   // falls back to cost.
-  sellingPrice Decimal? @db.Decimal(12, 2)
+  sellingPrice        Decimal?         @db.Decimal(12, 2)
   // The margin Store wants on this part, as a percentage of sellingPrice
   // (30 = cost at most 70% of price). Null means not set yet, not 0%; the
   // Pricing Command Center skips parts without one.
-  targetMarginPercent Decimal? @db.Decimal(5, 2)
+  targetMarginPercent Decimal?         @db.Decimal(5, 2)
   // Whether the target is entered and shown as margin or markup.
   // targetMarginPercent always stores margin.
-  pricingMethod PricingMethod @default(MARGIN)
-  isActive     Boolean  @default(true)
+  pricingMethod       PricingMethod    @default(MARGIN)
+  isActive            Boolean          @default(true)
   // The generic part type this part is (e.g. "Fuel Filter"), so a technician's
   // request for a type can match every vehicle-specific part of that type.
   // Separate from the free-text `category` browsing field.
-  partTypeId   String?
+  partTypeId          String?
   // Warranty issued with this part on release to a customer (null = none).
   // Set on the Part page.
-  warrantyPolicyId String?
-  createdById  String
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  warrantyPolicyId    String?
+  createdById         String
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
 
-  branch    Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  createdBy User     @relation("PartCreatedBy", fields: [createdById], references: [id])
-  partType  PartType? @relation(fields: [partTypeId], references: [id])
+  branch         Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  createdBy      User            @relation("PartCreatedBy", fields: [createdById], references: [id])
+  partType       PartType?       @relation(fields: [partTypeId], references: [id])
   warrantyPolicy WarrantyPolicy? @relation(fields: [warrantyPolicyId], references: [id])
-  warranties Warranty[]
+  warranties     Warranty[]
 
-  alternativeUnits  PartUnitOfMeasure[]
-  stock             PartStock?
-  batches           PartBatch[]
-  serials           PartSerial[]
-  goodsReceiptLines GoodsReceiptLine[]
-  requestSlipLines  PartRequestSlipLine[]
+  alternativeUnits              PartUnitOfMeasure[]
+  stock                         PartStock?
+  batches                       PartBatch[]
+  serials                       PartSerial[]
+  goodsReceiptLines             GoodsReceiptLine[]
+  requestSlipLines              PartRequestSlipLine[]
   // Release trail for QUANTITY parts (which request took how much).
-  quantityConsumptions PartQuantityConsumption[]
-  fitments          PartFitment[]
-  matchedOnEstimateLines EstimateLineItem[] @relation("EstimateLineItemMatchedPart")
+  quantityConsumptions          PartQuantityConsumption[]
+  fitments                      PartFitment[]
+  matchedOnEstimateLines        EstimateLineItem[]        @relation("EstimateLineItemMatchedPart")
   matchedOnServiceEstimateLines ServiceEstimateLineItem[]
-  pricingAlerts     PricingAlert[]
+  pricingAlerts                 PricingAlert[]
+  // Zinox edition
+  bomLines                      BomLine[]
+  materialIssues                MaterialIssue[]
+  unitComponents                UnitComponent[]
+  requisitionLines              PurchaseRequisitionLine[]
+  purchaseLines                 PurchaseOrderLine[]
+  serviceParts                  ServicePart[]
 
   @@unique([branchId, partNumber])
   @@map("parts")
-  // Zinox edition
-  bomLines BomLine[]
-  materialIssues MaterialIssue[]
-  unitComponents UnitComponent[]
-  requisitionLines PurchaseRequisitionLine[]
-  purchaseLines PurchaseOrderLine[]
-  serviceParts ServicePart[]
 }
 
 // An alternative unit a delivery may arrive in and its factor to the base
@@ -1800,8 +1799,8 @@ model PartBatch {
   expiryDate         DateTime?
   goodsReceiptLineId String?
 
-  part             Part              @relation(fields: [partId], references: [id], onDelete: Cascade)
-  goodsReceiptLine GoodsReceiptLine? @relation(fields: [goodsReceiptLineId], references: [id])
+  part             Part                   @relation(fields: [partId], references: [id], onDelete: Cascade)
+  goodsReceiptLine GoodsReceiptLine?      @relation(fields: [goodsReceiptLineId], references: [id])
   // Draws against this batch. Many-to-many: a release can draw from several
   // batches (FIFO) and a batch can serve several releases.
   consumptions     PartBatchConsumption[]
@@ -1831,11 +1830,11 @@ model PartBatchConsumption {
 // Release trail for QUANTITY parts (no batch or serial rows): which
 // request took how much.
 model PartQuantityConsumption {
-  id            String   @id @default(cuid())
-  partId        String
-  slipLineId    String
-  quantityTaken Decimal  @db.Decimal(14, 4)
-  consumedAt    DateTime @default(now())
+  id                 String   @id @default(cuid())
+  partId             String
+  slipLineId         String
+  quantityTaken      Decimal  @db.Decimal(14, 4)
+  consumedAt         DateTime @default(now())
   // The goods receipt line this release drew from, so QUANTITY releases trace
   // back to a GRN like batches and serials. A release spanning two deliveries
   // is two rows, FIFO (lib/inventory/quantity-fifo.ts). Null on older
@@ -1870,6 +1869,7 @@ model PartSerial {
   part             Part                 @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine?    @relation(fields: [goodsReceiptLineId], references: [id])
   issuedToSlipLine PartRequestSlipLine? @relation(fields: [issuedToSlipLineId], references: [id])
+  warranties       Warranty[]
 
   // Unique across all parts, not per part: a serial identifies one physical
   // unit in the whole catalogue.
@@ -1878,7 +1878,6 @@ model PartSerial {
   @@index([issuedToSlipLineId])
   @@index([goodsReceiptLineId])
   @@map("part_serials")
-  warranties Warranty[]
 }
 
 // A delivery into the store. Numbered GRN-2026-000001, like Job Card numbers.
@@ -1895,19 +1894,19 @@ model GoodsReceipt {
   notes           String?
   createdAt       DateTime @default(now())
 
-  branch     Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  receivedBy User               @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
-  lines      GoodsReceiptLine[]
-
-  @@index([branchId, receivedAt])
-  @@map("goods_receipts")
-  gateDeliveries GateDelivery[]
+  branch          Branch              @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  receivedBy      User                @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
+  lines           GoodsReceiptLine[]
+  gateDeliveries  GateDelivery[]
   // Zinox edition: receipts against purchase orders and shipments, with incoming QC
   purchaseOrderId String?
   shipmentId      String?
-  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id])
-  shipment        Shipment?      @relation(fields: [shipmentId], references: [id])
+  purchaseOrder   PurchaseOrder?      @relation(fields: [purchaseOrderId], references: [id])
+  shipment        Shipment?           @relation(fields: [shipmentId], references: [id])
   inspection      IncomingInspection?
+
+  @@index([branchId, receivedAt])
+  @@map("goods_receipts")
 }
 
 // One line per part on a delivery. quantityReceivedInUnit and unitUsed are
@@ -1932,18 +1931,18 @@ model GoodsReceiptLine {
   // creates or adds to.
   batchNumber            String?
 
-  goodsReceipt GoodsReceipt @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
-  part         Part         @relation(fields: [partId], references: [id])
-  batches      PartBatch[]
-  serials      PartSerial[]
+  goodsReceipt         GoodsReceipt              @relation(fields: [goodsReceiptId], references: [id], onDelete: Cascade)
+  part                 Part                      @relation(fields: [partId], references: [id])
+  batches              PartBatch[]
+  serials              PartSerial[]
   quantityConsumptions PartQuantityConsumption[]
-  pricingAlert PricingAlert?
+  pricingAlert         PricingAlert?
+  // Zinox edition
+  finishedUnits        FinishedUnit[]
 
   @@index([goodsReceiptId])
   @@index([partId])
   @@map("goods_receipt_lines")
-  // Zinox edition
-  finishedUnits FinishedUnit[]
 }
 
 // ----------------------------------------------------------------------------
@@ -1981,31 +1980,31 @@ enum PricingAlertStatus {
 }
 
 model PricingAlert {
-  id       String @id @default(cuid())
-  partId   String
+  id                 String               @id @default(cuid())
+  partId             String
   // The delivery that raised this alert.
-  goodsReceiptLineId String @unique
-  severity PricingAlertSeverity
-  status   PricingAlertStatus @default(OPEN)
+  goodsReceiptLineId String               @unique
+  severity           PricingAlertSeverity
+  status             PricingAlertStatus   @default(OPEN)
 
   // Figures as they were when the alert was raised, since sellingPrice and
   // the target may change later.
-  previousUnitCost   Decimal? @db.Decimal(16, 6)
-  newUnitCost        Decimal @db.Decimal(16, 6)
-  sellingPriceAtAlert Decimal @db.Decimal(12, 2)
-  targetMarginPercentAtAlert Decimal @db.Decimal(5, 2)
-  actualMarginPercent Decimal @db.Decimal(6, 2)
+  previousUnitCost           Decimal? @db.Decimal(16, 6)
+  newUnitCost                Decimal  @db.Decimal(16, 6)
+  sellingPriceAtAlert        Decimal  @db.Decimal(12, 2)
+  targetMarginPercentAtAlert Decimal  @db.Decimal(5, 2)
+  actualMarginPercent        Decimal  @db.Decimal(6, 2)
 
-  resolvedById String?
-  resolvedAt   DateTime?
+  resolvedById    String?
+  resolvedAt      DateTime?
   resolutionNotes String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  part            Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
+  part             Part             @relation(fields: [partId], references: [id], onDelete: Cascade)
   goodsReceiptLine GoodsReceiptLine @relation(fields: [goodsReceiptLineId], references: [id], onDelete: Cascade)
-  resolvedBy      User?            @relation("PricingAlertResolvedBy", fields: [resolvedById], references: [id])
+  resolvedBy       User?            @relation("PricingAlertResolvedBy", fields: [resolvedById], references: [id])
 
   @@index([partId, status])
   @@map("pricing_alerts")
@@ -2043,15 +2042,15 @@ enum ExternalProcurementStatus {
 // be promised the same units), and a storekeeper releases it.
 // Numbered PRS-2026-000001.
 model PartRequestSlip {
-  id              String                @id @default(cuid())
-  referenceNumber String                @unique
+  id               String                @id @default(cuid())
+  referenceNumber  String                @unique
   // Exactly one of jobCardId / vehicleServiceId is set, enforced in the app
   // (Prisma can't express a CHECK constraint).
-  jobCardId       String?
+  jobCardId        String?
   vehicleServiceId String?
-  branchId        String
-  requestedById   String
-  status          PartRequestSlipStatus @default(PENDING_HOD_APPROVAL)
+  branchId         String
+  requestedById    String
+  status           PartRequestSlipStatus @default(PENDING_HOD_APPROVAL)
 
   hodApprovedById String?
   hodApprovedAt   DateTime?
@@ -2061,8 +2060,8 @@ model PartRequestSlip {
   storeApprovedAt   DateTime?
   storeNotes        String?
 
-  releasedById String?
-  releasedAt   DateTime?
+  releasedById     String?
+  releasedAt       DateTime?
   // Who collected the parts: a user where possible, or a typed name (e.g. an
   // intern without an account). One collector per slip.
   receivedByUserId String?
@@ -2078,16 +2077,16 @@ model PartRequestSlip {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  jobCard        JobCard?  @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  vehicleService VehicleService? @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
-  branch         Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  requestedBy    User     @relation("PartRequestSlipRequestedBy", fields: [requestedById], references: [id])
-  hodApprovedBy  User?    @relation("PartRequestSlipHodApprovedBy", fields: [hodApprovedById], references: [id])
-  storeApprovedBy User?   @relation("PartRequestSlipStoreApprovedBy", fields: [storeApprovedById], references: [id])
-  releasedBy     User?    @relation("PartRequestSlipReleasedBy", fields: [releasedById], references: [id])
-  receivedByUser User?    @relation("PartRequestSlipReceivedBy", fields: [receivedByUserId], references: [id])
-  rejectedBy     User?    @relation("PartRequestSlipRejectedBy", fields: [rejectedById], references: [id])
-  lines          PartRequestSlipLine[]
+  jobCard         JobCard?              @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  vehicleService  VehicleService?       @relation(fields: [vehicleServiceId], references: [id], onDelete: Cascade)
+  branch          Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  requestedBy     User                  @relation("PartRequestSlipRequestedBy", fields: [requestedById], references: [id])
+  hodApprovedBy   User?                 @relation("PartRequestSlipHodApprovedBy", fields: [hodApprovedById], references: [id])
+  storeApprovedBy User?                 @relation("PartRequestSlipStoreApprovedBy", fields: [storeApprovedById], references: [id])
+  releasedBy      User?                 @relation("PartRequestSlipReleasedBy", fields: [releasedById], references: [id])
+  receivedByUser  User?                 @relation("PartRequestSlipReceivedBy", fields: [receivedByUserId], references: [id])
+  rejectedBy      User?                 @relation("PartRequestSlipRejectedBy", fields: [rejectedById], references: [id])
+  lines           PartRequestSlipLine[]
 
   @@index([branchId, status])
   @@index([jobCardId])
@@ -2096,31 +2095,31 @@ model PartRequestSlip {
 }
 
 model PartRequestSlipLine {
-  id                 String   @id @default(cuid())
-  slipId             String
-  partId             String
+  id                        String   @id @default(cuid())
+  slipId                    String
+  partId                    String
   // The Job Card estimate line this line sources.
-  estimateLineItemId String?
+  estimateLineItemId        String?
   // The Service Estimate line this line sources. Never set together with
   // estimateLineItemId.
   serviceEstimateLineItemId String?
   // In the part's base unit; reservation and release use the base unit.
-  quantityRequested  Decimal  @db.Decimal(14, 4)
-  quantityReleased   Decimal? @db.Decimal(14, 4)
+  quantityRequested         Decimal  @db.Decimal(14, 4)
+  quantityReleased          Decimal? @db.Decimal(14, 4)
 
-  slip             PartRequestSlip   @relation(fields: [slipId], references: [id], onDelete: Cascade)
-  part             Part              @relation(fields: [partId], references: [id])
-  estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
-  serviceEstimateLineItem ServiceEstimateLineItem? @relation(fields: [serviceEstimateLineItemId], references: [id])
+  slip                    PartRequestSlip           @relation(fields: [slipId], references: [id], onDelete: Cascade)
+  part                    Part                      @relation(fields: [partId], references: [id])
+  estimateLineItem        EstimateLineItem?         @relation(fields: [estimateLineItemId], references: [id])
+  serviceEstimateLineItem ServiceEstimateLineItem?  @relation(fields: [serviceEstimateLineItemId], references: [id])
   // What this line was released with: batch quantities and serials.
-  batchConsumptions PartBatchConsumption[]
-  issuedSerials     PartSerial[]
-  quantityConsumptions PartQuantityConsumption[]
+  batchConsumptions       PartBatchConsumption[]
+  issuedSerials           PartSerial[]
+  quantityConsumptions    PartQuantityConsumption[]
+  warranties              Warranty[]
 
   @@index([slipId])
   @@index([partId])
   @@map("part_request_slip_lines")
-  warranties Warranty[]
 }
 
 // External parts/jobs: a cash advance (imprest). The technician requests
@@ -2128,8 +2127,8 @@ model PartRequestSlipLine {
 // out. retiredById/retiredAt are reserved for reconciling the advance
 // against a receipt, which needs file attachments (not built yet).
 model ExternalProcurementRequest {
-  id                 String                     @id @default(cuid())
-  referenceNumber    String                     @unique
+  id                 String                    @id @default(cuid())
+  referenceNumber    String                    @unique
   jobCardId          String
   branchId           String
   // Legacy single-line fields, kept for requests raised before multi-line
@@ -2140,8 +2139,8 @@ model ExternalProcurementRequest {
   // The technician's figure, fixed at submission (no edit path). For a
   // multi-line request, the sum of its lines. Finance's additions and the
   // approval build on it.
-  estimatedAmount    Decimal                    @db.Decimal(12, 2)
-  status             ExternalProcurementStatus  @default(PENDING_FINANCE_REVIEW)
+  estimatedAmount    Decimal                   @db.Decimal(12, 2)
+  status             ExternalProcurementStatus @default(PENDING_FINANCE_REVIEW)
 
   // estimatedAmount plus all supplementary lines, fixed at Manager approval,
   // so nothing added later changes what was approved.
@@ -2158,7 +2157,7 @@ model ExternalProcurementRequest {
   disbursedAt       DateTime?
   // Amount paid out: copied from approvedTotal at disbursement, never typed.
   // Stored as the historical record of what was disbursed.
-  disbursedAmount   Decimal? @db.Decimal(12, 2)
+  disbursedAmount   Decimal?  @db.Decimal(12, 2)
   // e.g. "Cash", "Transfer" (suggested list, free text allowed). Set at
   // disbursement together with the fields below.
   paymentMethod     String?
@@ -2178,15 +2177,15 @@ model ExternalProcurementRequest {
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
-  jobCard          JobCard           @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
-  branch           Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  estimateLineItem EstimateLineItem? @relation(fields: [estimateLineItemId], references: [id])
-  requestedBy      User              @relation("ExternalProcurementRequestedBy", fields: [requestedById], references: [id])
-  financeReviewedBy User?            @relation("ExternalProcurementFinanceReviewedBy", fields: [financeReviewedById], references: [id])
-  managerApprovedBy User?            @relation("ExternalProcurementManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  disbursedBy      User?             @relation("ExternalProcurementDisbursedBy", fields: [disbursedById], references: [id])
-  rejectedBy       User?             @relation("ExternalProcurementRejectedBy", fields: [rejectedById], references: [id])
-  retiredBy        User?             @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
+  jobCard            JobCard                                @relation(fields: [jobCardId], references: [id], onDelete: Cascade)
+  branch             Branch                                 @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  estimateLineItem   EstimateLineItem?                      @relation(fields: [estimateLineItemId], references: [id])
+  requestedBy        User                                   @relation("ExternalProcurementRequestedBy", fields: [requestedById], references: [id])
+  financeReviewedBy  User?                                  @relation("ExternalProcurementFinanceReviewedBy", fields: [financeReviewedById], references: [id])
+  managerApprovedBy  User?                                  @relation("ExternalProcurementManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  disbursedBy        User?                                  @relation("ExternalProcurementDisbursedBy", fields: [disbursedById], references: [id])
+  rejectedBy         User?                                  @relation("ExternalProcurementRejectedBy", fields: [rejectedById], references: [id])
+  retiredBy          User?                                  @relation("ExternalProcurementRetiredBy", fields: [retiredById], references: [id])
   supplementaryLines ExternalProcurementSupplementaryLine[]
   // One row per External Part/Job estimate line (same shape as
   // PartRequestSlipLine). Legacy single-line requests have none.
@@ -2200,13 +2199,13 @@ model ExternalProcurementRequest {
 // One item on an External Procurement Request, so several outside items for
 // one repair (e.g. a lathe job and a bushing) go to Finance as one request.
 model ExternalProcurementRequestLine {
-  id                 String   @id @default(cuid())
+  id                 String  @id @default(cuid())
   requestId          String
   estimateLineItemId String?
   description        String
-  quantity           Decimal  @db.Decimal(14, 4)
+  quantity           Decimal @db.Decimal(14, 4)
   unitOfMeasure      String?
-  amount             Decimal  @db.Decimal(12, 2)
+  amount             Decimal @db.Decimal(12, 2)
 
   request          ExternalProcurementRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   estimateLineItem EstimateLineItem?          @relation("ExternalProcurementRequestLineEstimate", fields: [estimateLineItemId], references: [id])
@@ -2241,18 +2240,18 @@ model ExternalProcurementSupplementaryLine {
 // ----------------------------------------------------------------------------
 
 model PartFitment {
-  id     String @id @default(cuid())
-  partId String
-  make   String
+  id         String  @id @default(cuid())
+  partId     String
+  make       String
   // Null means "fits every model of this make".
-  model  String?
+  model      String?
   // Null means "fits every engine of this make/model". Only set together
   // with model.
   engineType String?
   // Optional year range; null on either end means unbounded. Only set
   // together with model.
-  yearFrom Int?
-  yearTo   Int?
+  yearFrom   Int?
+  yearTo     Int?
 
   createdAt DateTime @default(now())
 
@@ -2312,8 +2311,8 @@ model PartType {
   category  PartCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
   createdBy User         @relation("PartTypeCreatedBy", fields: [createdById], references: [id])
 
-  parts             Part[]
-  estimateLineItems EstimateLineItem[]
+  parts                    Part[]
+  estimateLineItems        EstimateLineItem[]
   serviceEstimateLineItems ServiceEstimateLineItem[]
 
   @@unique([branchId, categoryId, name])
@@ -2369,7 +2368,7 @@ model WarrantyProvider {
   notes               String?
   // The organisation that keeps this record (each organisation has its own
   // providers and policies). Null only on rows created before multi-org.
-  organisationId String?
+  organisationId      String?
   isActive            Boolean              @default(true)
   // Deletion approved while in use (policies, warranties or claims) →
   // archived, never erased: history stays valid and traceable.
@@ -2379,10 +2378,10 @@ model WarrantyProvider {
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @default(now()) @updatedAt
 
-  createdBy  User             @relation("WarrantyProviderCreatedBy", fields: [createdById], references: [id])
+  createdBy        User                              @relation("WarrantyProviderCreatedBy", fields: [createdById], references: [id])
   deletionRequests WarrantyProviderDeletionRequest[]
-  policies   WarrantyPolicy[]
-  warranties Warranty[]
+  policies         WarrantyPolicy[]
+  warranties       Warranty[]
 
   claims WarrantyClaim[]
 
@@ -2395,106 +2394,111 @@ model WarrantyProvider {
 // servicing). ASSET policies apply to a brand/model; PART policies are
 // attached to parts in Inventory.
 model WarrantyPolicy {
-  id               String       @id @default(cuid())
-  code             String       @unique
-  name             String
-  kind             WarrantyKind
-  providerId       String
-  brand            String?
-  model            String?
+  id              String               @id @default(cuid())
+  code            String               @unique
+  name            String
+  kind            WarrantyKind
+  providerId      String
+  brand           String?
+  model           String?
   // The duration amount in durationUnit. Named durationMonths because it was
   // always months before durationUnit existed.
-  durationMonths   Int
-  durationUnit     WarrantyDurationUnit @default(MONTHS)
+  durationMonths  Int
+  durationUnit    WarrantyDurationUnit @default(MONTHS)
   // Distance limit from the start reading (km in automotive); null = unlimited.
-  distanceLimit    Int?
-  coverageSummary  String
-  exclusions       String?
-  conditions       String?
+  distanceLimit   Int?
+  coverageSummary String
+  exclusions      String?
+  conditions      String?
   // What the provider pays for, and how they normally make it right.
-  coversParts      Boolean        @default(true)
-  coversLabour     Boolean        @default(true)
+  coversParts     Boolean              @default(true)
+  coversLabour    Boolean              @default(true)
   // Freight: shipping the replacement in and the failed part back.
-  coversLogistics  Boolean        @default(false)
-  defaultRemedy    WarrantyRemedy @default(REIMBURSEMENT)
+  coversLogistics Boolean              @default(false)
+  defaultRemedy   WarrantyRemedy       @default(REIMBURSEMENT)
   // Sample terms for demonstration, flagged everywhere until real terms
   // replace them.
-  isSample         Boolean      @default(false)
+  isSample        Boolean              @default(false)
   // The organisation that keeps this record (each organisation has its own
   // providers and policies). Null only on rows created before multi-org.
-  organisationId String?
-  isActive         Boolean      @default(true)
+  organisationId  String?
+  isActive        Boolean              @default(true)
   // A policy whose deletion was approved but that already issued
   // warranties is ARCHIVED, never erased — its certificates and history
   // stay valid and traceable; it just can't be used again.
-  archivedAt       DateTime?
-  archivedReason   String?
-  createdById      String
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @default(now()) @updatedAt
+  archivedAt      DateTime?
+  archivedReason  String?
+  createdById     String
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @default(now()) @updatedAt
 
-  provider   WarrantyProvider @relation(fields: [providerId], references: [id])
-  createdBy  User             @relation("WarrantyPolicyCreatedBy", fields: [createdById], references: [id])
-  warranties Warranty[]
-  parts      Part[]
+  provider         WarrantyProvider                @relation(fields: [providerId], references: [id])
+  createdBy        User                            @relation("WarrantyPolicyCreatedBy", fields: [createdById], references: [id])
+  warranties       Warranty[]
+  parts            Part[]
   deletionRequests WarrantyPolicyDeletionRequest[]
+  // Zinox edition
+  products         Product[]                       @relation("ProductDefaultPolicy")
 
   @@index([organisationId])
   @@map("warranty_policies")
-  // Zinox edition
-  products Product[] @relation("ProductDefaultPolicy")
 }
 
 // One warranty = one number (WR-2026-000001), one certificate. Terms are
 // snapshotted at issue so a later policy edit never rewrites history.
 model Warranty {
-  id                  String         @id @default(cuid())
-  warrantyNumber      String         @unique
-  kind                WarrantyKind
-  status              WarrantyStatus @default(ACTIVE)
-  policyId            String
-  providerId          String
-  customerId          String
-  vehicleId           String?
-  partId              String?
-  partSerialId        String?
-  slipLineId          String?
-  jobCardId           String?
-  vehicleServiceId    String?
+  id                 String         @id @default(cuid())
+  warrantyNumber     String         @unique
+  kind               WarrantyKind
+  status             WarrantyStatus @default(ACTIVE)
+  policyId           String
+  providerId         String
+  customerId         String
+  vehicleId          String?
+  partId             String?
+  partSerialId       String?
+  slipLineId         String?
+  jobCardId          String?
+  vehicleServiceId   String?
   // What is covered, in words (snapshot): "Foton TM3 — VIN …" or
   // "Alternator (ALT-001) — serial SN-123".
-  subjectDescription  String
-  quantity            Decimal?       @db.Decimal(14, 4)
-  startsAt            DateTime
-  endsAt              DateTime
-  startReading        Int?
-  distanceLimit       Int?
-  coverageSnapshot    String
-  exclusionsSnapshot  String?
-  conditionsSnapshot  String?
+  subjectDescription String
+  quantity           Decimal?       @db.Decimal(14, 4)
+  startsAt           DateTime
+  endsAt             DateTime
+  startReading       Int?
+  distanceLimit      Int?
+  coverageSnapshot   String
+  exclusionsSnapshot String?
+  conditionsSnapshot String?
   // AUTO (issued on a part release) or MANUAL (registered by staff, e.g. a
   // vehicle sold before the system was in use).
-  origin              String
-  evidenceNote        String?
-  issuedById          String?
-  issuedAt            DateTime       @default(now())
-  verifiedById        String?
-  verifiedAt          DateTime?
-  statusReason        String?
-  createdAt           DateTime       @default(now())
-  updatedAt           DateTime       @default(now()) @updatedAt
+  origin             String
+  evidenceNote       String?
+  issuedById         String?
+  issuedAt           DateTime       @default(now())
+  verifiedById       String?
+  verifiedAt         DateTime?
+  statusReason       String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @default(now()) @updatedAt
 
-  policy         WarrantyPolicy       @relation(fields: [policyId], references: [id])
-  provider       WarrantyProvider     @relation(fields: [providerId], references: [id])
-  customer       Customer             @relation(fields: [customerId], references: [id])
-  vehicle        CustomerVehicle?     @relation(fields: [vehicleId], references: [id])
-  part           Part?                @relation(fields: [partId], references: [id])
-  partSerial     PartSerial?          @relation(fields: [partSerialId], references: [id])
-  slipLine       PartRequestSlipLine? @relation(fields: [slipLineId], references: [id])
-  jobCard        JobCard?             @relation(fields: [jobCardId], references: [id])
-  vehicleService VehicleService?      @relation(fields: [vehicleServiceId], references: [id])
-  issuedBy       User?                @relation("WarrantyIssuedBy", fields: [issuedById], references: [id])
-  verifiedBy     User?                @relation("WarrantyVerifiedBy", fields: [verifiedById], references: [id])
+  policy               WarrantyPolicy       @relation(fields: [policyId], references: [id])
+  provider             WarrantyProvider     @relation(fields: [providerId], references: [id])
+  customer             Customer             @relation(fields: [customerId], references: [id])
+  vehicle              CustomerVehicle?     @relation(fields: [vehicleId], references: [id])
+  part                 Part?                @relation(fields: [partId], references: [id])
+  partSerial           PartSerial?          @relation(fields: [partSerialId], references: [id])
+  slipLine             PartRequestSlipLine? @relation(fields: [slipLineId], references: [id])
+  jobCard              JobCard?             @relation(fields: [jobCardId], references: [id])
+  vehicleService       VehicleService?      @relation(fields: [vehicleServiceId], references: [id])
+  issuedBy             User?                @relation("WarrantyIssuedBy", fields: [issuedById], references: [id])
+  verifiedBy           User?                @relation("WarrantyVerifiedBy", fields: [verifiedById], references: [id])
+  claims               WarrantyClaim[]
+  coveredEstimateLines EstimateLineItem[]   @relation("EstimateLineCoveringWarranty")
+  // Zinox edition: a finished unit (by serial) under warranty
+  finishedUnitId       String?
+  finishedUnit         FinishedUnit?        @relation(fields: [finishedUnitId], references: [id])
 
   @@index([customerId])
   @@index([vehicleId])
@@ -2503,11 +2507,6 @@ model Warranty {
   @@index([slipLineId])
   @@index([endsAt])
   @@map("warranties")
-  claims WarrantyClaim[]
-  coveredEstimateLines EstimateLineItem[] @relation("EstimateLineCoveringWarranty")
-  // Zinox edition: a finished unit (by serial) under warranty
-  finishedUnitId String?
-  finishedUnit   FinishedUnit? @relation(fields: [finishedUnitId], references: [id])
 }
 
 // The branch chain for warranty decisions: Warranty staff request →
@@ -2523,30 +2522,30 @@ enum WarrantyApprovalStatus {
 // Deleting a policy goes through the chain. On final approval a policy
 // that never issued a warranty is deleted; one that did is archived.
 model WarrantyPolicyDeletionRequest {
-  id              String                 @id @default(cuid())
+  id                 String                 @id @default(cuid())
   // Null once the policy itself has been deleted (code/name are kept).
-  policyId        String?
-  reason          String
-  status          WarrantyApprovalStatus @default(PENDING_HOD)
-  requestedById   String
-  requestedAt     DateTime               @default(now())
-  hodDecidedById  String?
-  hodDecidedAt    DateTime?
+  policyId           String?
+  reason             String
+  status             WarrantyApprovalStatus @default(PENDING_HOD)
+  requestedById      String
+  requestedAt        DateTime               @default(now())
+  hodDecidedById     String?
+  hodDecidedAt       DateTime?
   managerDecidedById String?
   managerDecidedAt   DateTime?
-  declineReason   String?
+  declineReason      String?
   // What final approval did: DELETED or ARCHIVED.
-  outcome         String?
+  outcome            String?
   // Kept after the policy itself is deleted.
-  policyCode      String
-  policyName      String
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @default(now()) @updatedAt
+  policyCode         String
+  policyName         String
+  createdAt          DateTime               @default(now())
+  updatedAt          DateTime               @default(now()) @updatedAt
 
-  policy         WarrantyPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
-  requestedBy    User            @relation("WarrantyPolicyDeletionRequestedBy", fields: [requestedById], references: [id])
-  hodDecidedBy   User?           @relation("WarrantyPolicyDeletionHodDecidedBy", fields: [hodDecidedById], references: [id])
-  managerDecidedBy User?         @relation("WarrantyPolicyDeletionManagerDecidedBy", fields: [managerDecidedById], references: [id])
+  policy           WarrantyPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  requestedBy      User            @relation("WarrantyPolicyDeletionRequestedBy", fields: [requestedById], references: [id])
+  hodDecidedBy     User?           @relation("WarrantyPolicyDeletionHodDecidedBy", fields: [hodDecidedById], references: [id])
+  managerDecidedBy User?           @relation("WarrantyPolicyDeletionManagerDecidedBy", fields: [managerDecidedById], references: [id])
 
   @@index([policyId])
   @@index([status])
@@ -2574,84 +2573,84 @@ enum WarrantyClaimStatus {
 }
 
 model WarrantyClaim {
-  id                String              @id @default(cuid())
-  claimNumber       String              @unique
-  status            WarrantyClaimStatus @default(DRAFT)
-  warrantyId        String
-  providerId        String
-  customerId        String
-  vehicleId         String?
-  jobCardId         String?
-  vehicleServiceId  String?
-  complaint         String
-  cause             String
-  correction        String
-  causalPart        String
-  causalPartNumber  String?
-  failureDate       DateTime
-  failureReading    Int?
-  labourAmount      Decimal             @default(0) @db.Decimal(12, 2)
-  partsAmount       Decimal             @default(0) @db.Decimal(12, 2)
-  otherAmount       Decimal             @default(0) @db.Decimal(12, 2)
+  id                      String              @id @default(cuid())
+  claimNumber             String              @unique
+  status                  WarrantyClaimStatus @default(DRAFT)
+  warrantyId              String
+  providerId              String
+  customerId              String
+  vehicleId               String?
+  jobCardId               String?
+  vehicleServiceId        String?
+  complaint               String
+  cause                   String
+  correction              String
+  causalPart              String
+  causalPartNumber        String?
+  failureDate             DateTime
+  failureReading          Int?
+  labourAmount            Decimal             @default(0) @db.Decimal(12, 2)
+  partsAmount             Decimal             @default(0) @db.Decimal(12, 2)
+  otherAmount             Decimal             @default(0) @db.Decimal(12, 2)
   // Freight / courier for the replacement and the failed-part return.
-  logisticsAmount   Decimal             @default(0) @db.Decimal(12, 2)
-  claimedAmount     Decimal             @default(0) @db.Decimal(12, 2)
-  approvedAmount    Decimal?            @db.Decimal(12, 2)
-  settledAmount     Decimal?            @db.Decimal(12, 2)
+  logisticsAmount         Decimal             @default(0) @db.Decimal(12, 2)
+  claimedAmount           Decimal             @default(0) @db.Decimal(12, 2)
+  approvedAmount          Decimal?            @db.Decimal(12, 2)
+  settledAmount           Decimal?            @db.Decimal(12, 2)
   // From the provider's claim rules at the time the claim was opened.
-  deadlineAt        DateTime?
-  providerReference String?
-  settlementReference String?
-  decisionNotes     String?
-  returnReason      String?
-  cancelReason      String?
-  resubmissionCount Int                 @default(0)
+  deadlineAt              DateTime?
+  providerReference       String?
+  settlementReference     String?
+  decisionNotes           String?
+  returnReason            String?
+  cancelReason            String?
+  resubmissionCount       Int                 @default(0)
   // How the provider makes it right: pay/credit, send a replacement part,
   // or repair the failed part and return it.
-  remedy            WarrantyRemedy      @default(REIMBURSEMENT)
+  remedy                  WarrantyRemedy      @default(REIMBURSEMENT)
   // Failed-part return to the provider (many require it before accepting).
-  partReturnRequired Boolean            @default(false)
+  partReturnRequired      Boolean             @default(false)
   // AWAITING → SENT → RECEIVED_BY_PROVIDER (null when not required).
-  partReturnStatus  String?
-  partSentAt        DateTime?
-  partSentReference String?
-  partReceivedAt    DateTime?
+  partReturnStatus        String?
+  partSentAt              DateTime?
+  partSentReference       String?
+  partReceivedAt          DateTime?
   // Replacement received / repaired part returned (closes the claim for
   // those remedies).
-  replacementSerial String?
-  remedyNotes       String?
+  replacementSerial       String?
+  remedyNotes             String?
   // What the CUSTOMER received (separate from what the provider gives
   // us): repaired or replaced at no charge, a goodwill refund, paid, or
   // not covered — recorded whenever it's known.
   customerResolution      CustomerResolution?
   customerResolutionNotes String?
-  createdById       String
-  reviewRequestedAt DateTime?
-  hodApprovedById   String?
-  hodApprovedAt     DateTime?
-  managerApprovedById String?
-  managerApprovedAt DateTime?
-  submittedById     String?
-  submittedAt       DateTime?
-  decidedById       String?
-  decidedAt         DateTime?
-  settledById       String?
-  settledAt         DateTime?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @default(now()) @updatedAt
+  createdById             String
+  reviewRequestedAt       DateTime?
+  hodApprovedById         String?
+  hodApprovedAt           DateTime?
+  managerApprovedById     String?
+  managerApprovedAt       DateTime?
+  submittedById           String?
+  submittedAt             DateTime?
+  decidedById             String?
+  decidedAt               DateTime?
+  settledById             String?
+  settledAt               DateTime?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @default(now()) @updatedAt
 
-  warranty         Warranty         @relation(fields: [warrantyId], references: [id])
-  provider         WarrantyProvider @relation(fields: [providerId], references: [id])
-  customer         Customer         @relation(fields: [customerId], references: [id])
-  vehicle          CustomerVehicle? @relation(fields: [vehicleId], references: [id])
-  jobCard          JobCard?         @relation(fields: [jobCardId], references: [id])
-  vehicleService   VehicleService?  @relation(fields: [vehicleServiceId], references: [id])
-  createdBy        User             @relation("WarrantyClaimCreatedBy", fields: [createdById], references: [id])
-  hodApprovedBy    User?            @relation("WarrantyClaimHodApprovedBy", fields: [hodApprovedById], references: [id])
-  managerApprovedBy User?           @relation("WarrantyClaimManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  submittedBy      User?            @relation("WarrantyClaimSubmittedBy", fields: [submittedById], references: [id])
-  decidedBy        User?            @relation("WarrantyClaimDecidedBy", fields: [decidedById], references: [id])
-  settledBy        User?            @relation("WarrantyClaimSettledBy", fields: [settledById], references: [id])
+  warranty          Warranty         @relation(fields: [warrantyId], references: [id])
+  provider          WarrantyProvider @relation(fields: [providerId], references: [id])
+  customer          Customer         @relation(fields: [customerId], references: [id])
+  vehicle           CustomerVehicle? @relation(fields: [vehicleId], references: [id])
+  jobCard           JobCard?         @relation(fields: [jobCardId], references: [id])
+  vehicleService    VehicleService?  @relation(fields: [vehicleServiceId], references: [id])
+  createdBy         User             @relation("WarrantyClaimCreatedBy", fields: [createdById], references: [id])
+  hodApprovedBy     User?            @relation("WarrantyClaimHodApprovedBy", fields: [hodApprovedById], references: [id])
+  managerApprovedBy User?            @relation("WarrantyClaimManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  submittedBy       User?            @relation("WarrantyClaimSubmittedBy", fields: [submittedById], references: [id])
+  decidedBy         User?            @relation("WarrantyClaimDecidedBy", fields: [decidedById], references: [id])
+  settledBy         User?            @relation("WarrantyClaimSettledBy", fields: [settledById], references: [id])
 
   @@index([warrantyId])
   @@index([status])
@@ -2777,20 +2776,20 @@ model Visit {
   createdAt               DateTime    @default(now())
   updatedAt               DateTime    @default(now()) @updatedAt
 
-  branch       Branch @relation(fields: [branchId], references: [id])
-  host         User   @relation("VisitHost", fields: [hostUserId], references: [id])
-  registeredBy User   @relation("VisitRegisteredBy", fields: [registeredById], references: [id])
-  checkedInBy  User?  @relation("VisitCheckedInBy", fields: [checkedInById], references: [id])
-  checkedOutBy User?  @relation("VisitCheckedOutBy", fields: [checkedOutById], references: [id])
-  receivedBy   User?  @relation("VisitReceivedBy", fields: [receivedById], references: [id])
+  branch           Branch       @relation(fields: [branchId], references: [id])
+  host             User         @relation("VisitHost", fields: [hostUserId], references: [id])
+  registeredBy     User         @relation("VisitRegisteredBy", fields: [registeredById], references: [id])
+  checkedInBy      User?        @relation("VisitCheckedInBy", fields: [checkedInById], references: [id])
+  checkedOutBy     User?        @relation("VisitCheckedOutBy", fields: [checkedOutById], references: [id])
+  receivedBy       User?        @relation("VisitReceivedBy", fields: [receivedById], references: [id])
+  appointment      Appointment?
+  // Visitor groups booked on an appointment (one appointment, many groups).
+  appointmentId    String?
+  appointmentGroup Appointment? @relation("AppointmentVisits", fields: [appointmentId], references: [id], onDelete: SetNull)
 
   @@index([branchId, status])
   @@index([hostUserId])
   @@map("visits")
-  appointment Appointment?
-  // Visitor groups booked on an appointment (one appointment, many groups).
-  appointmentId String?
-  appointmentGroup Appointment? @relation("AppointmentVisits", fields: [appointmentId], references: [id], onDelete: SetNull)
 }
 
 // Employee Exit Pass (the paper form, digital): Department Head authorises,
@@ -2807,42 +2806,42 @@ enum ExitPassStatus {
 }
 
 model ExitPass {
-  id                String         @id @default(cuid())
-  passNumber        String         @unique
-  branchId          String
-  status            ExitPassStatus @default(PENDING_HEAD)
-  requestedById     String
-  reason            String
-  returning         Boolean
-  expectedOutAt     DateTime?
-  expectedReturnAt  DateTime?
+  id                      String         @id @default(cuid())
+  passNumber              String         @unique
+  branchId                String
+  status                  ExitPassStatus @default(PENDING_HEAD)
+  requestedById           String
+  reason                  String
+  returning               Boolean
+  expectedOutAt           DateTime?
+  expectedReturnAt        DateTime?
   // How long they plan to be out; the expected return is worked out from
   // the actual time out at the gate.
   expectedDurationMinutes Int?
-  headApprovedById  String?
-  headApprovedAt    DateTime?
-  managerApprovedById String?
-  managerApprovedAt   DateTime?
-  declinedById      String?
-  declinedAt        DateTime?
-  declineReason     String?
-  cancelReason      String?
-  gateOutAt         DateTime?
-  gateOutById       String?
-  gateInAt          DateTime?
-  gateInById        String?
-  overdueNotifiedAt DateTime?
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @default(now()) @updatedAt
+  headApprovedById        String?
+  headApprovedAt          DateTime?
+  managerApprovedById     String?
+  managerApprovedAt       DateTime?
+  declinedById            String?
+  declinedAt              DateTime?
+  declineReason           String?
+  cancelReason            String?
+  gateOutAt               DateTime?
+  gateOutById             String?
+  gateInAt                DateTime?
+  gateInById              String?
+  overdueNotifiedAt       DateTime?
+  createdAt               DateTime       @default(now())
+  updatedAt               DateTime       @default(now()) @updatedAt
 
-  branch         Branch @relation(fields: [branchId], references: [id])
-  requestedBy    User   @relation("ExitPassRequestedBy", fields: [requestedById], references: [id])
-  headApprovedBy User?  @relation("ExitPassHeadApprovedBy", fields: [headApprovedById], references: [id])
-  managerApprovedBy User? @relation("ExitPassManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  declinedBy     User?  @relation("ExitPassDeclinedBy", fields: [declinedById], references: [id])
-  gateOutBy      User?  @relation("ExitPassGateOutBy", fields: [gateOutById], references: [id])
-  gateInBy       User?  @relation("ExitPassGateInBy", fields: [gateInById], references: [id])
-  people         ExitPassPerson[]
+  branch            Branch           @relation(fields: [branchId], references: [id])
+  requestedBy       User             @relation("ExitPassRequestedBy", fields: [requestedById], references: [id])
+  headApprovedBy    User?            @relation("ExitPassHeadApprovedBy", fields: [headApprovedById], references: [id])
+  managerApprovedBy User?            @relation("ExitPassManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  declinedBy        User?            @relation("ExitPassDeclinedBy", fields: [declinedById], references: [id])
+  gateOutBy         User?            @relation("ExitPassGateOutBy", fields: [gateOutById], references: [id])
+  gateInBy          User?            @relation("ExitPassGateInBy", fields: [gateInById], references: [id])
+  people            ExitPassPerson[]
 
   @@index([branchId, status])
   @@map("exit_passes")
@@ -2947,16 +2946,16 @@ model RoadTestPermit {
   createdAt               DateTime       @default(now())
   updatedAt               DateTime       @default(now()) @updatedAt
 
-  branch            Branch          @relation(fields: [branchId], references: [id])
-  jobCard           JobCard?        @relation(fields: [jobCardId], references: [id])
-  vehicleService    VehicleService? @relation(fields: [vehicleServiceId], references: [id])
-  vehicle           CustomerVehicle @relation(fields: [vehicleId], references: [id])
-  requestedBy       User            @relation("RoadTestRequestedBy", fields: [requestedById], references: [id])
-  driver            User            @relation("RoadTestDriver", fields: [driverId], references: [id])
-  managerApprovedBy User?           @relation("RoadTestManagerApprovedBy", fields: [managerApprovedById], references: [id])
-  declinedBy        User?           @relation("RoadTestDeclinedBy", fields: [declinedById], references: [id])
-  gateOutBy         User?           @relation("RoadTestGateOutBy", fields: [gateOutById], references: [id])
-  gateInBy          User?           @relation("RoadTestGateInBy", fields: [gateInById], references: [id])
+  branch            Branch           @relation(fields: [branchId], references: [id])
+  jobCard           JobCard?         @relation(fields: [jobCardId], references: [id])
+  vehicleService    VehicleService?  @relation(fields: [vehicleServiceId], references: [id])
+  vehicle           CustomerVehicle  @relation(fields: [vehicleId], references: [id])
+  requestedBy       User             @relation("RoadTestRequestedBy", fields: [requestedById], references: [id])
+  driver            User             @relation("RoadTestDriver", fields: [driverId], references: [id])
+  managerApprovedBy User?            @relation("RoadTestManagerApprovedBy", fields: [managerApprovedById], references: [id])
+  declinedBy        User?            @relation("RoadTestDeclinedBy", fields: [declinedById], references: [id])
+  gateOutBy         User?            @relation("RoadTestGateOutBy", fields: [gateOutById], references: [id])
+  gateInBy          User?            @relation("RoadTestGateInBy", fields: [gateInById], references: [id])
   people            RoadTestPerson[]
 
   @@index([status])
@@ -3080,30 +3079,30 @@ enum IncidentStatus {
 }
 
 model SecurityIncident {
-  id               String           @id @default(cuid())
-  incidentNumber   String           @unique
-  branchId         String
-  type             String
-  severity         IncidentSeverity
-  status           IncidentStatus   @default(OPEN)
-  occurredAt       DateTime
-  location         String
-  description      String
-  peopleInvolved   String?
-  vehiclePlate     String?
-  actionTaken      String?
+  id             String           @id @default(cuid())
+  incidentNumber String           @unique
+  branchId       String
+  type           String
+  severity       IncidentSeverity
+  status         IncidentStatus   @default(OPEN)
+  occurredAt     DateTime
+  location       String
+  description    String
+  peopleInvolved String?
+  vehiclePlate   String?
+  actionTaken    String?
   // Optional link to the record it concerns (Visit / ExitPass /
   // RoadTestPermit / VehicleGateExit) — by type + id + its number.
-  relatedType      String?
-  relatedId        String?
-  relatedNumber    String?
-  reportedById     String
-  assignedToId     String?
-  resolution       String?
-  closedAt         DateTime?
-  closedById       String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @default(now()) @updatedAt
+  relatedType    String?
+  relatedId      String?
+  relatedNumber  String?
+  reportedById   String
+  assignedToId   String?
+  resolution     String?
+  closedAt       DateTime?
+  closedById     String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @default(now()) @updatedAt
 
   branch     Branch @relation(fields: [branchId], references: [id])
   reportedBy User   @relation("IncidentReportedBy", fields: [reportedById], references: [id])
@@ -3319,11 +3318,11 @@ model NotificationPreference {
 /// Everyone going out on a road test besides the driver — staff (linked to
 /// their user) or other people by name, like the exit pass.
 model RoadTestPerson {
-  id          String  @id @default(cuid())
-  roadTestId  String
-  userId      String?
-  name        String
-  employeeId  String?
+  id         String  @id @default(cuid())
+  roadTestId String
+  userId     String?
+  name       String
+  employeeId String?
 
   roadTest RoadTestPermit @relation(fields: [roadTestId], references: [id], onDelete: Cascade)
   user     User?          @relation("RoadTestPersonUser", fields: [userId], references: [id])
@@ -3387,7 +3386,6 @@ model ErrorEvent {
   @@map("error_events")
 }
 
-
 /// v30 — Recycle bin. A record created by mistake (a Job Card opened on the
 /// wrong vehicle, a duplicate customer) is moved here while nothing of
 /// consequence has happened to it: no payment, no approved estimate, no parts,
@@ -3438,17 +3436,17 @@ model RecycleBinItem {
 
 /// Per-organisation switches for Enyo. No row = defaults (everything on, predictions in shadow).
 model EnyoSetting {
-  organisationId    String   @id
+  organisationId    String    @id
   // Master switch: off = every Enyo feature hidden; the ERP works as before.
-  enabled           Boolean  @default(true)
-  staffAssistant    Boolean  @default(true)
-  customerAssistant Boolean  @default(true)
-  publicAssistant   Boolean  @default(true)
-  mailAi            Boolean  @default(true)
+  enabled           Boolean   @default(true)
+  staffAssistant    Boolean   @default(true)
+  customerAssistant Boolean   @default(true)
+  publicAssistant   Boolean   @default(true)
+  mailAi            Boolean   @default(true)
   // SHADOW (measured, never shown) | SUGGEST (shown as suggestions) | OFF
-  predictionsMode   String   @default("SHADOW")
+  predictionsMode   String    @default("SHADOW")
   // Display name and greeting shown to staff and customers (branding).
-  displayName       String   @default("Enyo")
+  displayName       String    @default("Enyo")
   // v32: the automation level of each learning capability, e.g.
   // {"JOB_DURATION":"SHADOW","PRICE_ANOMALY":"ASSIST"}. Missing = the
   // capability's default (OFF or SHADOW); see lib/enyo/ml/capabilities.ts.
@@ -3458,7 +3456,7 @@ model EnyoSetting {
   // never learned from. Null = all history (up to three years).
   learnFrom         DateTime? @db.Date
   updatedById       String?
-  updatedAt         DateTime @updatedAt
+  updatedAt         DateTime  @updatedAt
 
   @@map("enyo_settings")
 }
@@ -3477,15 +3475,15 @@ enum EnyoMessageRole {
 
 /// One chat thread. Staff: userId. Customer portal: customerId. Public website: visitorKey (random, no personal data).
 model EnyoConversation {
-  id             String            @id @default(cuid())
+  id             String        @id @default(cuid())
   organisationId String
   channel        EnyoChannel
   userId         String?
   customerId     String?
   visitorKey     String?
   title          String?
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
   archivedAt     DateTime?
   messages       EnyoMessage[]
 
@@ -3615,59 +3613,59 @@ model SupportTicket {
 
   // ── v36: the Support centre ─────────────────────────────────────────
   // Which team (queue) owns it, and the address it came in to / goes out from.
-  queueId          String?
-  mailboxId        String?
+  queueId             String?
+  mailboxId           String?
   // URGENT | HIGH | NORMAL | LOW
-  priority         String    @default("NORMAL")
+  priority            String    @default("NORMAL")
   // What it is about (Enyo's triage or a colleague's choice) and how it reads.
-  topic            String?
-  sentiment        String?
-  language         String?
-  tags             String[]  @default([])
+  topic               String?
+  sentiment           String?
+  language            String?
+  tags                String[]  @default([])
   // Plates, VINs and record numbers found in the messages (linked on the ticket page).
-  entities         Json?
+  entities            Json?
   // The sender proved to be the customer (signed in, or the email passed DMARC
   // and matches the customer's address). Only then may records be discussed.
-  verified         Boolean   @default(false)
+  verified            Boolean   @default(false)
   // The email's sender domain proved the address (DMARC, or SPF and DKIM).
   // Enyo answers an email by itself only then (a forged sender never gets an AI reply).
-  authenticatedSender Boolean @default(false)
+  authenticatedSender Boolean   @default(false)
   // Unguessable; the customer's "solved / talk to a person / rate us" page.
-  token            String?   @unique
+  token               String?   @unique
   // Service targets, worked out in business hours when the ticket opens.
-  dueFirstResponseAt DateTime?
-  dueResolutionAt  DateTime?
-  slaWarnedAt      DateTime?
-  slaBreachedAt    DateTime?
-  lastCustomerAt   DateTime?
-  lastAgentAt      DateTime?
-  pendingSince     DateTime?
-  nudgeCount       Int       @default(0)
-  reopenCount      Int       @default(0)
-  closedAt         DateTime?
+  dueFirstResponseAt  DateTime?
+  dueResolutionAt     DateTime?
+  slaWarnedAt         DateTime?
+  slaBreachedAt       DateTime?
+  lastCustomerAt      DateTime?
+  lastAgentAt         DateTime?
+  pendingSince        DateTime?
+  nudgeCount          Int       @default(0)
+  reopenCount         Int       @default(0)
+  closedAt            DateTime?
   // Why a person was needed (customer_asked, low_confidence, sensitive, …).
-  handoverReason   String?
+  handoverReason      String?
   // ANSWERED (Enyo replied) → CONFIRMED (customer said solved) | ASSUMED (no
   // further question) | ESCALATED (asked for a person) — the AI resolution measures.
-  aiOutcome        String?
-  aiAnsweredAt     DateTime?
+  aiOutcome           String?
+  aiAnsweredAt        DateTime?
   // Waiting for Enyo to read it (triage, then an answer or a draft) — done
   // by the scheduled run, so taking in mail stays fast.
-  aiPendingAt      DateTime?
-  csatScore        Int?
-  csatComment      String?
-  csatAt           DateTime?
-  csatRequestedAt  DateTime?
+  aiPendingAt         DateTime?
+  csatScore           Int?
+  csatComment         String?
+  csatAt              DateTime?
+  csatRequestedAt     DateTime?
   // The email that opened it (Message-ID), for threading replies.
-  sourceMessageId  String?
+  sourceMessageId     String?
   // v37 — who is writing, as the Support centre recognised them from their
   // address or session: customer | staff | both (a colleague who is also a
   // customer) | unknown. And the colleague, when it is one.
-  senderKind       String?
-  senderUserId     String?
+  senderKind          String?
+  senderUserId        String?
   // v37 — a colleague's own request for help (Get help in the portal): only
   // that colleague, the help queue's members and support managers see it.
-  requesterUserId  String?
+  requesterUserId     String?
 
   @@index([requesterUserId, createdAt])
   @@index([organisationId, status, createdAt])
@@ -3682,31 +3680,31 @@ model SupportTicket {
 /// v36 — a support team and its address(es): General, Warranty, Technical,
 /// Customer care, Parts, Sales … Each has its own targets and AI reply mode.
 model SupportQueue {
-  id             String   @id @default(cuid())
-  organisationId String
-  name           String
+  id              String               @id @default(cuid())
+  organisationId  String
+  name            String
   // general | warranty | technical | customer_care | parts | sales | other
-  kind           String   @default("general")
-  description    String?
+  kind            String               @default("general")
+  description     String?
   // A branch's own queue (null: the whole organisation).
-  branchId       String?
-  isDefault      Boolean  @default(false)
-  active         Boolean  @default(true)
+  branchId        String?
+  isDefault       Boolean              @default(false)
+  active          Boolean              @default(true)
   // OFF: people only · SUGGEST: Enyo drafts, people send · AUTO: Enyo answers
   // general questions itself when it is confident; everything else goes to people.
-  aiMode         String   @default("SUGGEST")
-  autoAcknowledge Boolean @default(true)
+  aiMode          String               @default("SUGGEST")
+  autoAcknowledge Boolean              @default(true)
   // v38 — the team's own words in its automatic reply (opening times, what
   // to include, an emergency number), shown above the reference and target.
-  ackMessage     String?
+  ackMessage      String?
   // Minutes per priority: { URGENT: { first, resolve }, … } (defaults when null).
-  targets        Json?
-  signature      String?
-  createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  members        SupportQueueMember[]
-  mailboxes      SupportMailbox[]
+  targets         Json?
+  signature       String?
+  createdById     String?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+  members         SupportQueueMember[]
+  mailboxes       SupportMailbox[]
 
   @@unique([organisationId, name])
   @@index([organisationId, active])
@@ -3719,13 +3717,13 @@ model SupportQueueMember {
   queue          SupportQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
   userId         String
   organisationId String
-  capacity       Int      @default(15)
-  away           Boolean  @default(false)
+  capacity       Int          @default(15)
+  away           Boolean      @default(false)
   // v38 — a team lead is emailed when nobody on the team can take a new
   // request (all away or full) and when a request misses its target.
-  isLead         Boolean  @default(false)
+  isLead         Boolean      @default(false)
   lastAssignedAt DateTime?
-  createdAt      DateTime @default(now())
+  createdAt      DateTime     @default(now())
 
   @@id([queueId, userId])
   @@index([organisationId, userId])
@@ -3736,7 +3734,7 @@ model SupportQueueMember {
 /// mail on a schedule, replies sent from it. The password is encrypted
 /// (AES-256-GCM, MAILBOX_ENCRYPTION_KEY) and never shown or logged.
 model SupportMailbox {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   organisationId String
   queueId        String
   queue          SupportQueue @relation(fields: [queueId], references: [id], onDelete: Cascade)
@@ -3744,22 +3742,22 @@ model SupportMailbox {
   displayName    String?
   imapHost       String
   imapPort       Int
-  imapSecure     Boolean  @default(true)
+  imapSecure     Boolean      @default(true)
   smtpHost       String
   smtpPort       Int
-  smtpSecure     Boolean  @default(true)
+  smtpSecure     Boolean      @default(true)
   username       String
   secret         String
   // ACTIVE | ERROR | PAUSED
-  status         String   @default("ACTIVE")
+  status         String       @default("ACTIVE")
   lastSyncAt     DateTime?
   lastError      String?
   // Where reading continues from (IMAP UID and its validity).
-  lastUid        Int      @default(0)
+  lastUid        Int          @default(0)
   uidValidity    String?
   createdById    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
   @@unique([organisationId, address])
   @@index([status, lastSyncAt])
@@ -3768,67 +3766,67 @@ model SupportMailbox {
 
 /// v36 — the organisation's support settings: opening hours, holidays and the AI threshold.
 model SupportSetting {
-  organisationId String   @id
+  organisationId  String   @id
   // { "1": ["08:00","17:00"], …, "6": ["09:00","13:00"] } (1 = Monday; missing = closed)
-  hours          Json?
+  hours           Json?
   // ["2026-10-01", …]
-  holidays       String[] @default([])
+  holidays        String[] @default([])
   // How sure Enyo must be (0–1) before it answers by itself in AUTO queues.
-  aiThreshold    Float    @default(0.75)
-  nudgeAfterHours Int     @default(48)
-  autoResolveDays Int     @default(7)
-  closeAfterDays Int      @default(4)
-  csatEnabled    Boolean  @default(true)
+  aiThreshold     Float    @default(0.75)
+  nudgeAfterHours Int      @default(48)
+  autoResolveDays Int      @default(7)
+  closeAfterDays  Int      @default(4)
+  csatEnabled     Boolean  @default(true)
   // v38 — public holidays come from a calendar worked out each year
   // ("NG": Nigeria's fixed dates, Easter dates and the Islamic holidays),
   // plus the extra days in `holidays`, minus any calendar days listed in
   // `holidaysOff` (e.g. the branch opens on Boxing Day). Null = no calendar.
   holidayCalendar String?  @default("NG")
-  holidaysOff    String[] @default([])
-  updatedById    String?
-  updatedAt      DateTime @updatedAt
+  holidaysOff     String[] @default([])
+  updatedById     String?
+  updatedAt       DateTime @updatedAt
 
   @@map("support_settings")
 }
 
 model SupportReply {
-  id           String        @id @default(cuid())
-  ticketId     String
-  ticket       SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  id             String        @id @default(cuid())
+  ticketId       String
+  ticket         SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   // Staff author; null when the customer wrote it.
-  authorUserId String?
-  fromCustomer Boolean       @default(false)
-  body         String
-  createdAt    DateTime      @default(now())
+  authorUserId   String?
+  fromCustomer   Boolean       @default(false)
+  body           String
+  createdAt      DateTime      @default(now())
   // v36 — PUBLIC (the customer sees it) or INTERNAL (a colleague's note, never shown to the customer).
-  visibility   String        @default("PUBLIC")
+  visibility     String        @default("PUBLIC")
   // CUSTOMER | AGENT | AI | SYSTEM (acknowledgement, nudge) | NOTE
-  kind         String        @default("AGENT")
+  kind           String        @default("AGENT")
   // Written with Enyo's help (a draft the colleague sent).
-  aiDrafted    Boolean       @default(false)
+  aiDrafted      Boolean       @default(false)
   // Email threading: this message's Message-ID, and where it came from.
   emailMessageId String?
-  fromAddress  String?
+  fromAddress    String?
   // Attachment names and sizes (the files stay in the mailbox).
-  attachments  Json?
+  attachments    Json?
   // Exactly-once intake of an email (mailbox + Message-ID hash).
-  intakeKey    String?       @unique
+  intakeKey      String?       @unique
   // v37 — Enyo's own replies and drafts: how sure it was, the model, the
   // approved answers it used, and what it knew about the sender (kind,
   // proven, the records and links it was given — never message text).
-  aiConfidence Float?
-  aiModel      String?
-  aiSources    String[]      @default([])
-  aiContext    Json?
+  aiConfidence   Float?
+  aiModel        String?
+  aiSources      String[]      @default([])
+  aiContext      Json?
   // v37 — a person's check of Enyo's reply (the Support centre's "Enyo's
   // replies" page): GOOD | FIXED (a corrected answer was written) | WRONG,
   // and for drafts automatically USED (sent nearly as written) | EDITED |
   // IGNORED. The reason is a fixed code (knowledge_gap, wrong_facts …).
-  reviewStatus String?
-  reviewReason String?
-  reviewNote   String?
-  reviewedById String?
-  reviewedAt   DateTime?
+  reviewStatus   String?
+  reviewReason   String?
+  reviewNote     String?
+  reviewedById   String?
+  reviewedAt     DateTime?
 
   @@index([kind, reviewStatus, createdAt])
   @@index([ticketId, createdAt])
@@ -4015,26 +4013,26 @@ model EnyoModel {
 // before Enyo uses it as an example or reuses it for the same question.
 // Additive only.
 model EnyoLearnedAnswer {
-  id              String   @id @default(cuid())
-  organisationId  String
+  id             String    @id @default(cuid())
+  organisationId String
   // STAFF | CUSTOMER | PUBLIC | SUPPORT
-  channel         String
-  question        String
-  answer          String
+  channel        String
+  question       String
+  answer         String
   // The question's words as Enyo compares them (lib/enyo/predict/text.ts tokenise).
-  tokens          Json
+  tokens         Json
   // Where it came from: the rated answer, or the support reply.
-  source          String
-  sourceId        String   @unique
+  source         String
+  sourceId       String    @unique
   // PENDING until an administrator approves it on the Enyo learning page;
   // only APPROVED answers are ever shown to the model or reused.
-  status          String   @default("PENDING")
-  approvedById    String?
-  approvedAt      DateTime?
-  uses            Int      @default(0)
-  lastUsedAt      DateTime?
-  createdById     String?
-  createdAt       DateTime @default(now())
+  status         String    @default("PENDING")
+  approvedById   String?
+  approvedAt     DateTime?
+  uses           Int       @default(0)
+  lastUsedAt     DateTime?
+  createdById    String?
+  createdAt      DateTime  @default(now())
 
   @@index([organisationId, channel, status, createdAt])
   @@map("enyo_learned_answers")
@@ -4167,7 +4165,7 @@ model SiteVisit {
 // (lib/zinox/people.ts resolves them); the main author of each record is a relation.
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** Atomic per-organisation, per-prefix, per-year counters for record numbers. */
+/// Atomic per-organisation, per-prefix, per-year counters for record numbers.
 model DocumentSequence {
   organisationId String
   prefix         String
@@ -4209,7 +4207,7 @@ enum SubBrand {
   ITEC
 }
 
-/** ASSEMBLED on the line from a BOM; FINISHED_IMPORT bought finished; KIT assembled from finished products (a solar kit). */
+/// ASSEMBLED on the line from a BOM; FINISHED_IMPORT bought finished; KIT assembled from finished products (a solar kit).
 enum ProductSource {
   ASSEMBLED
   FINISHED_IMPORT
@@ -4238,61 +4236,61 @@ model Product {
   createdAt             DateTime      @default(now())
   updatedAt             DateTime      @updatedAt
 
-  organisation   Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  createdBy      User           @relation("ProductCreatedBy", fields: [createdById], references: [id])
-  warrantyPolicy WarrantyPolicy? @relation("ProductDefaultPolicy", fields: [warrantyPolicyId], references: [id])
-  configurations ProductConfiguration[]
-  productionUnits ProductionUnit[]
-  finishedUnits  FinishedUnit[]
-  priceItems     PriceListItem[]
-  quotationLines QuotationLine[]
-  orderLines     SalesOrderLine[]
+  organisation     Organisation              @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy        User                      @relation("ProductCreatedBy", fields: [createdById], references: [id])
+  warrantyPolicy   WarrantyPolicy?           @relation("ProductDefaultPolicy", fields: [warrantyPolicyId], references: [id])
+  configurations   ProductConfiguration[]
+  productionUnits  ProductionUnit[]
+  finishedUnits    FinishedUnit[]
+  priceItems       PriceListItem[]
+  quotationLines   QuotationLine[]
+  orderLines       SalesOrderLine[]
   requisitionLines PurchaseRequisitionLine[]
-  purchaseLines  PurchaseOrderLine[]
-  transferLines  TransferLine[]
-  deliverables   ProjectDeliverable[]
+  purchaseLines    PurchaseOrderLine[]
+  transferLines    TransferLine[]
+  deliverables     ProjectDeliverable[]
 
   @@unique([organisationId, sku])
   @@index([organisationId, family, isActive])
   @@map("products")
 }
 
-/** A sellable variant: RAM, storage, OS edition, keyboard layout; its own SKU suffix and BOM. */
+/// A sellable variant: RAM, storage, OS edition, keyboard layout; its own SKU suffix and BOM.
 model ProductConfiguration {
-  id        String  @id @default(cuid())
+  id        String   @id @default(cuid())
   productId String
   code      String
   name      String
   specs     Json?
-  isDefault Boolean @default(false)
-  isActive  Boolean @default(true)
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  product   Product          @relation(fields: [productId], references: [id], onDelete: Cascade)
-  bomLines  BomLine[]
-  packages  ConfigurationPackage[]
-  buildOrders BuildOrder[]
+  product         Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
+  bomLines        BomLine[]
+  packages        ConfigurationPackage[]
+  buildOrders     BuildOrder[]
   productionUnits ProductionUnit[]
-  finishedUnits FinishedUnit[]
-  priceItems PriceListItem[]
-  quotationLines QuotationLine[]
-  orderLines SalesOrderLine[]
-  deliverables ProjectDeliverable[]
+  finishedUnits   FinishedUnit[]
+  priceItems      PriceListItem[]
+  quotationLines  QuotationLine[]
+  orderLines      SalesOrderLine[]
+  deliverables    ProjectDeliverable[]
 
   @@unique([productId, code])
   @@map("product_configurations")
 }
 
-/** One component line of a configuration's Bill of Materials (parts live in the components warehouse: Part). */
+/// One component line of a configuration's Bill of Materials (parts live in the components warehouse: Part).
 model BomLine {
-  id              String   @id @default(cuid())
+  id              String  @id @default(cuid())
   configurationId String
   partId          String
-  quantity        Decimal  @db.Decimal(12, 3)
+  quantity        Decimal @db.Decimal(12, 3)
   // The line station that fits it (ASSEMBLY, SOFTWARE, PACKING …), for the traveller.
-  station         String   @default("ASSEMBLY")
-  isOptional      Boolean  @default(false)
+  station         String  @default("ASSEMBLY")
+  isOptional      Boolean @default(false)
   notes           String?
 
   configuration ProductConfiguration @relation(fields: [configurationId], references: [id], onDelete: Cascade)
@@ -4309,7 +4307,7 @@ enum SoftwareKind {
   AGENT
 }
 
-/** Software the line installs and the line supervisor confirms: the Windows image, Office, antivirus, the Zinox Care agent. */
+/// Software the line installs and the line supervisor confirms: the Windows image, Office, antivirus, the Zinox Care agent.
 model SoftwarePackage {
   id              String       @id @default(cuid())
   organisationId  String
@@ -4320,7 +4318,7 @@ model SoftwarePackage {
   isActive        Boolean      @default(true)
   createdAt       DateTime     @default(now())
 
-  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  organisation   Organisation           @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   configurations ConfigurationPackage[]
 
   @@unique([organisationId, name, version])
@@ -4344,7 +4342,7 @@ enum CheckStage {
   QA
 }
 
-/** The checklist items per family and stage (what the line supervisor confirms, what QA tests). */
+/// The checklist items per family and stage (what the line supervisor confirms, what QA tests).
 model CheckTemplate {
   id             String         @id @default(cuid())
   organisationId String
@@ -4404,20 +4402,20 @@ model BuildOrder {
   createdAt       DateTime         @default(now())
   updatedAt       DateTime         @updatedAt
 
-  branch        Branch               @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  configuration ProductConfiguration @relation(fields: [configurationId], references: [id])
-  salesOrder    SalesOrder?          @relation(fields: [salesOrderId], references: [id])
-  project       Project?             @relation(fields: [projectId], references: [id])
-  plannedBy     User                 @relation("BuildOrderPlannedBy", fields: [plannedById], references: [id])
+  branch         Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  configuration  ProductConfiguration  @relation(fields: [configurationId], references: [id])
+  salesOrder     SalesOrder?           @relation(fields: [salesOrderId], references: [id])
+  project        Project?              @relation(fields: [projectId], references: [id])
+  plannedBy      User                  @relation("BuildOrderPlannedBy", fields: [plannedById], references: [id])
   materialIssues MaterialIssue[]
-  units         ProductionUnit[]
-  requisitions  PurchaseRequisition[]
+  units          ProductionUnit[]
+  requisitions   PurchaseRequisition[]
 
   @@index([branchId, status, createdAt])
   @@map("build_orders")
 }
 
-/** Components the parts warehouse issued to the line against a build order. */
+/// Components the parts warehouse issued to the line against a build order.
 model MaterialIssue {
   id           String   @id @default(cuid())
   buildOrderId String
@@ -4446,7 +4444,7 @@ enum UnitStage {
   SCRAPPED
 }
 
-/** One unit on the line: its serial, who built, imaged, checked, tested and packed it, and every component inside it. */
+/// One unit on the line: its serial, who built, imaged, checked, tested and packed it, and every component inside it.
 model ProductionUnit {
   id              String    @id @default(cuid())
   number          String    @unique
@@ -4492,7 +4490,7 @@ model ProductionUnit {
 }
 
 model UnitComponent {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   unitId       String
   partId       String
   serialNumber String?
@@ -4570,7 +4568,7 @@ enum FinishedUnitStatus {
   SCRAPPED
 }
 
-/** Every finished unit the organisation holds or has sold, by serial, for life. */
+/// Every finished unit the organisation holds or has sold, by serial, for life.
 model FinishedUnit {
   id                 String             @id @default(cuid())
   serialNumber       String             @unique
@@ -4590,20 +4588,20 @@ model FinishedUnit {
   createdAt          DateTime           @default(now())
   updatedAt          DateTime           @updatedAt
 
-  product        Product               @relation(fields: [productId], references: [id])
-  configuration  ProductConfiguration? @relation(fields: [configurationId], references: [id])
-  location       FgLocation            @relation(fields: [locationId], references: [id])
-  productionUnit ProductionUnit?       @relation(fields: [productionUnitId], references: [id])
-  goodsReceiptLine GoodsReceiptLine?   @relation(fields: [goodsReceiptLineId], references: [id])
-  salesOrder     SalesOrder?           @relation(fields: [salesOrderId], references: [id])
-  salesOrderLine SalesOrderLine?       @relation(fields: [salesOrderLineId], references: [id])
-  dispatch       Dispatch?             @relation(fields: [dispatchId], references: [id])
-  customer       Customer?             @relation(fields: [customerId], references: [id])
-  warranties     Warranty[]
-  releaseLines   ReleaseLine[]
-  transferLines  TransferLine[]
-  serviceJobs    ServiceJob[]
-  returns        SalesReturn[]
+  product          Product               @relation(fields: [productId], references: [id])
+  configuration    ProductConfiguration? @relation(fields: [configurationId], references: [id])
+  location         FgLocation            @relation(fields: [locationId], references: [id])
+  productionUnit   ProductionUnit?       @relation(fields: [productionUnitId], references: [id])
+  goodsReceiptLine GoodsReceiptLine?     @relation(fields: [goodsReceiptLineId], references: [id])
+  salesOrder       SalesOrder?           @relation(fields: [salesOrderId], references: [id])
+  salesOrderLine   SalesOrderLine?       @relation(fields: [salesOrderLineId], references: [id])
+  dispatch         Dispatch?             @relation(fields: [dispatchId], references: [id])
+  customer         Customer?             @relation(fields: [customerId], references: [id])
+  warranties       Warranty[]
+  releaseLines     ReleaseLine[]
+  transferLines    TransferLine[]
+  serviceJobs      ServiceJob[]
+  returns          SalesReturn[]
 
   @@index([productId, status])
   @@index([locationId, status])
@@ -4709,10 +4707,10 @@ model PurchaseRequisition {
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
 
-  branch     Branch                    @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  buildOrder BuildOrder?               @relation(fields: [buildOrderId], references: [id])
-  raisedBy   User                      @relation("RequisitionRaisedBy", fields: [raisedById], references: [id])
-  lines      PurchaseRequisitionLine[]
+  branch         Branch                    @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  buildOrder     BuildOrder?               @relation(fields: [buildOrderId], references: [id])
+  raisedBy       User                      @relation("RequisitionRaisedBy", fields: [raisedById], references: [id])
+  lines          PurchaseRequisitionLine[]
   purchaseOrders PurchaseOrder[]
 
   @@index([branchId, status])
@@ -4841,7 +4839,7 @@ model Shipment {
   @@map("shipments")
 }
 
-/** Incoming quality control on a goods receipt: a sample tested, pass or fail, quarantine on fail. */
+/// Incoming quality control on a goods receipt: a sample tested, pass or fail, quarantine on fail.
 model IncomingInspection {
   id             String   @id @default(cuid())
   goodsReceiptId String   @unique
@@ -4867,7 +4865,7 @@ enum SupplierClaimStatus {
   CLOSED
 }
 
-/** Shortage, damage or a component failure charged back to the supplier. */
+/// Shortage, damage or a component failure charged back to the supplier.
 model SupplierClaim {
   id              String              @id @default(cuid())
   number          String              @unique
@@ -4910,7 +4908,7 @@ enum DealerTier {
   TIER_3
 }
 
-/** A customer who buys to resell (dealer, wholesaler, distributor such as TD Africa): tier, credit and the daily price broadcast. */
+/// A customer who buys to resell (dealer, wholesaler, distributor such as TD Africa): tier, credit and the daily price broadcast.
 model DealerAccount {
   id                     String       @id @default(cuid())
   customerId             String       @unique
@@ -4957,8 +4955,8 @@ model PriceList {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
-  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
-  createdBy    User            @relation("PriceListCreatedBy", fields: [createdById], references: [id])
+  organisation Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User             @relation("PriceListCreatedBy", fields: [createdById], references: [id])
   items        PriceListItem[]
   quotations   Quotation[]
   broadcasts   PriceBroadcast[]
@@ -4983,7 +4981,7 @@ model PriceListItem {
   @@map("price_list_items")
 }
 
-/** The daily dealer price broadcast: which list went out, when, to how many, and what changed. */
+/// The daily dealer price broadcast: which list went out, when, to how many, and what changed.
 model PriceBroadcast {
   id              String   @id @default(cuid())
   number          String   @unique
@@ -5017,28 +5015,28 @@ enum QuotationStatus {
 }
 
 model Quotation {
-  id                    String          @id @default(cuid())
-  number                String          @unique
-  branchId              String
-  customerId            String
-  channel               SalesChannel    @default(RETAIL)
-  priceListId           String?
-  projectId             String?
-  status                QuotationStatus @default(DRAFT)
-  validUntil            DateTime?
-  subtotal              Decimal         @default(0) @db.Decimal(16, 2)
-  discountTotal         Decimal         @default(0) @db.Decimal(16, 2)
-  taxRatePercent        Decimal         @default(7.5) @db.Decimal(5, 2)
-  taxTotal              Decimal         @default(0) @db.Decimal(16, 2)
-  total                 Decimal         @default(0) @db.Decimal(16, 2)
-  discountApproverId    String?
-  discountApprovedAt    DateTime?
+  id                     String          @id @default(cuid())
+  number                 String          @unique
+  branchId               String
+  customerId             String
+  channel                SalesChannel    @default(RETAIL)
+  priceListId            String?
+  projectId              String?
+  status                 QuotationStatus @default(DRAFT)
+  validUntil             DateTime?
+  subtotal               Decimal         @default(0) @db.Decimal(16, 2)
+  discountTotal          Decimal         @default(0) @db.Decimal(16, 2)
+  taxRatePercent         Decimal         @default(7.5) @db.Decimal(5, 2)
+  taxTotal               Decimal         @default(0) @db.Decimal(16, 2)
+  total                  Decimal         @default(0) @db.Decimal(16, 2)
+  discountApproverId     String?
+  discountApprovedAt     DateTime?
   discountRejectedReason String?
-  notes                 String?
-  preparedById          String
-  sentAt                DateTime?
-  createdAt             DateTime        @default(now())
-  updatedAt             DateTime        @updatedAt
+  notes                  String?
+  preparedById           String
+  sentAt                 DateTime?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
 
   branch     Branch          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   customer   Customer        @relation(fields: [customerId], references: [id])
@@ -5119,11 +5117,11 @@ model SalesOrder {
   createdAt          DateTime         @default(now())
   updatedAt          DateTime         @updatedAt
 
-  branch      Branch           @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  customer    Customer         @relation(fields: [customerId], references: [id])
-  quotation   Quotation?       @relation(fields: [quotationId], references: [id])
-  project     Project?         @relation(fields: [projectId], references: [id])
-  confirmedBy User             @relation("SalesOrderConfirmedBy", fields: [confirmedById], references: [id])
+  branch      Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  customer    Customer           @relation(fields: [customerId], references: [id])
+  quotation   Quotation?         @relation(fields: [quotationId], references: [id])
+  project     Project?           @relation(fields: [projectId], references: [id])
+  confirmedBy User               @relation("SalesOrderConfirmedBy", fields: [confirmedById], references: [id])
   lines       SalesOrderLine[]
   proFormas   ProFormaInvoice[]
   payments    SalesPayment[]
@@ -5202,21 +5200,21 @@ enum SalesPaymentStatus {
 }
 
 model SalesPayment {
-  id            String             @id @default(cuid())
-  salesOrderId  String
-  amount        Decimal            @db.Decimal(16, 2)
-  method        SalesPaymentMethod @default(BANK_TRANSFER)
-  reference     String?
-  paidAt        DateTime           @default(now())
-  status        SalesPaymentStatus @default(PENDING)
-  proofNote     String?
-  recordedById  String?
+  id                   String             @id @default(cuid())
+  salesOrderId         String
+  amount               Decimal            @db.Decimal(16, 2)
+  method               SalesPaymentMethod @default(BANK_TRANSFER)
+  reference            String?
+  paidAt               DateTime           @default(now())
+  status               SalesPaymentStatus @default(PENDING)
+  proofNote            String?
+  recordedById         String?
   // A dealer or customer uploading proof on the portal records it as themselves.
   recordedByCustomerId String?
-  confirmedById String?
-  confirmedAt   DateTime?
-  rejectedReason String?
-  createdAt     DateTime           @default(now())
+  confirmedById        String?
+  confirmedAt          DateTime?
+  rejectedReason       String?
+  createdAt            DateTime           @default(now())
 
   salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
 
@@ -5231,7 +5229,7 @@ enum ReleaseStatus {
   CANCELLED
 }
 
-/** Finance has cleared the order: the warehouse picks the serials and prints the release note. */
+/// Finance has cleared the order: the warehouse picks the serials and prints the release note.
 model GoodsReleaseNote {
   id           String        @id @default(cuid())
   number       String        @unique
@@ -5307,16 +5305,16 @@ enum InvoiceStatus {
 }
 
 model SalesInvoice {
-  id           String        @id @default(cuid())
-  number       String        @unique
-  salesOrderId String
-  status       InvoiceStatus @default(ISSUED)
-  issuedById   String
-  issuedAt     DateTime      @default(now())
-  subtotal     Decimal       @db.Decimal(16, 2)
-  taxTotal     Decimal       @db.Decimal(16, 2)
-  total        Decimal       @db.Decimal(16, 2)
-  exportedAt   DateTime?
+  id              String        @id @default(cuid())
+  number          String        @unique
+  salesOrderId    String
+  status          InvoiceStatus @default(ISSUED)
+  issuedById      String
+  issuedAt        DateTime      @default(now())
+  subtotal        Decimal       @db.Decimal(16, 2)
+  taxTotal        Decimal       @db.Decimal(16, 2)
+  total           Decimal       @db.Decimal(16, 2)
+  exportedAt      DateTime?
   exportReference String?
 
   salesOrder SalesOrder @relation(fields: [salesOrderId], references: [id], onDelete: Cascade)
@@ -5340,7 +5338,7 @@ enum ReturnResolution {
   REPAIR
 }
 
-/** Dead on arrival or wrong item: approved by the Sales Manager, received into quarantine. */
+/// Dead on arrival or wrong item: approved by the Sales Manager, received into quarantine.
 model SalesReturn {
   id             String            @id @default(cuid())
   number         String            @unique
@@ -5396,16 +5394,16 @@ enum WarrantyCostCentre {
 }
 
 model ServiceJob {
-  id              String           @id @default(cuid())
-  number          String           @unique
+  id              String              @id @default(cuid())
+  number          String              @unique
   branchId        String
   finishedUnitId  String?
   serialNumber    String
   productName     String
   customerId      String?
   warrantyClaimId String?
-  kind            ServiceJobKind   @default(WARRANTY)
-  status          ServiceJobStatus @default(OPEN)
+  kind            ServiceJobKind      @default(WARRANTY)
+  status          ServiceJobStatus    @default(OPEN)
   fault           String
   diagnosis       String?
   resolution      String?
@@ -5420,15 +5418,15 @@ model ServiceJob {
   qaById          String?
   qaAt            DateTime?
   returnedAt      DateTime?
-  quotedAmount    Decimal?         @db.Decimal(16, 2)
-  paidAmount      Decimal          @default(0) @db.Decimal(16, 2)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  quotedAmount    Decimal?            @db.Decimal(16, 2)
+  paidAmount      Decimal             @default(0) @db.Decimal(16, 2)
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
 
-  branch       Branch         @relation(fields: [branchId], references: [id], onDelete: Cascade)
-  finishedUnit FinishedUnit?  @relation(fields: [finishedUnitId], references: [id])
-  customer     Customer?      @relation(fields: [customerId], references: [id])
-  openedBy     User           @relation("ServiceJobOpenedBy", fields: [openedById], references: [id])
+  branch       Branch                @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  finishedUnit FinishedUnit?         @relation(fields: [finishedUnitId], references: [id])
+  customer     Customer?             @relation(fields: [customerId], references: [id])
+  openedBy     User                  @relation("ServiceJobOpenedBy", fields: [openedById], references: [id])
   parts        ServicePart[]
   ledger       WarrantyLedgerEntry[]
 
@@ -5438,11 +5436,11 @@ model ServiceJob {
 }
 
 model ServicePart {
-  id           String  @id @default(cuid())
+  id           String   @id @default(cuid())
   serviceJobId String
   partId       String
-  quantity     Decimal @db.Decimal(12, 3)
-  unitCost     Decimal @default(0) @db.Decimal(14, 2)
+  quantity     Decimal  @db.Decimal(12, 3)
+  unitCost     Decimal  @default(0) @db.Decimal(14, 2)
   usedById     String
   usedAt       DateTime @default(now())
 
@@ -5453,7 +5451,7 @@ model ServicePart {
   @@map("service_parts")
 }
 
-/** What a warranty case cost and which department carries it. */
+/// What a warranty case cost and which department carries it.
 model WarrantyLedgerEntry {
   id           String             @id @default(cuid())
   serviceJobId String
@@ -5536,12 +5534,12 @@ model ProjectMilestone {
 }
 
 model ProjectDeliverable {
-  id                String  @id @default(cuid())
+  id                String    @id @default(cuid())
   projectId         String
   productId         String
   configurationId   String?
   quantity          Int
-  deliveredQuantity Int     @default(0)
+  deliveredQuantity Int       @default(0)
   siteName          String?
   acceptedAt        DateTime?
 

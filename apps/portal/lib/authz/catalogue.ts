@@ -360,6 +360,8 @@ export const PAGE_PERMISSIONS: Record<string, PermissionKey> = {
   users: 'admin.users.manage', roles: 'admin.roles.manage', permissions: 'admin.roles.manage', settings: 'admin.settings.manage', branding: 'admin.settings.manage',
   'module-registry': 'admin.settings.manage', 'audit-logs': 'audit.view', 'recycle-bin': 'admin.recycle_bin.manage', analytics: 'analytics.business.view', crm: 'crm.view',
   integrity: 'integrity.review',
+  // Zinox edition
+  catalogue: 'catalogue.view', production: 'production.view', warehouse: 'warehouse.view', procurement: 'procurement.view', sales: 'sales.view', service: 'service.view', projects: 'projects.view',
 };
 
 /** How each role is named to people. */
@@ -370,10 +372,17 @@ export const ROLE_LABELS: Record<string, string> = {
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
   'branch-assistant': 'Branch Assistant (IT support)',
   'customer-care': 'Customer Care', 'customer-care-lead': 'Customer Care Lead', executive: 'Executive (director / general manager)', 'it-administrator': 'IT Administrator',
+  // Zinox edition
+  'sales-officer': 'Sales Officer', 'showroom-officer': 'Showroom Officer', 'key-account-manager': 'Key Account Manager', 'sales-manager': 'Sales Manager', 'commercial-director': 'Commercial Director',
+  'billing-officer': 'Billing Officer', 'credit-controller': 'Credit Controller', 'finance-manager': 'Finance Manager',
+  'production-planner': 'Production Planner', assembler: 'Assembler', 'line-supervisor': 'Line Supervisor', 'qa-inspector': 'QA Inspector', 'production-manager': 'Production Manager',
+  'parts-warehouse-officer': 'Parts Warehouse Officer', 'fg-warehouse-officer': 'Finished Goods Officer', 'dispatch-officer': 'Dispatch Officer', 'warehouse-manager': 'Warehouse Manager',
+  'procurement-officer': 'Procurement Officer', 'procurement-head': 'Head of Procurement',
+  'service-technician': 'Service Technician', 'service-supervisor': 'Service Supervisor', 'warranty-manager': 'Warranty Manager', 'project-manager': 'Project Manager',
 };
 
 /** The role a person is shown with (their most senior one), e.g. "Justice Enefola (Manager)". */
-const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'warranty-hod', 'department-head', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
+const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'commercial-director', 'finance-manager', 'production-manager', 'warehouse-manager', 'procurement-head', 'warranty-manager', 'sales-manager', 'branch-administrator', 'workshop-manager', 'key-account-manager', 'project-manager', 'service-supervisor', 'credit-controller', 'production-planner', 'line-supervisor', 'qa-inspector', 'billing-officer', 'procurement-officer', 'sales-officer', 'showroom-officer', 'parts-warehouse-officer', 'fg-warehouse-officer', 'dispatch-officer', 'service-technician', 'assembler', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'warranty-hod', 'department-head', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
 export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string | null {
   if (isSuperAdmin) return 'Master Administrator';
   const best = ROLE_SENIORITY.find((s) => slugs.includes(s)) ?? slugs[0];
@@ -423,6 +432,30 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
   executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Branch decisions stay with the managers who own them; the Executive approves what is escalated (IT and administrator passes) and their own passes on the spot. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
   'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, looks after Enyo (AI) and sends system notices (broadcasts), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
+  // ── Zinox edition ────────────────────────────────────────────────
+  'sales-officer': 'The sales desk. Logs enquiries, prices quotations from the price list for the customer\'s channel, confirms sales orders within their discount limit, and keeps the customer informed to delivery.',
+  'showroom-officer': 'The showroom desk. Shows display stock, quotes and sells over the counter, registers the warranty on the spot and passes payment to Finance for confirmation.',
+  'key-account-manager': 'Corporate, government and distributor accounts (TD Africa): quotations, tenders and orders across every branch, with the projects they belong to.',
+  'sales-manager': 'Runs sales across the organisation: approves discounts beyond officers\' limits and returns, onboards dealers and sets their tier, and sees every order and its margin.',
+  'commercial-director': 'Owns price lists and the daily dealer price broadcast, approves large discounts and credit to new accounts, and sets channel policy. Sees production and the warehouses.',
+  'billing-officer': 'Issues pro-forma invoices, tax invoices, credit notes and statements for confirmed orders. Never confirms a payment or releases goods.',
+  'credit-controller': 'Sets dealer and corporate credit limits and terms, holds accounts that are overdue and releases them when they pay.',
+  'finance-manager': 'Confirms customer payments and clears orders for release, approves refunds, sets credit, and exports invoices, payments and stock values to the finance system.',
+  'production-planner': 'Plans the line: creates build orders to stock or for an order, checks materials against the bill of materials, and raises requisitions for shortages.',
+  assembler: 'Builds units on the line and records each station on the unit traveller: components fitted, serials, the software image. Cannot check or test their own units.',
+  'line-supervisor': 'Checks every unit against its configuration before QA: components, software image and packages, BIOS, labels and accessories. Runs the line day to day.',
+  'qa-inspector': 'Tests every unit (burn-in, ports, display, keyboard, battery, network) and passes or fails it. Never tests a unit they built.',
+  'production-manager': 'Owns production: releases build orders to the line, approves rework and scrap, releases finished units to the store and closes build orders.',
+  'parts-warehouse-officer': 'The components warehouse: receives imported components against purchase orders, runs incoming QC, bins stock and issues materials to the line.',
+  'fg-warehouse-officer': 'The finished goods store: every unit by serial and location, picking against goods release notes, and transfers to the showroom and branches.',
+  'dispatch-officer': 'Dispatches released goods: vehicle, driver and waybill, and records delivery and who signed for it. Works with the gate.',
+  'warehouse-manager': 'Runs both warehouses: approves transfers and adjustments, runs stock counts, sets reorder levels, and sees stock across every branch.',
+  'procurement-officer': 'Raises requisitions and purchase orders to suppliers at home and abroad, tracks shipments and customs clearance, and records supplier claims.',
+  'procurement-head': 'Heads procurement: approves requisitions and purchase orders, manages suppliers and terms, and decides supplier claims.',
+  'service-technician': 'Diagnoses and repairs units on service jobs assigned to them, records the parts used and the resolution.',
+  'service-supervisor': 'Runs the Service Centre: opens and assigns service jobs, checks repairs before return, registers warranties and prepares claims.',
+  'warranty-manager': 'Approves warranty claims and replacements, keeps the warranty ledger (which department carries each case), and raises supplier claims for component failures.',
+  'project-manager': 'Runs government and corporate projects: milestones, deliverables per site, linked orders, builds and dispatches, and acceptance certificates.',
 };
 
 /** Permissions that DECIDE something (approve, authorise, release, pay) —
@@ -430,6 +463,8 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
 export const APPROVAL_PERMISSIONS: PermissionKey[] = [
   'workshop.job.supervise', 'workshop.estimate.approve', 'workshop.estimate.final_approve', 'workshop.close.approve', 'store.prs.approve_hod',
   'store.prs.release', 'procurement.epr.review', 'procurement.epr.approve', 'procurement.epr.disburse', 'warranty.claim.approve', 'security.pass.approve',
+  // Zinox edition
+  'procurement.requisition.approve', 'procurement.po.approve', 'sales.discount.approve', 'sales.discount.approve_large', 'finance.payment.confirm', 'finance.credit.manage', 'production.manage', 'production.qa', 'warehouse.manage',
 ];
 
 /** Store pages that show purchase costs and margins (goods receipts, pricing
