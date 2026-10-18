@@ -15,7 +15,7 @@ export default async function NewExitPassPage({ searchParams }: { searchParams: 
         back={{ href: "/security/exit-passes", label: "Back to Exit passes" }}
         title="Request an exit pass"
       />
-      <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">Authorised by the Department Head, then approved by the Manager. Security records the actual time out and time in.</p>
+      <p className="mb-4 mt-1 max-w-2xl text-sm text-[var(--ejo-text-muted)]">Authorised by the Department Head, then approved by the Manager. A head of department has already authorised their own; the Manager and the Executive approve theirs (and any they book for their staff) on the spot. Security records the actual time out and time in.</p>
       <SecurityNav active="/security/exit-passes" />
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
       <div className="max-w-2xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 sm:p-6">

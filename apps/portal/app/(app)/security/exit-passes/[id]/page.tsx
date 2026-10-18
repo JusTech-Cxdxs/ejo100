@@ -15,7 +15,7 @@ import { getPrincipal } from '@/lib/authz/server';
 import { primaryRoleLabel } from '@/lib/authz/catalogue';
 
 const DONE: Record<string, string> = {
-  approved_now: 'Exit pass approved — as the approver, your own request is approved on the spot. Security has been told; show it at the gate.',
+  approved_now: 'Exit pass approved on the spot — you have the authority to approve it. Security and everyone on it have been told; show it at the gate.',
   requested: 'Exit pass submitted — the person who approves it has been asked, and it shows under Approvals → Waiting on others until it is decided.',
   approve: 'Decision recorded — the next person has been told.',
   decline: 'Exit pass declined — the requester has been told.',

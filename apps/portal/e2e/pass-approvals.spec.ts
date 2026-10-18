@@ -57,7 +57,7 @@ test('a Manager’s own pass is approved on the spot — go now', async ({ page 
   await as(page, 'workshop-manager');
   const { url, status } = await newPass(page, { who: 'ME', reason: `Bank errand ${uniq()}` });
   expect(status, 'approved on the spot, not "requested"').toBe('approved_now');
-  await expect(page.getByText(/your own request is approved on the spot/)).toBeVisible();
+  await expect(page.getByText(/approved on the spot/)).toBeVisible();
   await expect(page.getByText('Approved — may leave').first()).toBeVisible();
   await expect(page.getByText('Approved on request by')).toBeVisible();
   await expect(approveButtons(page)).toHaveCount(0);

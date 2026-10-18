@@ -15,7 +15,7 @@ import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 
 const DONE: Record<string, string> = {
-  approved_now: 'Road test approved on the spot (you approve your own request). Security has been told; the gate records the time out and odometer.',
+  approved_now: 'Road test approved on the spot — you have the authority to approve it. Security and the driver have been told; the gate records the time out and odometer.',
   requested: 'Road test requested — the Manager has been asked to approve it.',
   approve: 'Approved — Security has been told.',
   decline: 'Declined — the requester has been told.',
@@ -91,7 +91,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
           {canDecide ? (
             <>
               <form action={roadTestActionFormAction}><Hidden action="approve" /><SubmitButton label="Approve road test" pendingLabel="Saving…" className={btn} /></form>
-              <form action={roadTestActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>
+              {r.requestedBy.id === roles.userId ? null : <form action={roadTestActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>}
             </>
           ) : r.status === 'PENDING_MANAGER' ? <p className="text-sm text-[var(--ejo-text-muted)]">Waiting for the Manager to approve.</p> : null}
           {r.status === 'APPROVED' && roles.isGate ? (

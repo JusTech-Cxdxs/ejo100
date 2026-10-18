@@ -14,7 +14,7 @@ import { formatDateTime, formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { BackLink, PageTitle } from '@/components/ui';
 
-const DONE: Record<string, string> = { requested: 'Pass requested — the Manager has been emailed.', approved_now: 'Pass approved on the spot (you approve your own request) — Security and the staff member responsible have been emailed.', approve: 'Approved — the staff member responsible and Security have been emailed.', decline: 'Declined — the requester has been emailed.', cancel: 'Pass cancelled.', revoke: 'Pass revoked — Security and the staff member responsible have been emailed.', sign_in: 'Team signed in.', sign_out: 'Team signed out.', follow_up: 'Follow-up saved.' };
+const DONE: Record<string, string> = { requested: 'Pass requested — the Manager has been emailed.', approved_now: 'Pass approved on the spot — you have the authority to approve it. Security and the staff member responsible have been emailed.', approve: 'Approved — the staff member responsible and Security have been emailed.', decline: 'Declined — the requester has been emailed.', cancel: 'Pass cancelled.', revoke: 'Pass revoked — Security and the staff member responsible have been emailed.', sign_in: 'Team signed in.', sign_out: 'Team signed out.', follow_up: 'Follow-up saved.' };
 
 export default async function ContractorPassPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
@@ -63,7 +63,7 @@ export default async function ContractorPassPage({ params, searchParams }: { par
           {canDecide ? (
             <>
               <form action={contractorActionFormAction}><Hidden action="approve" /><SubmitButton label="Approve pass" pendingLabel="Saving…" className={btn} /></form>
-              <form action={contractorActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>
+              {p.requestedBy.id === roles.userId ? null : <form action={contractorActionFormAction} className="flex flex-wrap gap-2"><Hidden action="decline" /><input name="reason" required placeholder="Reason for declining" className={`${input} min-w-0 flex-1`} /><SubmitButton label="Decline" pendingLabel="Saving…" className={line} /></form>}
             </>
           ) : p.status === 'PENDING_MANAGER' ? <p className="text-sm text-[var(--ejo-text-muted)]">Waiting for the Manager to approve.</p> : null}
           {p.state === 'ACTIVE' && roles.isGate ? (

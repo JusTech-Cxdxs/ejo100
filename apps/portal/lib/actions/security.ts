@@ -422,7 +422,7 @@ export type ExitPassInput = {
 /** Who authorises as Department Head for this requester: their reporting
  * manager if set; else heads/managers in their department; else a quiet
  * fallback so a pass can never be stuck. Never the requester. */
-async function headApproversFor(requesterId: string): Promise<Person[]> {
+async function headApproversFor(requesterId: string, passBranchId?: string | null): Promise<Person[]> {
   const me = await prisma.user.findUnique({ where: { id: requesterId }, select: { departmentId: true, employeeProfile: { select: { reportingManagerId: true } } } });
   const managerId = me?.employeeProfile?.reportingManagerId;
   if (managerId && managerId !== requesterId) {
@@ -438,10 +438,11 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
   if (await isSeniorRequester(requesterId)) return seniorApprovers(requesterId, org);
   // No head of their own department: a Department Head of their branch; else the branch's
   // Managers (who then authorise and approve in one step). Never another branch's head.
-  const branchId = (await prisma.user.findUnique({ where: { id: requesterId }, select: { branchId: true } }))?.branchId ?? null;
+  // The pass's own branch (where it is decided); else the requester's.
+  const branchId = passBranchId ?? (await prisma.user.findUnique({ where: { id: requesterId }, select: { branchId: true } }))?.branchId ?? null;
   const any = branchId ? (await usersWithSlugs(['department-head'], { ...(org ? { organisationId: org } : {}), branchId })).filter((h) => h.id !== requesterId) : [];
   if (any.length) return any;
-  return managerApprovers(requesterId, branchId ?? undefined);
+  return branchId ? managerApprovers(requesterId, branchId) : seniorApprovers(requesterId, org);
 }
 /** The branch's Managers (the same people Warranty uses as Branch Manager).
  * Uses the record's branch when given: a pass or permit is decided by its
@@ -449,6 +450,12 @@ async function headApproversFor(requesterId: string): Promise<Person[]> {
 async function managerApprovers(excludeId: string | null, branchId?: string | null): Promise<Person[]> {
   const branch = branchId ?? (await getWorkshopBranchId());
   const org = await orgOfBranch(branch);
+  // A Manager's or the Executive's own request (one prepared in an assisted session, or made
+  // before they approved their own on the spot) is theirs to approve — never a peer's.
+  if (excludeId && (await ownApproverRole(excludeId, branch))) {
+    const me = await prisma.user.findUnique({ where: { id: excludeId }, select: { id: true, fullName: true, email: true } });
+    return me ? [me] : [];
+  }
   // A manager's own pass (or a headquarters person's) goes up, to the executives — never back to themselves.
   if (excludeId && (await isSeniorRequester(excludeId))) return seniorApprovers(excludeId, org);
   const m = await listEligibleManagersForBranch(branch);
@@ -494,7 +501,7 @@ async function finalDecidable(rows: { id: string; status: string; requestedById:
   if (!isMaster && !(await slugsOf(userId)).slugs.some((s) => FINAL_SLUGS.includes(s))) return out;
   const memo = new Map<string, boolean>();
   for (const r of rows) {
-    if (r.status !== 'PENDING_MANAGER' || (r.requestedById === userId && !isMaster)) continue;
+    if (r.status !== 'PENDING_MANAGER') continue;
     const key = `${r.requestedById}|${r.branchId}`;
     if (!memo.has(key)) memo.set(key, isMaster || (await managerApprovers(r.requestedById, r.branchId)).some((m) => m.id === userId));
     if (memo.get(key)) out.add(r.id);
@@ -508,17 +515,22 @@ async function finalDecidable(rows: { id: string; status: string; requestedById:
  * Executive, and the platform team. Recorded as approved on request, by name and
  * role; everyone else's request goes to the person above them.
  */
-async function approvesOwn(userId: string, branchId: string | null): Promise<'Manager' | 'Executive' | 'Master Administrator' | null> {
-  // Nothing is approved during an assisted session — the assistant only prepares the request.
-  if (await currentAssist()) return null;
+async function ownApproverRole(userId: string, branchId: string | null): Promise<'Manager' | 'Executive' | 'Master Administrator' | null> {
   const { slugs, isMaster } = await slugsOf(userId);
   if (isMaster) return 'Master Administrator';
   if (slugs.includes('executive')) return 'Executive';
-  if (!slugs.includes('workshop-manager') || !branchId) return null;
-  const me = await prisma.user.findUnique({ where: { id: userId }, select: { branchId: true } });
-  if (me?.branchId === branchId) return 'Manager';
-  const m = await listEligibleManagersForBranch(branchId).catch(() => ({ supervisors: [] as Person[], usingFallback: true }));
-  return !m.usingFallback && (m.supervisors as Person[]).some((x) => x.id === userId) ? 'Manager' : null;
+  if (!slugs.includes('workshop-manager')) return null;
+  if (!branchId) return 'Manager';
+  // A Manager of the pass's branch — or of their own branch in the same organisation (a branch
+  // without a workshop records its passes at the organisation's workshop branch).
+  const [me, org] = await Promise.all([prisma.user.findUnique({ where: { id: userId }, select: { branchId: true, organisationId: true } }), orgOfBranch(branchId)]);
+  return me && (me.branchId === branchId || (Boolean(org) && me.organisationId === org)) ? 'Manager' : null;
+}
+async function approvesOwn(userId: string, branchId: string | null): Promise<'Manager' | 'Executive' | 'Master Administrator' | null> {
+  // Nothing is approved during an assisted session — the assistant only prepares the request,
+  // and it waits for its owner (no one else) to approve it.
+  if (await currentAssist()) return null;
+  return ownApproverRole(userId, branchId);
 }
 
 /** Request a pass for yourself and/or others — several employees and named
@@ -540,15 +552,24 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
     ? await prisma.user.findMany({ where: { id: { in: ids }, isActive: true, ...(await orgWhere()) }, select: { id: true, fullName: true, employeeId: true, department: { select: { name: true } }, employeeProfile: { select: { jobTitle: true } } } })
     : [];
   if (employees.length !== ids.length) throw new SecurityError('One of the employees chosen is not an active member of staff.');
-  const passNumber = await nextNumber('EP');
   const branchId = await getWorkshopBranchId();
   // The Manager (for anyone they book, themselves included), the Executive and the platform
   // team approve on the spot. A Department Head has already authorised their own step.
   // Headquarters people (IT, administrators) skip the head step and go to the Executive.
   const own = await approvesOwn(user.id, branchId);
   const { slugs } = await slugsOf(user.id);
-  const requesterIsHead = HEAD_SLUGS.some((sl) => slugs.includes(sl));
+  // A Branch Administrator, like a head of department, needs no head step.
+  const requesterIsHead = HEAD_SLUGS.some((sl) => slugs.includes(sl)) || slugs.includes('branch-administrator');
   const hq = !own && (await isSeniorRequester(user.id));
+  // A Manager books on the spot for their own branch's staff; another branch's staff go through their own branch.
+  if (own === 'Manager' && employees.length) {
+    const homes = await prisma.user.findMany({ where: { id: { in: employees.map((e: (typeof employees)[number]) => e.id) } }, select: { fullName: true, branchId: true } });
+    const mine = await prisma.user.findUnique({ where: { id: user.id }, select: { branchId: true } });
+    const away = homes.find((h) => h.branchId && h.branchId !== branchId && h.branchId !== mine?.branchId);
+    if (away) throw new SecurityError(`${away.fullName} works at another branch — their own branch books their pass.`);
+  }
+  // Numbered only once every check has passed (no gaps in the register).
+  const passNumber = await nextNumber('EP');
   const now = new Date();
   const pass = await prisma.exitPass.create({
     data: {
@@ -574,7 +595,7 @@ export async function createExitPass(input: ExitPassInput): Promise<{ id: string
     await sendLogged('ExitPass', pass.id, [...colleagues, ...(await gateStaff())], `Exit pass ${passNumber} approved`, 'Exit pass approved', [`${passNumber} — ${names.join(', ')}`, `Approved on request by the ${own}.`, 'Security will record the time out at the gate.'], `/security/exit-passes/${pass.id}`, user.id);
     return { id: pass.id, passNumber, status: 'APPROVED' };
   }
-  const approvers = requesterIsHead || hq ? await managerApprovers(user.id, branchId) : await headApproversFor(user.id);
+  const approvers = requesterIsHead || hq ? await managerApprovers(user.id, branchId) : await headApproversFor(user.id, branchId);
   await sendLogged('ExitPass', pass.id, approvers, `Exit pass ${passNumber} needs your ${requesterIsHead || hq ? 'approval' : 'authorisation'}`, 'An exit pass needs your decision', [`${passNumber} — ${names.join(', ')}`, `Reason: ${reason}`, input.returning ? `Out for about ${durationText(minutes!)}` : 'Not returning today'], `/security/exit-passes/${pass.id}`, user.id);
   return { id: pass.id, passNumber, status: requesterIsHead || hq ? 'PENDING_MANAGER' : 'PENDING_HEAD' };
 }
@@ -595,7 +616,7 @@ export async function decideExitPass(passId: string, approve: boolean, reason: s
   if (own) {
     // nothing more to check
   } else if (p.status === 'PENDING_HEAD') {
-    const heads = await headApproversFor(p.requestedById);
+    const heads = await headApproversFor(p.requestedById, p.branchId);
     if (!heads.some((h) => h.id === user.id) && !roles.isMaster) throw new SecurityError('This pass is waiting for the Department Head.');
   } else if (!roles.isMaster && !(await managerApprovers(p.requestedById, p.branchId)).some((h) => h.id === user.id)) {
     throw new SecurityError('This pass is waiting for the Manager.');
@@ -848,7 +869,7 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
   const rows = await prisma.exitPass.findMany({
     where: { ...reach,
       ...(scope === 'mine' ? { OR: [{ requestedById: user.id }, { people: { some: { userId: user.id } } }] } : {}),
-      ...(scope === 'to_decide' ? { status: { in: ['PENDING_HEAD', 'PENDING_MANAGER'] }, NOT: { requestedById: user.id } } : {}),
+      ...(scope === 'to_decide' ? { status: { in: ['PENDING_HEAD', 'PENDING_MANAGER'] } } : {}),
       ...(t ? { OR: [{ passNumber: { contains: t, mode: 'insensitive' } }, { reason: { contains: t, mode: 'insensitive' } }, { people: { some: { name: { contains: t, mode: 'insensitive' } } } }] } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -861,11 +882,16 @@ export async function listExitPasses(scope: 'mine' | 'to_decide' | 'all', q?: st
   // The final step belongs to the pass's own approvers: its branch's Managers, or — for a
   // manager's or headquarters person's own pass — the executives above them.
   const finals = await finalDecidable(rows, user.id, roles.isMaster);
+  const headMemo = new Map<string, boolean>();
   for (const p of rows) {
     if (p.status === 'PENDING_MANAGER') {
       if (finals.has(p.id)) out.push(p);
     }
-    else if (p.status === 'PENDING_HEAD' && (roles.isMaster || (await headApproversFor(p.requestedById)).some((h) => h.id === user.id))) out.push(p);
+    else if (p.status === 'PENDING_HEAD') {
+      const key = `${p.requestedById}|${p.branchId}`;
+      if (!headMemo.has(key)) headMemo.set(key, roles.isMaster || (await headApproversFor(p.requestedById, p.branchId)).some((h) => h.id === user.id));
+      if (headMemo.get(key)) out.push(p);
+    }
   }
   return out;
 }
@@ -906,7 +932,7 @@ export async function canDecideExitPass(passId: string): Promise<boolean> {
   if (p.requestedById === user.id) return Boolean(await approvesOwn(user.id, p.branchId));
   // The same people the decision itself accepts (decideExitPass): never a different list.
   if (p.status === 'PENDING_MANAGER') return roles.isMaster || (await managerApprovers(p.requestedById, p.branchId)).some((m) => m.id === user.id);
-  if (p.status === 'PENDING_HEAD') return roles.isMaster || (await headApproversFor(p.requestedById)).some((h) => h.id === user.id);
+  if (p.status === 'PENDING_HEAD') return roles.isMaster || (await headApproversFor(p.requestedById, p.branchId)).some((h) => h.id === user.id);
   return false;
 }
 
@@ -1420,7 +1446,6 @@ export async function listRoadTests(scope: 'to_decide' | 'approved' | 'out' | 'a
   const rows = await prisma.roadTestPermit.findMany({
     where: { ...reach,
       ...(status ? { status } : {}),
-      ...(scope === 'to_decide' ? { NOT: { requestedById: user.id } } : {}),
       ...(t ? { OR: [{ permitNumber: { contains: t, mode: 'insensitive' } }, { purpose: { contains: t, mode: 'insensitive' } }, { vehicle: { plateNumber: { contains: t, mode: 'insensitive' } } }, { jobCard: { jobNumber: { contains: t, mode: 'insensitive' } } }, { vehicleService: { serviceNumber: { contains: t, mode: 'insensitive' } } }, { driver: { fullName: { contains: t, mode: 'insensitive' } } }] } : {}),
     },
     orderBy: { createdAt: 'desc' },
@@ -1980,7 +2005,7 @@ async function followUpEmail(kind: FollowUp, id: string, actorId: string | null)
       const p = await prisma.exitPass.findUnique({ where: { id }, select: { passNumber: true, branchId: true, requestedById: true, headApprovedAt: true, managerApprovedAt: true, expectedReturnAt: true, requestedBy: P } });
       if (!p) return;
       if (kind === 'exit_pass.cancelled') {
-        const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById, p.branchId) : await headApproversFor(p.requestedById);
+        const deciding = p.managerApprovedAt ? await gateStaff() : p.headApprovedAt ? await managerApprovers(p.requestedById, p.branchId) : await headApproversFor(p.requestedById, p.branchId);
         await sendLogged('ExitPass', id, uniq(deciding), `Exit pass ${p.passNumber} was cancelled`, 'An exit pass was cancelled', [p.passNumber, p.managerApprovedAt ? 'Do not let anyone out on this pass.' : 'No decision is needed any more.'], `/security/exit-passes/${id}`, actorId);
       } else {
         const back = p.expectedReturnAt ? new Date(p.expectedReturnAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', hour: 'numeric', hourCycle: 'h12', minute: '2-digit', day: 'numeric', month: 'short' }) : null;

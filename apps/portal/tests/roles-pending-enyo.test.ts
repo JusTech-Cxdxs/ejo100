@@ -41,10 +41,21 @@ test('activity and the audit trail show "Name (Role)"', () => {
 test('passes: the Manager and the Executive approve their own on the spot; IT and administrators go to the Executive', () => {
   const src = read('lib/actions/security.ts');
   // Who approves their own: the platform team, the Executive, the branch's Manager.
-  const own = src.slice(src.indexOf('async function approvesOwn'), src.indexOf('/** Request a pass for yourself'));
+  const own = src.slice(src.indexOf('async function ownApproverRole'), src.indexOf('/** Request a pass for yourself'));
   assert.match(own, /if \(isMaster\) return 'Master Administrator';/);
   // Never during an assisted session (the assistant approves nothing).
-  assert.ok(own.indexOf('currentAssist()') > -1 && own.indexOf('currentAssist()') < own.indexOf('slugsOf(userId)'));
+  const onSpot = own.slice(own.indexOf('async function approvesOwn'));
+  assert.ok(onSpot.indexOf('currentAssist()') > -1 && onSpot.indexOf('currentAssist()') < onSpot.indexOf('ownApproverRole('));
+  // A request prepared in an assisted session (or made earlier) waits for its owner — never a peer.
+  assert.match(src, /if \(excludeId && \(await ownApproverRole\(excludeId, branch\)\)\)/);
+  // A Manager books on the spot only for their own branch's staff; a Branch Administrator needs no head step.
+  assert.match(src, /works at another branch — their own branch books their pass/);
+  assert.match(src, /slugs\.includes\('branch-administrator'\)/);
+  // The head step is decided by the pass's branch, not the viewer's.
+  assert.doesNotMatch(src, /headApproversFor\(p\.requestedById\)/);
+  // Numbered only after every check (no gaps).
+  const create = src.slice(src.indexOf('export async function createExitPass'));
+  assert.ok(create.indexOf("nextNumber('EP')") > create.indexOf('works at another branch'));
   // No head of their own department: a head of THEIR branch, else the branch's Managers — never another branch's head.
   assert.match(src, /usersWithSlugs\(\['department-head'\], \{ \.\.\.\(org \? \{ organisationId: org \} : \{\}\), branchId \}\)/);
   assert.match(own, /if \(slugs\.includes\('executive'\)\) return 'Executive';/);
