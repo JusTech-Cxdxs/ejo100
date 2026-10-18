@@ -14,7 +14,7 @@ import { formatDateTime, formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { BackLink, PageTitle } from '@/components/ui';
 
-const DONE: Record<string, string> = { requested: 'Pass requested — the Manager has been emailed.', approve: 'Approved — the staff member responsible and Security have been emailed.', decline: 'Declined — the requester has been emailed.', cancel: 'Pass cancelled.', revoke: 'Pass revoked — Security and the staff member responsible have been emailed.', sign_in: 'Team signed in.', sign_out: 'Team signed out.', follow_up: 'Follow-up saved.' };
+const DONE: Record<string, string> = { requested: 'Pass requested — the Manager has been emailed.', approved_now: 'Pass approved on the spot (you approve your own request) — Security and the staff member responsible have been emailed.', approve: 'Approved — the staff member responsible and Security have been emailed.', decline: 'Declined — the requester has been emailed.', cancel: 'Pass cancelled.', revoke: 'Pass revoked — Security and the staff member responsible have been emailed.', sign_in: 'Team signed in.', sign_out: 'Team signed out.', follow_up: 'Follow-up saved.' };
 
 export default async function ContractorPassPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ status?: string; error?: string }> }) {
   const { id } = await params;
@@ -52,7 +52,7 @@ export default async function ContractorPassPage({ params, searchParams }: { par
           <Row k="Valid" val={`${lagosDay(p.validFrom)} to ${lagosDay(p.validUntil)} (${pluralize(days, 'day')})`} />
           <Row k="Responsible" val={`${p.host.fullName}${p.host.phone ? ` · ${p.host.phone}` : ''}`} />
           <Row k="Requested by" val={`${p.requestedBy.fullName} · ${formatDateTime(p.createdAt)}`} />
-          <Row k="Approved by (Manager)" val={p.managerApprovedBy && p.managerApprovedAt ? `${p.managerApprovedBy.fullName} · ${formatDateTime(p.managerApprovedAt)}` : null} />
+          <Row k="Approved by" val={p.managerApprovedBy && p.managerApprovedAt ? `${p.managerApprovedBy.fullName} · ${formatDateTime(p.managerApprovedAt)}` : null} />
           <Row k="Declined because" val={p.declineReason} />
           <Row k="Revoked" val={p.revokedBy && p.revokedAt ? `${p.revokedBy.fullName} · ${formatDateTime(p.revokedAt)} — ${p.revokeReason ?? ''}` : null} />
           <Row k="Cancelled because" val={p.cancelReason} />

@@ -38,20 +38,39 @@ test('activity and the audit trail show "Name (Role)"', () => {
   assert.match(read('lib/notification-rules.ts'), /'access\.denied'/);
 });
 
-test('a manager\'s or IT\'s own exit pass goes up to the executive, never back to themselves', () => {
+test('passes: the Manager and the Executive approve their own on the spot; IT and administrators go to the Executive', () => {
   const src = read('lib/actions/security.ts');
+  // Who approves their own: the platform team, the Executive, the branch's Manager.
+  const own = src.slice(src.indexOf('async function approvesOwn'), src.indexOf('/** Request a pass for yourself'));
+  assert.match(own, /if \(isMaster\) return 'Master Administrator';/);
+  // Never during an assisted session (the assistant approves nothing).
+  assert.ok(own.indexOf('currentAssist()') > -1 && own.indexOf('currentAssist()') < own.indexOf('slugsOf(userId)'));
+  // No head of their own department: a head of THEIR branch, else the branch's Managers — never another branch's head.
+  assert.match(src, /usersWithSlugs\(\['department-head'\], \{ \.\.\.\(org \? \{ organisationId: org \} : \{\}\), branchId \}\)/);
+  assert.match(own, /if \(slugs\.includes\('executive'\)\) return 'Executive';/);
+  assert.match(own, /slugs\.includes\('workshop-manager'\)/);
+  // Exit pass, road test, contractor pass: approved at once when the requester approves their own.
+  assert.match(src, /status: own \? 'APPROVED' : requesterIsHead \|\| hq \? 'PENDING_MANAGER' : 'PENDING_HEAD'/);
+  assert.equal((src.match(/status: 'APPROVED' as const, managerApprovedById: user\.id/g) ?? []).length, 2, 'road test and contractor pass');
+  assert.equal((src.match(/onRequest: true, as: own/g) ?? []).length >= 4, true, 'every on-the-spot approval is audited by name and role');
+  // A Department Head has authorised their own step; it still goes to the Manager.
+  assert.match(src, /requesterIsHead \? \{ headApprovedById: user\.id, headApprovedAt: now \}/);
+  // Headquarters people below the Executive: the Executive decides (same organisation as the record).
+  assert.deepEqual(SENIOR_REQUESTER_SLUGS, ['administrator', 'it-administrator']);
   assert.match(src, /if \(excludeId && \(await isSeniorRequester\(excludeId\)\)\) return seniorApprovers\(excludeId, org\);/);
   assert.match(src, /usersWithSlugs\(\['executive'\], org\)\)\.filter\(\(x\) => x\.id !== excludeId\)/);
-  for (const s of ['workshop-manager', 'executive', 'it-administrator', 'administrator']) assert.ok(SENIOR_REQUESTER_SLUGS.includes(s), s);
-  assert.match(src, /const SENIOR_SLUGS = SENIOR_REQUESTER_SLUGS;/);
-  // The executives are the RECORD's organisation's, and "is a Manager" never comes from the fallback list.
-  assert.match(src, /seniorApprovers\(excludeId, org\)/);
+  // Everyone else still never approves their own.
+  assert.match(src, /if \(p\.requestedById === user\.id && !own\) throw new SecurityError\('You cannot approve your own exit pass\.'\);/);
+  assert.match(src, /if \(p\.requestedById === user\.id && !own\) throw new SecurityError\('You cannot approve your own road test\.'\);/);
+  assert.match(src, /if \(p\.requestedById === user\.id && !own\) throw new SecurityError\('You cannot approve your own request\.'\);/);
+  // "Is a Manager" never comes from the fallback list; page, Approvals list and decision share one approver list.
   assert.match(src, /!branchManagers\.usingFallback/);
-  // Page, Approvals list and decision use one approver list.
   assert.match(src, /finalDecidable\(rows, user\.id, roles\.isMaster\)/);
-  // Executives first, then administrators, then the platform team.
   const body = src.slice(src.indexOf('async function seniorApprovers'));
   assert.ok(body.indexOf("'executive'") < body.indexOf("'administrator'") && body.indexOf("'administrator'") < body.indexOf('masterAdmins()'));
+  // The form says "approved", not "requested", when it was approved on the spot.
+  assert.equal((read('lib/actions/security-form-handlers.ts').match(/done = 'approved_now'/g) ?? []).length, 3);
+  for (const f of ['exit-passes', 'road-tests', 'contractors']) assert.match(read(`app/(app)/security/${f}/[id]/page.tsx`), /approved_now:/, f);
 });
 
 test('the master admin gets an observer copy of every email (switchable off), never twice', async () => {

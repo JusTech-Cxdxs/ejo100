@@ -15,6 +15,7 @@ import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 
 const DONE: Record<string, string> = {
+  approved_now: 'Road test approved on the spot (you approve your own request). Security has been told; the gate records the time out and odometer.',
   requested: 'Road test requested — the Manager has been asked to approve it.',
   approve: 'Approved — Security has been told.',
   decline: 'Declined — the requester has been told.',
@@ -70,7 +71,7 @@ export default async function RoadTestPage({ params, searchParams }: { params: P
           <Row k="Checking" val={r.purpose} />
           <Row k="Route" val={r.route} />
           <Row k="Expected duration" val={durationText(r.expectedDurationMinutes)} />
-          <Row k="Approved by (Manager)" val={r.managerApprovedBy && r.managerApprovedAt ? `${r.managerApprovedBy.fullName} · ${formatDateTime(r.managerApprovedAt)}` : null} />
+          <Row k="Approved by" val={r.managerApprovedBy && r.managerApprovedAt ? `${r.managerApprovedBy.fullName} · ${formatDateTime(r.managerApprovedAt)}` : null} />
           <Row k="Declined" val={r.declinedBy && r.declinedAt ? `${r.declinedBy.fullName} · ${formatDateTime(r.declinedAt)} — ${r.declineReason ?? ''}` : null} />
           <Row k="Cancelled because" val={r.cancelReason} />
           <Row k="Time out" val={r.gateOutAt ? `${formatDateTime(r.gateOutAt)}${r.gateOutBy ? ` · ${r.gateOutBy.fullName}` : ''}` : null} />

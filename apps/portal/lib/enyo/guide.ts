@@ -356,7 +356,9 @@ export const GUIDE: GuideEntry[] = [
     steps: [
       'Go to My exit passes and start a new one ("Request an exit pass").',
       'Say who is going out, when, the reason, and whether you are coming back today.',
-      'Press "Submit for approval". Your head of department and the Manager approve it; show it at the gate.',
+      'Press "Submit for approval". Your head of department authorises it, then the Manager approves it; show it at the gate.',
+      'A head of department has already authorised their own (and any pass they book) — it goes straight to the Manager.',
+      'The Manager (and the Executive) approve their own pass, and any they book for others, on the spot — you can go at once. IT and administrators: the Executive approves.',
     ],
   },
   {
