@@ -1,0 +1,790 @@
+{
+  "config": {
+    "argv": [
+      "/opt/node22/bin/node",
+      "/home/user/zinox-ejo100/node_modules/.bin/playwright",
+      "test",
+      "--config=e2e/playwright.config.ts",
+      "e2e/warehouse.spec.ts",
+      "e2e/service.spec.ts"
+    ],
+    "configFile": "/home/user/zinox-ejo100/apps/portal/e2e/playwright.config.ts",
+    "rootDir": "/home/user/zinox-ejo100/apps/portal/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": false,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 2280000,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "/home/user/zinox-ejo100/apps/portal/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "desktop",
+        "name": "desktop",
+        "testDir": "/home/user/zinox-ejo100/apps/portal/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/.*\\.spec\\.ts/"
+        ],
+        "timeout": 150000
+      }
+    ],
+    "filteredProjects": [
+      {
+        "grep": {},
+        "grepInvert": null,
+        "outputDir": "/home/user/zinox-ejo100/apps/portal/test-results",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "name": "desktop",
+        "testDir": "/home/user/zinox-ejo100/apps/portal/e2e",
+        "snapshotDir": "/home/user/zinox-ejo100/apps/portal/e2e",
+        "testIgnore": [],
+        "testMatch": {},
+        "timeout": 150000,
+        "use": {
+          "baseURL": "http://localhost:3001",
+          "trace": "retain-on-failure",
+          "screenshot": "only-on-failure",
+          "actionTimeout": 20000,
+          "navigationTimeout": 45000,
+          "launchOptions": {
+            "executablePath": "/opt/pw-browsers/chromium"
+          },
+          "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.8078.4 Safari/537.36",
+          "viewport": {
+            "width": 1366,
+            "height": 860
+          },
+          "screen": {
+            "width": 1920,
+            "height": 1080
+          },
+          "deviceScaleFactor": 1,
+          "isMobile": false,
+          "hasTouch": false,
+          "defaultBrowserType": "chromium"
+        },
+        "dependencies": [],
+        "ignoreSnapshots": false,
+        "__projectId": "desktop"
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list",
+        null
+      ],
+      [
+        "json",
+        {
+          "outputFile": "report/results.json"
+        }
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "default",
+    "updateSourceMethod": "patch",
+    "version": "1.64.0",
+    "workers": 1,
+    "webServer": null
+  },
+  "suites": [
+    {
+      "title": "service.spec.ts",
+      "file": "service.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the Service Centre supervisor opens a job for a typed serial and assigns the technician",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 9273,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Sarah Servicesupervisor (service-supervisor)",
+                      "duration": 1806
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:12:34.585Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d5b986d33d5f0a7f3077-5c824640ebabef0a9982",
+          "file": "service.spec.ts",
+          "line": 24,
+          "column": 5
+        },
+        {
+          "title": "the technician records the diagnosis and the resolution; they cannot pass their own quality check",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4183,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Segun Servicetech (service-technician)",
+                      "duration": 1339
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:12:44.045Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d5b986d33d5f0a7f3077-4e11f3147682fef3815a",
+          "file": "service.spec.ts",
+          "line": 49,
+          "column": 5
+        },
+        {
+          "title": "the supervisor quotes the paid repair, records payment, passes QA and returns the unit",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 38015,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Sarah Servicesupervisor (service-supervisor)",
+                      "duration": 1570
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:12:48.240Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d5b986d33d5f0a7f3077-1b691bc79953ed15f565",
+          "file": "service.spec.ts",
+          "line": 66,
+          "column": 5
+        },
+        {
+          "title": "a Project Manager records a project for the seeded customer and adds a milestone",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13275,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Priya Projectmanager (project-manager)",
+                      "duration": 1412
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:13:26.266Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d5b986d33d5f0a7f3077-85d1a03255551c04c434",
+          "file": "service.spec.ts",
+          "line": 96,
+          "column": 5
+        },
+        {
+          "title": "fences: a sales officer cannot open the Service Centre; a technician cannot open Projects",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 7412,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Seun Salesofficer (sales-officer)",
+                      "duration": 1665
+                    },
+                    {
+                      "title": "sign in as Segun Servicetech (service-technician)",
+                      "duration": 1241
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:13:39.557Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "d5b986d33d5f0a7f3077-0528ad812e0a6e86b57c",
+          "file": "service.spec.ts",
+          "line": 127,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "warehouse.spec.ts",
+      "file": "warehouse.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "a procurement officer adds a supplier and raises a requisition for a finished product",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4993,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Pelumi Procurement (procurement-officer)",
+                      "duration": 1419
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:13:46.987Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-040a716d6a324485d7f0",
+          "file": "warehouse.spec.ts",
+          "line": 52,
+          "column": 5
+        },
+        {
+          "title": "the Head of Procurement approves the requisition; the officer orders it; the head approves and sends the order",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 12773,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Hassan Procurementhead (procurement-head)",
+                      "duration": 2048
+                    },
+                    {
+                      "title": "sign in as Pelumi Procurement (procurement-officer)",
+                      "duration": 1725
+                    },
+                    {
+                      "title": "sign in as Hassan Procurementhead (procurement-head)",
+                      "duration": 2035
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:13:52.080Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-9b346cf11213381cce54",
+          "file": "warehouse.spec.ts",
+          "line": 78,
+          "column": 5
+        },
+        {
+          "title": "the Warehouse Manager sets up two finished goods locations",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 6166,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Wale Warehousemanager (warehouse-manager)",
+                      "duration": 2180
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:14:04.865Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-334a15c6cf5b86f5b85f",
+          "file": "warehouse.spec.ts",
+          "line": 113,
+          "column": 5
+        },
+        {
+          "title": "the finished goods officer receives two serials against the order and sees them in finished goods",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 5775,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Felix Finishedgoods (fg-warehouse-officer)",
+                      "duration": 2178
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:14:11.046Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-636aed2eaf8fe58b16bb",
+          "file": "warehouse.spec.ts",
+          "line": 127,
+          "column": 5
+        },
+        {
+          "title": "the Warehouse Manager moves the units to the second location with a transfer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4962,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Wale Warehousemanager (warehouse-manager)",
+                      "duration": 1427
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:14:16.840Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-dd5a93e752c071f85105",
+          "file": "warehouse.spec.ts",
+          "line": 147,
+          "column": 5
+        },
+        {
+          "title": "people outside the warehouses are refused",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 150000,
+              "annotations": [
+                {
+                  "type": "serial",
+                  "location": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                    "line": 0,
+                    "column": 0
+                  }
+                }
+              ],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4845,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "sign in as Cora Calendar (calendar-user)",
+                      "duration": 1909
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:14:21.816Z",
+                  "annotations": [
+                    {
+                      "type": "serial",
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
+                        "line": 0,
+                        "column": 0
+                      }
+                    }
+                  ],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "a645baeaf505bbc52b23-96b2cbe669ca81b734dc",
+          "file": "warehouse.spec.ts",
+          "line": 180,
+          "column": 5
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-10-18T17:12:33.820Z",
+    "duration": 113285.437,
+    "expected": 11,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

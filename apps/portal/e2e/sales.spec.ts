@@ -162,6 +162,8 @@ test('a technician is refused, and another organisation never sees the order', a
   await page.goto('/sales');
   await expect(page).toHaveURL(/access-denied/);
   test.skip(S.noProduct || !S.orderUrl, 'needs the sales order for the cross-organisation check');
+  await page.goto('about:blank');
+  await page.context().clearCookies();
   await signIn(page, OTHER_ORG_ADMIN.email, E2E_PASSWORD);
   await page.goto(S.orderUrl);
   await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();

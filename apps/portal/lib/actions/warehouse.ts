@@ -199,8 +199,9 @@ export async function setFinishedUnitQuarantine(unitId: string, quarantine: bool
   await authorize('warehouse.manage', { branchId: u.location.branchId, homeBranch: true }, 'finished_unit.quarantine', 'Only the Warehouse Manager can quarantine a unit or return it to stock.');
   if (reason.trim().length < 3) throw new WarehouseError('Give the reason.');
   if (quarantine) {
-    if (!['IN_STOCK', 'RESERVED', 'RETURNED'].includes(u.status)) throw new WarehouseError(`A unit that is ${UNIT_STATUS_LABEL[u.status as UnitStatus].toLowerCase()} cannot be quarantined.`);
-    stillAsSeen(await prisma.finishedUnit.updateMany({ where: { id: unitId, status: u.status }, data: { status: 'QUARANTINE', salesOrderId: null, salesOrderLineId: null } }));
+    // A reserved unit is promised to a transfer or an order: cancel or unpick that first.
+    if (!['IN_STOCK', 'RETURNED'].includes(u.status)) throw new WarehouseError(u.status === 'RESERVED' ? 'This unit is reserved for a transfer or an order — cancel that first.' : `A unit that is ${UNIT_STATUS_LABEL[u.status as UnitStatus].toLowerCase()} cannot be quarantined.`);
+    stillAsSeen(await prisma.finishedUnit.updateMany({ where: { id: unitId, status: u.status }, data: { status: 'QUARANTINE' } }));
     await audit(user.id, 'FinishedUnit', unitId, 'finished_unit.quarantined', { serialNumber: u.serialNumber, from: u.status, reason: reason.trim() });
   } else {
     if (u.status !== 'QUARANTINE') throw new WarehouseError('This unit is not in quarantine.');
@@ -215,8 +216,8 @@ export async function requestUnitAdjustment(unitId: string, reason: string): Pro
   const u = await unitForChange(unitId);
   await authorize('warehouse.fg.operate', { branchId: u.location.branchId, homeBranch: true }, 'finished_unit.adjustment_request', 'Only finished goods staff can raise an adjustment.');
   if (reason.trim().length < 3) throw new WarehouseError('Say what is wrong with the unit (damage, count variance, missing).');
-  if (!['IN_STOCK', 'RESERVED', 'RETURNED'].includes(u.status)) throw new WarehouseError(`A unit that is ${UNIT_STATUS_LABEL[u.status as UnitStatus].toLowerCase()} cannot be adjusted.`);
-  stillAsSeen(await prisma.finishedUnit.updateMany({ where: { id: unitId, status: u.status }, data: { status: 'QUARANTINE', salesOrderId: null, salesOrderLineId: null } }));
+  if (!['IN_STOCK', 'RETURNED'].includes(u.status)) throw new WarehouseError(u.status === 'RESERVED' ? 'This unit is reserved for a transfer or an order — cancel that first.' : `A unit that is ${UNIT_STATUS_LABEL[u.status as UnitStatus].toLowerCase()} cannot be adjusted.`);
+  stillAsSeen(await prisma.finishedUnit.updateMany({ where: { id: unitId, status: u.status }, data: { status: 'QUARANTINE' } }));
   await audit(user.id, 'FinishedUnit', unitId, 'finished_unit.adjustment_requested', { serialNumber: u.serialNumber, from: u.status, reason: reason.trim() });
 }
 

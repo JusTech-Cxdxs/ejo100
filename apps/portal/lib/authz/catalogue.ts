@@ -280,7 +280,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'production-manager': { 'production.view': A, 'production.build_order.manage': A, 'production.manage': A, 'production.line_check': A, 'catalogue.view': A, 'catalogue.manage': A, 'warehouse.view': A, 'procurement.view': A, 'procurement.requisition.raise': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
   // Warehouses & logistics.
   'parts-warehouse-officer': { 'warehouse.view': B, 'warehouse.parts.operate': B, 'store.view': B, 'store.grn.record': B, 'store.parts.manage': B, 'procurement.view': B, 'production.view': B, 'catalogue.view': A, 'analytics.inventory.view': B },
-  'fg-warehouse-officer': { 'warehouse.view': B, 'warehouse.fg.operate': B, 'sales.view': B, 'production.view': B, 'catalogue.view': A, 'analytics.inventory.view': B },
+  'fg-warehouse-officer': { 'warehouse.view': B, 'warehouse.fg.operate': B, 'sales.view': B, 'production.view': B, 'procurement.view': B, 'catalogue.view': A, 'analytics.inventory.view': B },
   'dispatch-officer': { 'warehouse.view': B, 'warehouse.dispatch': B, 'sales.view': B, 'security.view': B },
   'warehouse-manager': { 'warehouse.view': A, 'warehouse.parts.operate': A, 'warehouse.fg.operate': A, 'warehouse.dispatch': A, 'warehouse.manage': A, 'store.view': A, 'store.parts.manage': A, 'store.grn.record': A, 'procurement.view': A, 'procurement.requisition.raise': A, 'production.view': A, 'sales.view': A, 'catalogue.view': A, 'analytics.inventory.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT' },
   // Procurement.

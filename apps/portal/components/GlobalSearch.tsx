@@ -130,7 +130,7 @@ export function GlobalSearch() {
         onChange={(e) => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
         onKeyDown={onKey}
-        placeholder={big ? 'Numbers, plates, names, phones…' : 'Search anything: JC-2026-000012, VX, a plate, a name, a phone…'}
+        placeholder={big ? 'Numbers, serials, names, phones…' : 'Search anything: SO-2026-000012, a serial, a product, a name, a phone…'}
         aria-label="Search everything"
         role="combobox"
         aria-expanded={(open || big) && !!q.trim()}
@@ -175,7 +175,7 @@ export function GlobalSearch() {
             {q.trim() ? results : (
               <div className="px-6 py-10 text-center text-sm text-[var(--ejo-text-muted)]">
                 <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="search" size={22} /></span>
-                Type a reference such as JC-2026-000012 or just VX, a plate, a name, a phone number or a page.
+                Type a reference such as SO-2026-000012 or BLD, a serial number, a product, a name, a phone number or a page.
               </div>
             )}
           </div>
@@ -213,7 +213,7 @@ function Results({ q, groups, status, active, setActive, go, listId }: { q: stri
       <div className="px-6 py-8 text-center" role="status">
         <span className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--ejo-primary)]/10 text-[var(--ejo-primary)]"><Icon name="search" size={18} /></span>
         <p className="text-sm font-medium text-[var(--ejo-text)]">Nothing found for “{term}”</p>
-        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Try a reference like JC-2026-000012, a plate, a name or a phone number.</p>
+        <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">Try a reference like SO-2026-000012, a serial number, a name or a phone number.</p>
         <p className="mt-2 text-[11px] text-[var(--ejo-text-muted)]">A prefix on its own lists the newest: {SEARCH_PREFIXES}.</p>
       </div>
     );

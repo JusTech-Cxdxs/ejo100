@@ -27,6 +27,19 @@ import { APPROVAL_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue'
 
 /** The shortcuts a person sees — only for what they may do. */
 const QUICK: { key: PermissionKey; label: string; href: string; icon: IconName }[] = [
+  // Zinox edition: the desks of the plant, the warehouses and the sales offices
+  { key: 'sales.quote.manage', label: 'New quotation', href: '/sales/quotations/new', icon: 'file' },
+  { key: 'finance.payment.confirm', label: 'Payments to confirm', href: '/sales/payments', icon: 'money' },
+  { key: 'production.build_order.manage', label: 'New build order', href: '/production/build-orders/new', icon: 'bolt' },
+  { key: 'production.line_check', label: "Today's line board", href: '/production/line', icon: 'clipboard' },
+  { key: 'production.qa', label: 'Units awaiting QA', href: '/production/units?stage=QA', icon: 'check-circle' },
+  { key: 'warehouse.fg.operate', label: 'Releases to pick', href: '/warehouse/releases?status=ISSUED', icon: 'boxes' },
+  { key: 'warehouse.dispatch', label: 'Dispatches', href: '/warehouse/dispatches', icon: 'truck' },
+  { key: 'procurement.requisition.raise', label: 'New requisition', href: '/procurement/requisitions/new', icon: 'cart' },
+  { key: 'service.manage', label: 'Open a service job', href: '/service/jobs/new', icon: 'wrench' },
+  { key: 'sales.pricing.manage', label: 'Dealer price lists', href: '/sales/price-lists', icon: 'tag' },
+  { key: 'projects.manage', label: 'New project', href: '/projects/new', icon: 'rocket' },
+  { key: 'catalogue.manage', label: 'Catalogue', href: '/catalogue/products', icon: 'package' },
   // Customer care (the support department)
   { key: 'support.tickets.manage', label: 'Support centre', href: '/crm/support', icon: 'inbox' },
   { key: 'support.tickets.manage', label: 'Log a call or complaint', href: '/crm/support/new', icon: 'phone' },

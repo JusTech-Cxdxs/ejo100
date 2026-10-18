@@ -69,7 +69,7 @@ export default async function FinishedUnitPage({ params, searchParams }: { param
             </SectionCard>
           ) : null}
 
-          {(canFg || canManage) && (movable || s === 'QUARANTINE' || s === 'RESERVED') ? (
+          {(canFg || canManage) && (movable || s === 'QUARANTINE') ? (
             <div className="grid gap-6 md:grid-cols-2">
               {canFg && movable && locations.length ? (
                 <form action={moveFinishedUnitFormAction} className={`${CARD} relative space-y-3`}>
@@ -92,7 +92,7 @@ export default async function FinishedUnitPage({ params, searchParams }: { param
                   <SubmitButton label={s === 'QUARANTINE' ? 'Return to stock' : 'Quarantine unit'} pendingLabel="Saving…" className={s === 'QUARANTINE' ? BTN : BTN_DANGER} />
                   {s === 'QUARANTINE' ? <p className="text-xs text-[var(--ejo-text-muted)]">To write it off instead, decide it under <LoadingLink href="/warehouse/adjustments" className={LINK}>Adjustments</LoadingLink>.</p> : null}
                 </form>
-              ) : canFg && s !== 'QUARANTINE' ? (
+              ) : canFg && (s === 'IN_STOCK' || s === 'RETURNED') ? (
                 <form action={requestUnitAdjustmentFormAction} className={`${CARD} relative space-y-3`}>
                   <FormPendingOverlay />
                   <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Raise an adjustment</h2>

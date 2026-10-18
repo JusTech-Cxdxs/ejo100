@@ -137,7 +137,7 @@ test('the finished goods officer receives two serials against the order and sees
 
   await page.goto(`/warehouse/finished-goods?q=${encodeURIComponent(`E2ETAB${tag}`)}`);
   for (const serial of S.serials) await expect(page.getByRole('link', { name: serial })).toBeVisible();
-  await expect(page.getByText('In stock').first()).toBeVisible();
+  await expect(page.locator('table').getByText('In stock').first()).toBeVisible();
 
   // The order now shows both units received.
   await page.goto(S.orderUrl);

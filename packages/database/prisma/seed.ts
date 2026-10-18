@@ -95,8 +95,8 @@ async function main() {
 
   const group = await prisma.businessUnit.upsert({
     where: { organisationId_slug: { organisationId: organisation.id, slug: 'zinox' } },
-    update: {},
-    create: { organisationId: organisation.id, name: 'Zinox Technologies', slug: 'zinox' },
+    update: { name: 'Manufacturing & Distribution' },
+    create: { organisationId: organisation.id, name: 'Manufacturing & Distribution', slug: 'zinox' },
   });
 
   await prisma.countryLink.upsert({

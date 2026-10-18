@@ -67,7 +67,7 @@ test('the planner creates a build order for the configuration', async ({ page })
   // Planning checks the materials (no BOM lines → nothing short).
   await page.getByRole('button', { name: 'Check materials' }).click();
   await waitOutcome(page, /status=materials_(checked|short)/);
-  await expect(page.getByText('Materials checked')).toBeVisible();
+  await expect(page.getByText('Materials checked').first()).toBeVisible();
 });
 
 test('the Production Manager releases it to the line', async ({ page }) => {

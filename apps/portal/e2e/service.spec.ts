@@ -118,8 +118,8 @@ test('a Project Manager records a project for the seeded customer and adds a mil
   await ms.locator('input[name="dueDate"]').fill(lagosDay(5));
   await ms.getByRole('button', { name: 'Add milestone' }).click();
   await waitOutcome(page, /status=milestone_added/);
-  await expect(page.getByText('Site survey — 40 schools')).toBeVisible();
-  await expect(page.getByText('Due soon')).toBeVisible();
+  await expect(page.getByText('Site survey — 40 schools').first()).toBeVisible();
+  await expect(page.getByText('Due soon').first()).toBeVisible();
   await page.getByRole('button', { name: 'Mark done' }).first().click();
   await waitOutcome(page, /status=milestone_completed/);
 });

@@ -38,7 +38,7 @@ export function Wordmark({ name, size = 'md', tone = 'default' }: { name: string
   if (LOGO.carriesFirstWord) {
     // The logo spells the first word itself: logo above, the rest of the name beneath the rule, flush to the logo's width.
     return (
-      <div className="inline-flex min-w-0 flex-col items-stretch" style={{ width: logoW }} title={name}>
+      <div className="inline-flex min-w-0 flex-col items-stretch" style={{ minWidth: logoW }} title={name}>
         {logoEl}
         {rest}
       </div>
