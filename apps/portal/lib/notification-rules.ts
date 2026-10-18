@@ -12,6 +12,14 @@ export const AREAS: Record<string, string[]> = {
   WARRANTY: ['Warranty', 'WarrantyPolicy', 'WarrantyProvider', 'WarrantyClaim'],
   SECURITY: ['Visit', 'ExitPass', 'VehicleGateExit', 'RoadTestPermit', 'SecurityIncident', 'GateDelivery', 'ContractorPass'],
   SCHEDULING: ['Appointment', 'MeetingRoom', 'CalendarDelegate'],
+  // Zinox edition
+  CATALOGUE: ['Product', 'ProductConfiguration', 'BomLine', 'SoftwarePackage', 'CheckTemplate'],
+  PRODUCTION: ['BuildOrder', 'MaterialIssue', 'ProductionUnit', 'UnitCheck'],
+  WAREHOUSE: ['FinishedUnit', 'FgLocation', 'StockTransfer', 'GoodsReleaseNote', 'Dispatch', 'IncomingInspection', 'GoodsReceipt'],
+  PROCUREMENT: ['Supplier', 'PurchaseRequisition', 'PurchaseOrder', 'Shipment', 'SupplierClaim'],
+  SALES: ['Quotation', 'SalesOrder', 'ProFormaInvoice', 'SalesPayment', 'SalesInvoice', 'SalesReturn', 'DealerAccount', 'PriceList', 'PriceBroadcast', 'Customer'],
+  SERVICE: ['ServiceJob', 'ServicePart', 'WarrantyLedgerEntry', 'Warranty', 'WarrantyClaim'],
+  PROJECTS: ['Project', 'ProjectMilestone', 'ProjectDeliverable'],
 };
 
 /** Heads see EVERYTHING in their area; administrators see everything.
@@ -23,6 +31,10 @@ export const ROLE_AREAS: Record<string, string[]> = {
   'warranty-hod': ['WARRANTY'],
   'chief-security-officer': ['SECURITY'],
   'scheduling-admin': ['SCHEDULING'],
+  // Zinox edition
+  'commercial-director': ['SALES', 'CATALOGUE'], 'sales-manager': ['SALES'], 'finance-manager': ['SALES'],
+  'production-manager': ['PRODUCTION', 'CATALOGUE'], 'warehouse-manager': ['WAREHOUSE', 'STORE'], 'procurement-head': ['PROCUREMENT'],
+  'warranty-manager': ['SERVICE', 'WARRANTY'], 'service-supervisor': ['SERVICE'], 'project-manager': ['PROJECTS'],
 };
 export const ALL_ACTIVITY_ROLES = ['administrator'];
 
@@ -58,6 +70,15 @@ export function recordUrl(entityType: string, id: string): string {
     CustomerVehicle: `/workshop/vehicles/${id}/edit`,
     Customer: `/crm/customers/${id}`,
     SupportTicket: `/crm/support/${id}`,
+    // Zinox edition
+    Product: `/catalogue/products/${id}`, SoftwarePackage: `/catalogue/software`, CheckTemplate: `/catalogue/checklists`,
+    BuildOrder: `/production/build-orders/${id}`, ProductionUnit: `/production/units/${id}`,
+    FinishedUnit: `/warehouse/finished-goods/${id}`, FgLocation: `/warehouse/locations`, StockTransfer: `/warehouse/transfers/${id}`,
+    GoodsReleaseNote: `/warehouse/releases/${id}`, Dispatch: `/warehouse/dispatches/${id}`,
+    Supplier: `/procurement/suppliers/${id}`, PurchaseRequisition: `/procurement/requisitions/${id}`, PurchaseOrder: `/procurement/orders/${id}`,
+    Shipment: `/procurement/shipments/${id}`, SupplierClaim: `/procurement/claims/${id}`,
+    Quotation: `/sales/quotations/${id}`, SalesOrder: `/sales/orders/${id}`, SalesReturn: `/sales/returns/${id}`, DealerAccount: `/sales/dealers/${id}`,
+    PriceList: `/sales/price-lists/${id}`, ServiceJob: `/service/jobs/${id}`, Project: `/projects/${id}`,
     PartRequestSlip: `/workshop/parts-requests/${id}`,
     ExternalProcurementRequest: `/workshop/external-procurement/${id}`,
     Part: `/inventory/parts/${id}`,

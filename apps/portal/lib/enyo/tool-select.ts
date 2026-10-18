@@ -30,6 +30,11 @@ const GROUPS: Group[] = [
   { test: /error|ref(erence)?\b|\bbug|crash|fail|broken|not working|\bIT\b|sign.?in|log.?in|password|security|visitor|website|traffic|page views?/i, tools: ['explain_error', 'website_traffic', 'my_security'] },
   { test: /who('?s| is| are)|staff|employee|colleague|manager|supervisor|technician|\bhod\b|head of|director|executive|role|team|people|department|works? (in|at)/i, tools: ['staff_directory', 'organisation_info'] },
   { test: /\bmy (recent|last) (activity|actions)|what did i (do|change)/i, tools: ['my_recent_activity'] },
+  // Zinox edition: products and the line, warehouses and purchasing, sales, service and projects.
+  { test: /\b(BLD|UNT|PRD)-\d|product|laptop|desktop|tablet|zpad|inverter|generator|smart ?board|monitor|\bsku\b|configuration|spec|bill of materials|\bbom\b|build order|the line|assembl|traveller|burn.?in|\bqa\b|quality|serial|rework|scrap/i, tools: ['product_lookup', 'build_order_status', 'unit_trace'] },
+  { test: /\b(TRF|PRQ|PO|SHP|SCL|REL|DSP)-\d|stock on hand|finished goods|warehouse|location|transfer|release note|dispatch|waybill|deliver|requisition|purchase order|shipment|customs|clear(ed|ance)|\beta\b|supplier claim|where is (serial|unit)/i, tools: ['stock_on_hand', 'serial_locate', 'purchase_order_status', 'shipment_eta'] },
+  { test: /\b(QTE|SO|PFI|INV|RMA|PL|PB)-\d|quot(e|ation)|order|pro.?forma|invoice|dealer|wholesale|distributor|td africa|price list|broadcast|discount|credit|paid|payment|sales (today|this)/i, tools: ['quotation_status', 'order_status', 'dealer_price', 'sales_today'] },
+  { test: /\b(SVC|PRJ)-\d|service job|repair|fault|under warranty|warranty (status|by serial)|activation|project|tender|milestone|deliverable|acceptance|site/i, tools: ['warranty_by_serial', 'service_job_status', 'project_status'] },
 ];
 
 /** The everyday set when nothing in particular matched. */

@@ -14,8 +14,12 @@ import { EnyoChat } from '@/components/enyo/EnyoChat';
 
 const BASE = '/customer-portal/dashboard';
 
-export const NAV: { href: string; label: string; icon: IconName; exact?: boolean }[] = [
+export const NAV: { href: string; label: string; icon: IconName; exact?: boolean; /** Only for customers with a dealer account (Zinox edition). */ dealerOnly?: boolean }[] = [
   { href: BASE, label: 'Overview', icon: 'home', exact: true },
+  { href: `${BASE}/devices`, label: 'Devices', icon: 'package' },
+  { href: `${BASE}/orders`, label: 'Orders', icon: 'receipt' },
+  { href: `${BASE}/prices`, label: 'Prices', icon: 'chart', dealerOnly: true },
+  { href: `${BASE}/claims`, label: 'Claims', icon: 'wrench' },
   { href: `${BASE}/vehicles`, label: 'My vehicles', icon: 'car' },
   { href: `${BASE}/services`, label: 'My services', icon: 'wrench' },
   { href: `${BASE}/payments`, label: 'Payments', icon: 'wallet' },
@@ -46,7 +50,7 @@ type Who = { fullName: string; firstName: string; email: string; initials: strin
  * bottom. The sticky header carries the greeting, the notification bell,
  * the theme switch and the account menu.
  */
-export function PortalShell({ who, initialUnread, children }: { who: Who; initialUnread: number; children: ReactNode }) {
+export function PortalShell({ who, initialUnread, dealer = false, children }: { who: Who; initialUnread: number; /** Shows the dealer-only items (Prices). */ dealer?: boolean; children: ReactNode }) {
   const pathname = usePathname() ?? BASE;
   const router = useRouter();
   const [drawer, setDrawer] = useState(false);
@@ -95,7 +99,7 @@ export function PortalShell({ who, initialUnread, children }: { who: Who; initia
 
   const navList = (onDark = false) => (
     <ul className="space-y-1">
-      {NAV.map((n) => {
+      {NAV.filter((n) => !n.dealerOnly || dealer).map((n) => {
         const active = isActive(pathname, n.href, n.exact);
         return (
           <li key={n.href}>

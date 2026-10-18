@@ -490,6 +490,7 @@ export const ROADMAP: RoadmapModule[] = [
     name: 'Procurement',
     tagline: 'From request to purchase order, approved at every step.',
     description: 'Purchase requisitions, quotations, purchase orders and three-way matching, extending the outside-purchase approvals the workshop already uses.',
+    live: { href: '/procurement', label: 'Open Procurement', what: 'Suppliers, requisitions with approval, purchase orders, shipments and customs, supplier claims' },
     icon: 'procurement',
     group: 'supply',
     phases: [
@@ -503,6 +504,7 @@ export const ROADMAP: RoadmapModule[] = [
     name: 'Suppliers',
     tagline: 'Know every supplier, and how well they deliver.',
     description: 'The supplier master: details, documents, price lists and performance, shared by Procurement, the Store and Finance.',
+    live: { href: '/procurement/suppliers', label: 'Open Suppliers', what: 'Supplier records with their purchase orders, terms and claims' },
     icon: 'suppliers',
     group: 'supply',
     phases: [
@@ -516,6 +518,7 @@ export const ROADMAP: RoadmapModule[] = [
     name: 'Warehouse',
     tagline: 'Stock in many places, always where you think it is.',
     description: 'Multi-location stock: bins, transfers between branches, counts and scanning, on top of the stock and batch tracking the Store already keeps.',
+    live: { href: '/warehouse', label: 'Open the Warehouses', what: 'Finished goods by serial and location, transfers, releases and dispatch; the components store' },
     icon: 'warehouse',
     group: 'supply',
     phases: [
@@ -529,6 +532,7 @@ export const ROADMAP: RoadmapModule[] = [
     name: 'Manufacturing',
     tagline: 'Plan, make and cost what the group produces.',
     description: 'For the group’s manufacturing businesses: bills of materials, work orders, planning and production cost.',
+    live: { href: '/production', label: 'Open Production', what: 'Build orders from bills of materials, unit travellers, line checks, QA and release to stock' },
     icon: 'factory',
     group: 'supply',
     phases: [

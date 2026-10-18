@@ -1,5 +1,11 @@
 'use server';
 import { logFailure } from '@/lib/log';
+import { getServiceDashboardItems, getServiceGlance } from './service';
+import { getProjectsDashboardItems, getProjectsGlance } from './projects';
+import { getSalesDashboardItems, getSalesGlance } from './sales';
+import { getProductionDashboardItems, getProductionGlance } from './production';
+import { getWarehouseDashboardItems, getWarehouseGlance } from './warehouse';
+import { getProcurementDashboardItems, getProcurementGlance } from './procurement';
 
 import { countOpenIntegrityAlerts } from './integrity';
 import { prisma } from '@ejo/database';
@@ -49,6 +55,13 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   const claimsP = getWarrantyClaimDashboardItems().catch(() => []);
   const securityP = getSecurityDashboardItems().catch(() => []);
   const schedulingP = getSchedulingDashboardItems().catch(() => []);
+  // Zinox edition: service centre and projects (the other modules are wired as they land).
+  const serviceP = getServiceDashboardItems().catch(() => []);
+  const projectsP = getProjectsDashboardItems().catch(() => []);
+  const salesP = getSalesDashboardItems().catch(() => []);
+  const productionP = getProductionDashboardItems().catch(() => []);
+  const warehouseP = getWarehouseDashboardItems().catch(() => []);
+  const procurementP = getProcurementDashboardItems().catch(() => []);
   const workflowP = getWorkflowActionItems().catch(() => []);
   const myWorkP = getMyWorkItems().catch(() => []);
   const isMasterAdmin = await currentUserIsMasterAdmin();
@@ -239,6 +252,12 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   }
 
   // Scheduling: today's appointments (host or participant) still to come.
+  for (const n of await serviceP) notifications.push({ ...n, kind: n.id.startsWith('service-claim-') ? 'WARRANTY' : 'WORKFLOW' });
+  for (const n of await projectsP) notifications.push({ ...n, kind: 'WORKFLOW' });
+  for (const n of await salesP) notifications.push({ ...n, kind: 'WORKFLOW' });
+  for (const n of await productionP) notifications.push({ ...n, kind: 'WORKFLOW' });
+  for (const n of await warehouseP) notifications.push({ ...n, kind: 'WORKFLOW' });
+  for (const n of await procurementP) notifications.push({ ...n, kind: 'WORKFLOW' });
   for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Integrity watch reviewers: new alerts (never ones about themselves).
@@ -420,5 +439,13 @@ export async function getPlatformGlance(): Promise<GlanceTile[]> {
     { label: "Today's appointments", value: apptsToday, hint: 'Still scheduled', href: '/schedule/appointments?show=today', tone: 'primary' },
     { label: 'Live broadcasts', value: broadcasts, hint: 'Running now', href: '/notifications?tab=broadcasts', tone: 'success' },
   ];
-  return tiles.filter((t) => NEED[t.href] ?? true);
+  const productionTiles: GlanceTile[] = [];
+  if (await allows('production.view')) {
+    const pg = await getProductionGlance().catch(() => null);
+    if (pg) {
+      productionTiles.push({ label: 'Build orders open', value: pg.openBuildOrders, hint: 'Planned, released or in progress', href: '/production/build-orders', tone: 'primary' });
+      productionTiles.push({ label: 'Units on the line', value: pg.unitsOnLine, hint: `${pg.awaitingQa} awaiting QA · ${pg.rework} in rework`, href: '/production/units?stage=line', tone: pg.rework ? 'warning' : 'info' });
+    }
+  }
+  return [...tiles.filter((t) => NEED[t.href] ?? true), ...productionTiles, ...(await getServiceGlance()), ...(await getProjectsGlance()), ...(await getSalesGlance()), ...(await getWarehouseGlance().catch(() => [])), ...(await getProcurementGlance().catch(() => []))];
 }

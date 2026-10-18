@@ -32,10 +32,18 @@ import { integrityTools } from './integrity';
 import { organisationTools } from './organisation';
 import { leadershipTools } from './leadership';
 import { peopleTools } from './people';
+import { serviceTools } from './service';
+import { salesTools } from './sales';
+import { productionTools } from './production';
+import { warehouseTools } from './warehouse';
 
 export function staffTools(): StaffTool[] {
   return [
     ...guideTools,
+    ...serviceTools,
+    ...salesTools,
+    ...productionTools,
+    ...warehouseTools,
     ...workTools,
     ...recordTools,
     ...storeTools,

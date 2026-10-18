@@ -377,3 +377,13 @@ export const loadSupportTickets = cache(async (customerId: string, organisationI
   });
   return rows.map(({ assignedToId, ...t }) => ({ ...t, status: String(t.status), withTeam: Boolean(assignedToId) }));
 });
+
+// ---------------------------------------------------------------- Dealer account (Zinox edition)
+
+export type DealerAccountView = { channel: string; tier: string | null; territory: string | null; creditLimit: number; creditDays: number; onHold: boolean; receivesPriceBroadcast: boolean };
+
+/** The dealer / distributor account behind this customer, if they resell (null for individuals and corporate end-users). */
+export const loadDealerAccount = cache(async (customerId: string): Promise<DealerAccountView | null> => {
+  const d = await prisma.dealerAccount.findUnique({ where: { customerId }, select: { channel: true, tier: true, territory: true, creditLimit: true, creditDays: true, onHold: true, receivesPriceBroadcast: true } });
+  return d ? { channel: String(d.channel), tier: d.tier ? String(d.tier) : null, territory: d.territory, creditLimit: num(d.creditLimit), creditDays: d.creditDays, onHold: d.onHold, receivesPriceBroadcast: d.receivesPriceBroadcast } : null;
+});

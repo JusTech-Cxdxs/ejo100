@@ -12,10 +12,10 @@ import { authorize, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation 
 import { writeAuditLog } from '@/lib/workshop-core';
 import { actorLabel } from '@/lib/assist/rules';
 import {
-  bomCostRollUp, configurationCodeProblem, FAMILIES, isValidSku, normaliseSku, parseSpecLines, skuProblem, STATIONS, type ProductFamilyCode, type Station,
+  bomCostRollUp, configurationCodeProblem, FAMILIES, normaliseSku, parseSpecLines, skuProblem, STATIONS, type ProductFamilyCode, type Station,
 } from '@/lib/catalogue-core';
 
-export class CatalogueActionError extends Error {
+class CatalogueActionError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'CatalogueActionError';
@@ -283,15 +283,17 @@ export async function getConfiguration(configurationId: string) {
 
 // ── Bill of materials ──────────────────────────────────────────────────────
 
-async function configurationForChange(configurationId: string, where: string) {
-  await authorize('catalogue.manage', undefined, where, 'Only the Catalogue team can change a bill of materials.');
-  const c = await prisma.productConfiguration.findFirst({ where: { id: configurationId, product: await orgWhere() }, select: { id: true, code: true, product: { select: { id: true, sku: true } } } });
+/** The configuration within the caller's organisation fence (the fence is passed in so every write names it). */
+async function configurationOf(configurationId: string, fence: { organisationId?: string }) {
+  const c = await prisma.productConfiguration.findFirst({ where: { id: configurationId, product: fence }, select: { id: true, code: true, product: { select: { id: true, sku: true } } } });
   if (!c) fail('This configuration is not available.');
   return c!;
 }
+const BOM_ONLY = 'Only the Catalogue team can change a bill of materials.';
 
 export async function addBomLine(configurationId: string, input: { partId: string; quantity: number; station: string; isOptional?: boolean; notes?: string }): Promise<void> {
-  const c = await configurationForChange(configurationId, 'addBomLine');
+  await authorize('catalogue.manage', undefined, 'addBomLine', BOM_ONLY);
+  const c = await configurationOf(configurationId, await orgWhere());
   const user = await requireUser();
   if (!Number.isFinite(input.quantity) || input.quantity <= 0 || input.quantity > 100000) fail('Enter the quantity per unit (more than 0).');
   if (!STATIONS.includes(input.station as Station)) fail('Choose the station that fits this part.');
@@ -307,7 +309,8 @@ export async function addBomLine(configurationId: string, input: { partId: strin
 }
 
 export async function removeBomLine(configurationId: string, partId: string): Promise<void> {
-  const c = await configurationForChange(configurationId, 'removeBomLine');
+  await authorize('catalogue.manage', undefined, 'removeBomLine', BOM_ONLY);
+  const c = await configurationOf(configurationId, await orgWhere());
   const user = await requireUser();
   const line = await prisma.bomLine.findFirst({ where: { configurationId: c.id, partId }, include: { part: { select: { name: true, partNumber: true } } } });
   if (!line) fail('That line is no longer on the bill of materials.');
@@ -316,7 +319,8 @@ export async function removeBomLine(configurationId: string, partId: string): Pr
 }
 
 export async function setConfigurationPackage(configurationId: string, packageId: string, required: boolean): Promise<void> {
-  const c = await configurationForChange(configurationId, 'setConfigurationPackage');
+  await authorize('catalogue.manage', undefined, 'setConfigurationPackage', BOM_ONLY);
+  const c = await configurationOf(configurationId, await orgWhere());
   const user = await requireUser();
   const pkg = await prisma.softwarePackage.findFirst({ where: { id: packageId, isActive: true, ...(await orgWhere()) }, select: { id: true, name: true, version: true } });
   if (!pkg) fail('Choose a software package from the list.');
@@ -325,7 +329,8 @@ export async function setConfigurationPackage(configurationId: string, packageId
 }
 
 export async function removeConfigurationPackage(configurationId: string, packageId: string): Promise<void> {
-  const c = await configurationForChange(configurationId, 'removeConfigurationPackage');
+  await authorize('catalogue.manage', undefined, 'removeConfigurationPackage', BOM_ONLY);
+  const c = await configurationOf(configurationId, await orgWhere());
   const user = await requireUser();
   const row = await prisma.configurationPackage.findFirst({ where: { configurationId: c.id, packageId }, include: { package: { select: { name: true } } } });
   if (!row) fail('That package is no longer on the configuration.');

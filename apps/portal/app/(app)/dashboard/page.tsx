@@ -57,6 +57,11 @@ const GLANCE_ICON: Record<string, IconName> = {
   '/workshop/custody': 'clipboard', '/workshop/vehicle-service-custody': 'droplet', '/workshop/parts-requests': 'package', '/workshop/external-procurement': 'cart',
   '/inventory/goods-receipts': 'receipt', '/warranty/claims': 'shield-check', '/security/on-premises': 'badge', '/security/incidents?tab=open': 'alert',
   '/schedule/appointments?show=today': 'calendar', '/notifications?tab=broadcasts': 'megaphone',
+  '/service/jobs': 'wrench', '/service/jobs?status=AWAITING_PARTS': 'package', '/service/jobs?status=READY': 'check-circle', '/projects?status=IN_PROGRESS': 'handshake', '/projects': 'calendar',
+  '/production/build-orders': 'clipboard', '/production/units?stage=line': 'bolt',
+  '/warehouse/finished-goods': 'boxes', '/warehouse/releases?status=ISSUED': 'clipboard', '/warehouse/dispatches': 'truck', '/warehouse/incoming-qc': 'check-circle',
+  '/procurement/requisitions?status=SUBMITTED': 'file', '/procurement/orders?status=open': 'cart', '/procurement/shipments?status=open': 'globe',
+  '/sales/quotations': 'file', '/sales/orders?status=AWAITING_PAYMENT': 'money', '/sales/orders?status=READY': 'boxes', '/sales/payments': 'receipt',
 };
 const GLANCE_TONE: Record<string, Tone> = { warning: 'warning', error: 'error', muted: 'neutral' };
 const TONE_CHIP: Record<string, string> = {

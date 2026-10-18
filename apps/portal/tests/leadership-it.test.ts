@@ -92,7 +92,7 @@ test('Headquarters tabs, IT control room and Enyo briefings are wired, guarded a
 
 test('sign-in pages tell staff and customers what the platform does, truthfully', () => {
   const staff = read('components/AuthShell.tsx');
-  for (const t of ['Workshop', 'Headquarters & analytics', 'IT & audit', 'Enyo, the assistant', 'Nobody approves their own request']) assert.ok(staff.includes(t), t);
+  for (const t of ['Production', 'Warehouses & store', 'Sales & dealers', 'Headquarters & analytics', 'IT & audit', 'Enyo, the assistant', 'Nobody approves their own request']) assert.ok(staff.includes(t), t);
   const cust = read('../website/components/customer/CustomerAuthShell.tsx');
   for (const t of ['Follow every step', 'Ask Enyo, any time', 'Talk to a person', 'Your visit, step by step']) assert.ok(cust.includes(t), t);
 });

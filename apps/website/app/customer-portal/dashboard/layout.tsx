@@ -4,6 +4,7 @@ import { requireCustomer } from '@/lib/customer-portal/session';
 import { loadNotices } from '@/lib/customer-portal/notifications';
 import { firstName, initials } from '@/lib/customer-portal/format';
 import { PortalShell } from '@/components/customer/PortalShell';
+import { loadDealerAccount } from '@/lib/customer-portal/data';
 
 export const dynamic = 'force-dynamic';
 
@@ -37,6 +38,7 @@ export default async function CustomerDashboardLayout({ children }: { children: 
     <PortalShell
       who={{ fullName: me.fullName, firstName: firstName(me.fullName), email: me.email, initials: initials(me.fullName), greeting: greeting() }}
       initialUnread={unread}
+      dealer={Boolean(await loadDealerAccount(me.id))}
     >
       {children}
     </PortalShell>
