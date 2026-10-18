@@ -5,8 +5,7 @@
       "/home/user/zinox-ejo100/node_modules/.bin/playwright",
       "test",
       "--config=e2e/playwright.config.ts",
-      "e2e/warehouse.spec.ts",
-      "e2e/service.spec.ts"
+      "e2e/role-matrix.spec.ts"
     ],
     "configFile": "/home/user/zinox-ejo100/apps/portal/e2e/playwright.config.ts",
     "rootDir": "/home/user/zinox-ejo100/apps/portal/e2e",
@@ -112,28 +111,19 @@
   },
   "suites": [
     {
-      "title": "service.spec.ts",
-      "file": "service.spec.ts",
+      "title": "role-matrix.spec.ts",
+      "file": "role-matrix.spec.ts",
       "column": 0,
       "line": 0,
       "specs": [
         {
-          "title": "the Service Centre supervisor opens a job for a typed serial and assigns the technician",
+          "title": "role matrix — administrator",
           "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
+              "timeout": 180000,
+              "annotations": [],
               "expectedStatus": "passed",
               "projectId": "desktop",
               "projectName": "desktop",
@@ -142,424 +132,50 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 9273,
+                  "duration": 53514,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
                   "steps": [
                     {
-                      "title": "sign in as Sarah Servicesupervisor (service-supervisor)",
-                      "duration": 1806
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:12:34.585Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "d5b986d33d5f0a7f3077-5c824640ebabef0a9982",
-          "file": "service.spec.ts",
-          "line": 24,
-          "column": 5
-        },
-        {
-          "title": "the technician records the diagnosis and the resolution; they cannot pass their own quality check",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 4183,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Segun Servicetech (service-technician)",
-                      "duration": 1339
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:12:44.045Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "d5b986d33d5f0a7f3077-4e11f3147682fef3815a",
-          "file": "service.spec.ts",
-          "line": 49,
-          "column": 5
-        },
-        {
-          "title": "the supervisor quotes the paid repair, records payment, passes QA and returns the unit",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 38015,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Sarah Servicesupervisor (service-supervisor)",
-                      "duration": 1570
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:12:48.240Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "d5b986d33d5f0a7f3077-1b691bc79953ed15f565",
-          "file": "service.spec.ts",
-          "line": 66,
-          "column": 5
-        },
-        {
-          "title": "a Project Manager records a project for the seeded customer and adds a milestone",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 13275,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Priya Projectmanager (project-manager)",
-                      "duration": 1412
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:13:26.266Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "d5b986d33d5f0a7f3077-85d1a03255551c04c434",
-          "file": "service.spec.ts",
-          "line": 96,
-          "column": 5
-        },
-        {
-          "title": "fences: a sales officer cannot open the Service Centre; a technician cannot open Projects",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 7412,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Seun Salesofficer (sales-officer)",
-                      "duration": 1665
+                      "title": "every menu page opens cleanly",
+                      "duration": 17615
                     },
                     {
-                      "title": "sign in as Segun Servicetech (service-technician)",
-                      "duration": 1241
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:13:39.557Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/service.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "d5b986d33d5f0a7f3077-0528ad812e0a6e86b57c",
-          "file": "service.spec.ts",
-          "line": 127,
-          "column": 5
-        }
-      ]
-    },
-    {
-      "title": "warehouse.spec.ts",
-      "file": "warehouse.spec.ts",
-      "column": 0,
-      "line": 0,
-      "specs": [
-        {
-          "title": "a procurement officer adds a supplier and raises a requisition for a finished product",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 4993,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Pelumi Procurement (procurement-officer)",
-                      "duration": 1419
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:13:46.987Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
-                  "attachments": []
-                }
-              ],
-              "status": "expected"
-            }
-          ],
-          "id": "a645baeaf505bbc52b23-040a716d6a324485d7f0",
-          "file": "warehouse.spec.ts",
-          "line": 52,
-          "column": 5
-        },
-        {
-          "title": "the Head of Procurement approves the requisition; the officer orders it; the head approves and sends the order",
-          "ok": true,
-          "tags": [],
-          "tests": [
-            {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
-              "expectedStatus": "passed",
-              "projectId": "desktop",
-              "projectName": "desktop",
-              "results": [
-                {
-                  "workerIndex": 0,
-                  "parallelIndex": 0,
-                  "status": "passed",
-                  "duration": 12773,
-                  "errors": [],
-                  "stdout": [],
-                  "stderr": [],
-                  "retry": 0,
-                  "steps": [
-                    {
-                      "title": "sign in as Hassan Procurementhead (procurement-head)",
-                      "duration": 2048
+                      "title": "pages for everyone open cleanly",
+                      "duration": 4501
                     },
                     {
-                      "title": "sign in as Pelumi Procurement (procurement-officer)",
-                      "duration": 1725
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 25971
                     },
                     {
-                      "title": "sign in as Hassan Procurementhead (procurement-head)",
-                      "duration": 2035
+                      "title": "1 forbidden addresses typed in are refused",
+                      "duration": 2226
                     }
                   ],
-                  "startTime": "2026-10-18T17:13:52.080Z",
-                  "annotations": [
-                    {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
-                    }
-                  ],
+                  "startTime": "2026-10-18T17:14:44.480Z",
+                  "annotations": [],
                   "attachments": []
                 }
               ],
               "status": "expected"
             }
           ],
-          "id": "a645baeaf505bbc52b23-9b346cf11213381cce54",
-          "file": "warehouse.spec.ts",
-          "line": 78,
-          "column": 5
+          "id": "e12ad5aece5bde6542d7-e00258ce70ca0f1615de",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
         },
         {
-          "title": "the Warehouse Manager sets up two finished goods locations",
+          "title": "role matrix — branch-administrator",
           "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
+              "timeout": 180000,
+              "annotations": [],
               "expectedStatus": "passed",
               "projectId": "desktop",
               "projectName": "desktop",
@@ -568,56 +184,50 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 6166,
+                  "duration": 26299,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
                   "steps": [
                     {
-                      "title": "sign in as Wale Warehousemanager (warehouse-manager)",
-                      "duration": 2180
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:14:04.865Z",
-                  "annotations": [
+                      "title": "every menu page opens cleanly",
+                      "duration": 8860
+                    },
                     {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
+                      "title": "pages for everyone open cleanly",
+                      "duration": 3220
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 9906
+                    },
+                    {
+                      "title": "9 forbidden addresses typed in are refused",
+                      "duration": 2249
                     }
                   ],
+                  "startTime": "2026-10-18T17:15:38.193Z",
+                  "annotations": [],
                   "attachments": []
                 }
               ],
               "status": "expected"
             }
           ],
-          "id": "a645baeaf505bbc52b23-334a15c6cf5b86f5b85f",
-          "file": "warehouse.spec.ts",
-          "line": 113,
-          "column": 5
+          "id": "e12ad5aece5bde6542d7-d2b4db2babf2c02c5147",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
         },
         {
-          "title": "the finished goods officer receives two serials against the order and sees them in finished goods",
+          "title": "role matrix — receptionist",
           "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
+              "timeout": 180000,
+              "annotations": [],
               "expectedStatus": "passed",
               "projectId": "desktop",
               "projectName": "desktop",
@@ -626,56 +236,1142 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 5775,
+                  "duration": 15603,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
                   "steps": [
                     {
-                      "title": "sign in as Felix Finishedgoods (fg-warehouse-officer)",
+                      "title": "every menu page opens cleanly",
+                      "duration": 5913
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2904
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 491
+                    },
+                    {
+                      "title": "43 forbidden addresses typed in are refused",
+                      "duration": 3899
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:16:04.505Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-1a05302b907066d28c2e",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — workshop-supervisor",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14711,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6834
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1321
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 751
+                    },
+                    {
+                      "title": "47 forbidden addresses typed in are refused",
+                      "duration": 4110
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:16:20.121Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-bf1396c2ce859d030c96",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — technician",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14805,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5561
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2093
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 709
+                    },
+                    {
+                      "title": "47 forbidden addresses typed in are refused",
+                      "duration": 3842
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:16:34.844Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-62f57f84b81f3268a7bb",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — workshop-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17642,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7371
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1335
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3186
+                    },
+                    {
+                      "title": "36 forbidden addresses typed in are refused",
+                      "duration": 3237
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:16:49.664Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-b67265bb8e6f31a47497",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — finance-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15582,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6490
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1573
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1528
+                    },
+                    {
+                      "title": "43 forbidden addresses typed in are refused",
+                      "duration": 3407
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:17:07.318Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-a532266438f37dfe574e",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — store-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15779,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6855
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1381
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1380
+                    },
+                    {
+                      "title": "42 forbidden addresses typed in are refused",
+                      "duration": 3562
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:17:22.915Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-3ad2acabbc0870919698",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — security-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14220,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5553
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2582
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1
+                    },
+                    {
+                      "title": "53 forbidden addresses typed in are refused",
+                      "duration": 4238
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:17:38.708Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-5a260af49025bf3162cf",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — store-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15685,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6801
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1579
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1532
+                    },
+                    {
+                      "title": "43 forbidden addresses typed in are refused",
+                      "duration": 3598
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:17:52.943Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-42d716606a66f887160c",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — chief-security-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13536,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5445
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1597
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1
+                    },
+                    {
+                      "title": "53 forbidden addresses typed in are refused",
+                      "duration": 4128
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:18:08.643Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-14896a3475c078d9393c",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — warranty-hod",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15278,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6124
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1450
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1489
+                    },
+                    {
+                      "title": "40 forbidden addresses typed in are refused",
+                      "duration": 3491
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:18:22.199Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-65650c473c5533d497d9",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — warranty-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14104,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5234
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1981
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1376
+                    },
+                    {
+                      "title": "42 forbidden addresses typed in are refused",
+                      "duration": 3641
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:18:37.496Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-8ddbe67c5de35ad278bc",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — department-head",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14076,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5495
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1393
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 684
+                    },
+                    {
+                      "title": "56 forbidden addresses typed in are refused",
+                      "duration": 4284
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:18:51.612Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-9d725c5dcfca89e0f76a",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — calendar-user",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 14476,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5227
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2204
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 756
+                    },
+                    {
+                      "title": "57 forbidden addresses typed in are refused",
+                      "duration": 4573
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:19:05.699Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-b2e34bc122c8b53cffdd",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — scheduling-admin",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13829,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 4804
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2020
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 708
+                    },
+                    {
+                      "title": "57 forbidden addresses typed in are refused",
+                      "duration": 4599
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:19:20.186Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-2c3362d6e1acd0f0ff85",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — broadcaster",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13349,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5289
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2130
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 0
+                    },
+                    {
+                      "title": "58 forbidden addresses typed in are refused",
+                      "duration": 4168
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:19:34.026Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-7e56e478f0bf79e5137f",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — branch-assistant",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15249,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6218
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2085
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1
+                    },
+                    {
+                      "title": "59 forbidden addresses typed in are refused",
+                      "duration": 4597
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:19:47.387Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-be8652e19fac0ebaa321",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — executive",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 23625,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 8836
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2240
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 7857
+                    },
+                    {
+                      "title": "10 forbidden addresses typed in are refused",
+                      "duration": 2243
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:20:02.652Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-d74a665124679d0add02",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — it-administrator",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 21881,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7179
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2181
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 6373
+                    },
+                    {
+                      "title": "49 forbidden addresses typed in are refused",
+                      "duration": 4361
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:20:26.290Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-fa7797bb2d641f2e31d8",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — customer-care",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 16426,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7114
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2223
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1407
+                    },
+                    {
+                      "title": "44 forbidden addresses typed in are refused",
+                      "duration": 3956
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:20:48.182Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-42fc40ac935187489207",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — workshop-supervisor + workshop-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18403,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 8116
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1510
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 2949
+                    },
+                    {
+                      "title": "36 forbidden addresses typed in are refused",
+                      "duration": 3291
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:21:04.621Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-69b815bb060ab84b2ba1",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — sales-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 19662,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 8416
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2529
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3648
+                    },
+                    {
+                      "title": "42 forbidden addresses typed in are refused",
+                      "duration": 3579
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:21:23.040Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-9772a61764c6d4d8b272",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — showroom-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17010,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6303
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
                       "duration": 2178
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:14:11.046Z",
-                  "annotations": [
+                    },
                     {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3360
+                    },
+                    {
+                      "title": "42 forbidden addresses typed in are refused",
+                      "duration": 3519
                     }
                   ],
+                  "startTime": "2026-10-18T17:21:42.716Z",
+                  "annotations": [],
                   "attachments": []
                 }
               ],
               "status": "expected"
             }
           ],
-          "id": "a645baeaf505bbc52b23-636aed2eaf8fe58b16bb",
-          "file": "warehouse.spec.ts",
-          "line": 127,
-          "column": 5
+          "id": "e12ad5aece5bde6542d7-44abe96ac1e153dcc6bc",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
         },
         {
-          "title": "the Warehouse Manager moves the units to the second location with a transfer",
+          "title": "role matrix — key-account-manager",
           "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
+              "timeout": 180000,
+              "annotations": [],
               "expectedStatus": "passed",
               "projectId": "desktop",
               "projectName": "desktop",
@@ -684,56 +1380,50 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4962,
+                  "duration": 20348,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
                   "steps": [
                     {
-                      "title": "sign in as Wale Warehousemanager (warehouse-manager)",
-                      "duration": 1427
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:14:16.840Z",
-                  "annotations": [
+                      "title": "every menu page opens cleanly",
+                      "duration": 7634
+                    },
                     {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2325
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4560
+                    },
+                    {
+                      "title": "40 forbidden addresses typed in are refused",
+                      "duration": 4029
                     }
                   ],
+                  "startTime": "2026-10-18T17:21:59.737Z",
+                  "annotations": [],
                   "attachments": []
                 }
               ],
               "status": "expected"
             }
           ],
-          "id": "a645baeaf505bbc52b23-dd5a93e752c071f85105",
-          "file": "warehouse.spec.ts",
-          "line": 147,
-          "column": 5
+          "id": "e12ad5aece5bde6542d7-f4c63c25cf8c6a404ced",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
         },
         {
-          "title": "people outside the warehouses are refused",
+          "title": "role matrix — sales-manager",
           "ok": true,
           "tags": [],
           "tests": [
             {
-              "timeout": 150000,
-              "annotations": [
-                {
-                  "type": "serial",
-                  "location": {
-                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                    "line": 0,
-                    "column": 0
-                  }
-                }
-              ],
+              "timeout": 180000,
+              "annotations": [],
               "expectedStatus": "passed",
               "projectId": "desktop",
               "projectName": "desktop",
@@ -742,49 +1432,1114 @@
                   "workerIndex": 0,
                   "parallelIndex": 0,
                   "status": "passed",
-                  "duration": 4845,
+                  "duration": 24226,
                   "errors": [],
                   "stdout": [],
                   "stderr": [],
                   "retry": 0,
                   "steps": [
                     {
-                      "title": "sign in as Cora Calendar (calendar-user)",
-                      "duration": 1909
-                    }
-                  ],
-                  "startTime": "2026-10-18T17:14:21.816Z",
-                  "annotations": [
+                      "title": "every menu page opens cleanly",
+                      "duration": 10599
+                    },
                     {
-                      "type": "serial",
-                      "location": {
-                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/warehouse.spec.ts",
-                        "line": 0,
-                        "column": 0
-                      }
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1732
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 6406
+                    },
+                    {
+                      "title": "38 forbidden addresses typed in are refused",
+                      "duration": 3624
                     }
                   ],
+                  "startTime": "2026-10-18T17:22:20.105Z",
+                  "annotations": [],
                   "attachments": []
                 }
               ],
               "status": "expected"
             }
           ],
-          "id": "a645baeaf505bbc52b23-96b2cbe669ca81b734dc",
-          "file": "warehouse.spec.ts",
-          "line": 180,
-          "column": 5
+          "id": "e12ad5aece5bde6542d7-1e294fbfa665efdffe6d",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — commercial-director",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 25061,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 10352
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1853
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 7427
+                    },
+                    {
+                      "title": "32 forbidden addresses typed in are refused",
+                      "duration": 3446
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:22:44.348Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-3bd6f0e9b8df914b1194",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — billing-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18335,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7575
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2258
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 2374
+                    },
+                    {
+                      "title": "49 forbidden addresses typed in are refused",
+                      "duration": 4374
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:23:09.422Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-cf1832a30f26d5f7220c",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — credit-controller",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 19686,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 9507
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1532
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 2305
+                    },
+                    {
+                      "title": "50 forbidden addresses typed in are refused",
+                      "duration": 4448
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:23:27.768Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-006e1e1beb7322b56304",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — finance-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 21777,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 10116
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1514
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4481
+                    },
+                    {
+                      "title": "41 forbidden addresses typed in are refused",
+                      "duration": 3894
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:23:47.467Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-597e20a16a29721b7f20",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — production-planner",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18106,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5793
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2318
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4474
+                    },
+                    {
+                      "title": "38 forbidden addresses typed in are refused",
+                      "duration": 3675
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:24:09.259Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-e92261bb8272b3dae7ce",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — assembler",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17128,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6072
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2384
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1696
+                    },
+                    {
+                      "title": "54 forbidden addresses typed in are refused",
+                      "duration": 4558
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:24:27.377Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-7ec870d14cb3d52c1758",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — line-supervisor",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 17796,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6809
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2042
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3079
+                    },
+                    {
+                      "title": "49 forbidden addresses typed in are refused",
+                      "duration": 4111
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:24:44.517Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-e2f5d8ddef093c7e5e41",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — qa-inspector",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18284,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6640
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1498
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 2819
+                    },
+                    {
+                      "title": "48 forbidden addresses typed in are refused",
+                      "duration": 4922
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:25:02.326Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-47a8309bd5b86015d47e",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — production-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 19357,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7144
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1790
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3948
+                    },
+                    {
+                      "title": "43 forbidden addresses typed in are refused",
+                      "duration": 4075
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:25:20.621Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-1a348acb51015e339b65",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — parts-warehouse-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18335,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5568
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2381
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4427
+                    },
+                    {
+                      "title": "42 forbidden addresses typed in are refused",
+                      "duration": 4101
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:25:39.991Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-5643c66230fd7326435f",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — fg-warehouse-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 20255,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6460
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2672
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4347
+                    },
+                    {
+                      "title": "40 forbidden addresses typed in are refused",
+                      "duration": 4013
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:25:58.337Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-ebc94ebfc85f90404d05",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — dispatch-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15438,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5045
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 3067
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 1378
+                    },
+                    {
+                      "title": "44 forbidden addresses typed in are refused",
+                      "duration": 3986
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:26:18.603Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-9c1967e2dcbec1bbda83",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — warehouse-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 23331,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 8811
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1686
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 6775
+                    },
+                    {
+                      "title": "33 forbidden addresses typed in are refused",
+                      "duration": 3523
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:26:34.060Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-327db74f98ca1d64498e",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — procurement-officer",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 18942,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 6382
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2272
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3856
+                    },
+                    {
+                      "title": "44 forbidden addresses typed in are refused",
+                      "duration": 4066
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:26:57.402Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-a2cc18d84552ed33214d",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — procurement-head",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 20401,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7433
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1578
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4819
+                    },
+                    {
+                      "title": "40 forbidden addresses typed in are refused",
+                      "duration": 3943
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:27:16.356Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-575aa39a2d3f573f0c9a",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — service-technician",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 15621,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 5015
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2116
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 2760
+                    },
+                    {
+                      "title": "46 forbidden addresses typed in are refused",
+                      "duration": 3889
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:27:36.769Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-921eda65a90d5c2139bd",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — service-supervisor",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 19086,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7439
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2274
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 3626
+                    },
+                    {
+                      "title": "43 forbidden addresses typed in are refused",
+                      "duration": 3595
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:27:52.402Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-a57a05937f07c5b463e4",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — warranty-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 19559,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7478
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 1563
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 4382
+                    },
+                    {
+                      "title": "39 forbidden addresses typed in are refused",
+                      "duration": 3784
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:28:11.499Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-3b276d631b01966f5964",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — project-manager",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 20344,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "steps": [
+                    {
+                      "title": "every menu page opens cleanly",
+                      "duration": 7345
+                    },
+                    {
+                      "title": "pages for everyone open cleanly",
+                      "duration": 2327
+                    },
+                    {
+                      "title": "menu pages that are protected areas open (the catalogue grants them)",
+                      "duration": 5414
+                    },
+                    {
+                      "title": "37 forbidden addresses typed in are refused",
+                      "duration": 3534
+                    }
+                  ],
+                  "startTime": "2026-10-18T17:28:31.076Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-d2ae45985a48378b8c9e",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
+        },
+        {
+          "title": "role matrix — master-administrator",
+          "ok": false,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 180000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "desktop",
+              "projectName": "desktop",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "failed",
+                  "duration": 31488,
+                  "error": {
+                    "message": "Error: Expected the URL to match /\\/dashboard/ within 30s, but the page is at http://localhost:3001/login — messages: That email and password don’t match. Check both and try again — or reset your password. | — form: Work email Password Keep me signed in Forgot password? That email and password don’t match. Check both and try again — or reset your password. Sign in New here? Your administrator creates your account — check your email for the welcome message.",
+                    "stack": "Error: Expected the URL to match /\\/dashboard/ within 30s, but the page is at http://localhost:3001/login — messages: That email and password don’t match. Check both and try again — or reset your password. | — form: Work email Password Keep me signed in Forgot password? That email and password don’t match. Check both and try again — or reset your password. Sign in New here? Your administrator creates your account — check your email for the welcome message.\n    at urlOrExplain (/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts:20:11)\n    at signIn (/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts:43:3)\n    at /home/user/zinox-ejo100/apps/portal/e2e/role-matrix.spec.ts:95:5",
+                    "location": {
+                      "file": "/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts",
+                      "column": 11,
+                      "line": 20
+                    },
+                    "snippet": "\u001b[90m   at \u001b[39mhelpers.ts:20\n\n  18 |     await page.waitForURL(url, { timeout });\n  19 |   } catch {\n> 20 |     throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${await describePage(page)}`);\n     |           ^\n  21 |   }\n  22 | }\n  23 |"
+                  },
+                  "errors": [
+                    {
+                      "location": {
+                        "file": "/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts",
+                        "column": 11,
+                        "line": 20
+                      },
+                      "message": "Error: Expected the URL to match /\\/dashboard/ within 30s, but the page is at http://localhost:3001/login — messages: That email and password don’t match. Check both and try again — or reset your password. | — form: Work email Password Keep me signed in Forgot password? That email and password don’t match. Check both and try again — or reset your password. Sign in New here? Your administrator creates your account — check your email for the welcome message.\n\n   at helpers.ts:20\n\n  18 |     await page.waitForURL(url, { timeout });\n  19 |   } catch {\n> 20 |     throw new Error(`Expected the URL to match ${url} within ${timeout / 1000}s, but the page is at ${await describePage(page)}`);\n     |           ^\n  21 |   }\n  22 | }\n  23 |\n    at urlOrExplain (/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts:20:11)\n    at signIn (/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts:43:3)\n    at /home/user/zinox-ejo100/apps/portal/e2e/role-matrix.spec.ts:95:5"
+                    }
+                  ],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-10-18T17:28:51.437Z",
+                  "annotations": [],
+                  "attachments": [
+                    {
+                      "name": "screenshot",
+                      "contentType": "image/png",
+                      "path": "/home/user/zinox-ejo100/apps/portal/test-results/role-matrix-role-matrix-—-master-administrator-desktop/test-failed-1.png"
+                    },
+                    {
+                      "name": "error-context",
+                      "contentType": "text/markdown",
+                      "path": "/home/user/zinox-ejo100/apps/portal/test-results/role-matrix-role-matrix-—-master-administrator-desktop/error-context.md"
+                    },
+                    {
+                      "name": "trace",
+                      "contentType": "application/zip",
+                      "path": "/home/user/zinox-ejo100/apps/portal/test-results/role-matrix-role-matrix-—-master-administrator-desktop/trace.zip"
+                    }
+                  ],
+                  "errorLocation": {
+                    "file": "/home/user/zinox-ejo100/apps/portal/e2e/helpers.ts",
+                    "column": 11,
+                    "line": 20
+                  }
+                }
+              ],
+              "status": "unexpected"
+            }
+          ],
+          "id": "e12ad5aece5bde6542d7-1f43b387697d10d3b87c",
+          "file": "role-matrix.spec.ts",
+          "line": 92,
+          "column": 7
         }
       ]
     }
   ],
   "errors": [],
   "stats": {
-    "startTime": "2026-10-18T17:12:33.820Z",
-    "duration": 113285.437,
-    "expected": 11,
+    "startTime": "2026-10-18T17:14:43.661Z",
+    "duration": 880736.0989999999,
+    "expected": 45,
     "skipped": 0,
-    "unexpected": 0,
+    "unexpected": 1,
     "flaky": 0
   }
 }
