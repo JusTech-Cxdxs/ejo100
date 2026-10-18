@@ -1,0 +1,282 @@
+1
+00:00:00,650 --> 00:00:02,615
+Kewalram Chanrai Group.
+
+2
+00:00:02,745 --> 00:00:05,257
+EJO 100, Enterprise Platform.
+
+3
+00:00:05,387 --> 00:00:06,805
+Built by JusTech.
+
+4
+00:00:09,150 --> 00:00:12,070
+This is EJO 100: one platform for the
+whole group,
+
+5
+00:00:12,200 --> 00:00:14,327
+from the front desk to the boardroom.
+
+6
+00:00:14,457 --> 00:00:17,620
+Every member of staff signs in with their
+own account,
+
+7
+00:00:17,750 --> 00:00:19,877
+and sees only what their role allows.
+
+8
+00:00:20,007 --> 00:00:23,049
+Let's start where the day starts, at the
+front desk.
+
+9
+00:00:24,679 --> 00:00:26,831
+The dashboard is the morning briefing.
+
+10
+00:00:26,961 --> 00:00:31,035
+Live counts of the vehicles in the
+workshop, jobs waiting on approval,
+
+11
+00:00:31,165 --> 00:00:35,358
+parts that need reordering, and everything
+that changed since yesterday.
+
+12
+00:00:35,488 --> 00:00:37,760
+While a page loads, the EJO mark pulses,
+
+13
+00:00:37,890 --> 00:00:40,703
+so you always know the system is working
+for you.
+
+14
+00:00:42,912 --> 00:00:44,589
+Customers live in one place.
+
+15
+00:00:44,719 --> 00:00:48,461
+A profile holds the vehicles, every job
+card, every payment,
+
+16
+00:00:48,591 --> 00:00:51,106
+and the full history of the relationship.
+
+17
+00:00:51,236 --> 00:00:56,010
+Nothing is typed twice, and nothing is
+lost when a member of staff moves on.
+
+18
+00:00:57,640 --> 00:00:59,667
+The workshop runs on job cards.
+
+19
+00:00:59,797 --> 00:01:05,512
+A job card follows a vehicle from gate to
+gate: intake, inspection, estimate, parts,
+
+20
+00:01:05,642 --> 00:01:07,739
+work done, billing, and release.
+
+21
+00:01:07,869 --> 00:01:10,453
+Every step records who did it and when,
+
+22
+00:01:10,583 --> 00:01:14,976
+so a supervisor can see the state of the
+whole floor at a glance.
+
+23
+00:01:16,606 --> 00:01:19,560
+Every document prints on the group's own
+letterhead.
+
+24
+00:01:19,690 --> 00:01:24,305
+The logo sits beside the wordmark, the
+green rule carries the group name beneath
+
+25
+00:01:24,435 --> 00:01:24,483
+it,
+
+26
+00:01:24,613 --> 00:01:27,093
+and the executing branch follows
+underneath,
+
+27
+00:01:27,223 --> 00:01:30,593
+exactly as on the printed job card the
+workshop uses today.
+
+28
+00:01:32,639 --> 00:01:35,898
+Inventory knows every part on the shelf:
+what is in stock,
+
+29
+00:01:36,028 --> 00:01:40,455
+what is reserved against a job card, what
+has just arrived on a goods receipt,
+
+30
+00:01:40,585 --> 00:01:43,026
+and what has fallen below its reorder
+level.
+
+31
+00:01:43,156 --> 00:01:46,707
+The store manager sees the numbers before
+the shelf runs empty.
+
+32
+00:01:48,337 --> 00:01:51,011
+Approvals route themselves to the right
+person.
+
+33
+00:01:51,141 --> 00:01:54,709
+A supervisor approves first, the manager
+gives the final word,
+
+34
+00:01:54,839 --> 00:01:58,228
+and the rules make sure nobody signs off
+their own request.
+
+35
+00:01:58,358 --> 00:02:02,642
+Each decision is one tap, and the
+requester is told the moment it happens.
+
+36
+00:02:04,272 --> 00:02:06,620
+At the gate, security registers visitors,
+
+37
+00:02:06,750 --> 00:02:09,218
+logs every vehicle coming in and going
+out,
+
+38
+00:02:09,348 --> 00:02:13,750
+and issues exit passes and road test
+passes that print with a reference the
+
+39
+00:02:13,880 --> 00:02:14,717
+gate can verify.
+
+40
+00:02:14,847 --> 00:02:18,282
+Who is on the premises right now is always
+one screen away.
+
+41
+00:02:21,139 --> 00:02:23,046
+The schedule brings meetings, rooms,
+
+42
+00:02:23,176 --> 00:02:26,723
+visitors and appointments into one
+calendar for the whole branch.
+
+43
+00:02:26,853 --> 00:02:30,401
+Book a room, invite colleagues, and the
+gate knows who to expect.
+
+44
+00:02:35,439 --> 00:02:37,638
+Customer care runs the support centre.
+
+45
+00:02:37,768 --> 00:02:42,173
+Every request becomes a ticket with an
+owner, a deadline, and a follow-up.
+
+46
+00:02:42,303 --> 00:02:46,401
+Service hours and teams are set by the
+business, not by the software.
+
+47
+00:02:48,031 --> 00:02:50,767
+Enyo is the assistant built into the
+platform.
+
+48
+00:02:50,897 --> 00:02:55,065
+Ask it in plain language and it answers
+from the group's own records,
+
+49
+00:02:55,195 --> 00:02:57,993
+with the same permissions as the person
+asking.
+
+50
+00:02:58,123 --> 00:03:02,603
+It summarises, drafts, and explains, and
+it never sees data it should not.
+
+51
+00:03:04,233 --> 00:03:08,448
+Leadership sees across every branch:
+workflow analytics, headquarters
+
+52
+00:03:08,578 --> 00:03:09,141
+dashboards,
+
+53
+00:03:09,271 --> 00:03:11,534
+and a complete, append-only audit log.
+
+54
+00:03:11,664 --> 00:03:15,690
+Every action in the system can be traced
+to a person and a moment,
+
+55
+00:03:15,820 --> 00:03:18,649
+which is what makes the numbers worth
+trusting.
+
+56
+00:03:20,279 --> 00:03:21,871
+And it all fits in a pocket.
+
+57
+00:03:22,001 --> 00:03:27,035
+EJO 100 installs on any phone like an app,
+with the same data, the same permissions,
+
+58
+00:03:27,165 --> 00:03:30,539
+and the same letterhead, wherever the work
+happens to be.
+
+59
+00:03:36,579 --> 00:03:38,936
+EJO 100, Enterprise Platform.
+
+60
+00:03:39,066 --> 00:03:43,567
+Built by Just Technologies for Kewalram
+Chanrai Group.
+
+61
+00:03:43,697 --> 00:03:45,196
+Powered by EJO 100.

@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>EJO 100 cards</title>
+<style>
+  :root { --ink:#0F172A; --muted:#334155; --faint:#64748B; --green:#16A34A; --accent:#22C55E; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { width:100%; height:100%; overflow:hidden; font-family:'Inter', system-ui, sans-serif; }
+  .card { position:relative; width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; }
+  /* ---- Intro: the group's letterhead ---- */
+  .intro { background:#FFFFFF; color:var(--ink); }
+  .intro .glow { position:absolute; inset:0; background:
+      radial-gradient(60vw 60vh at 15% 10%, rgba(34,197,94,.14), transparent 60%),
+      radial-gradient(50vw 50vh at 90% 95%, rgba(34,197,94,.12), transparent 60%); }
+  .lockup { position:relative; display:flex; align-items:center; gap:14px; }
+  .lockup img { height:260px; width:auto; display:block; }
+  .words { display:flex; flex-direction:column; }
+  .top { font-size:150px; font-weight:800; letter-spacing:.01em; line-height:1; white-space:nowrap; color:var(--ink); }
+  .bottom { display:flex; align-items:center; margin-top:18px; }
+  .rule { flex:1; height:7px; background:var(--green); margin-right:26px; transform-origin:left center; }
+  .group { font-size:68px; font-weight:600; color:var(--muted); white-space:nowrap; }
+  .tag { position:absolute; left:0; right:0; bottom:9vh; display:flex; flex-direction:column; align-items:center; gap:18px; }
+  .tag .line { display:flex; align-items:center; gap:18px; font-size:44px; font-weight:600; color:var(--ink); }
+  .tag .sub { font-size:26px; color:var(--faint); letter-spacing:.08em; text-transform:uppercase; }
+  /* ---- Outro: the platform ---- */
+  .outro { background:#0F172A; color:#fff; }
+  .outro .glow { position:absolute; inset:0; background: radial-gradient(45vw 45vh at 50% 42%, rgba(34,197,94,.28), transparent 65%); }
+  .mark { position:relative; width:300px; height:300px; display:flex; align-items:center; justify-content:center; }
+  .mark .halo { position:absolute; inset:0; border-radius:50%; background:var(--accent); filter:blur(48px); opacity:.35; }
+  .mark .ring { position:absolute; inset:26px; border-radius:50%; border:4px dashed var(--accent); opacity:.6; }
+  .mark .ring2 { position:absolute; inset:26px; border-radius:50%; border:2px solid rgba(255,255,255,.12); }
+  .mark .disc { position:relative; width:128px; height:128px; border-radius:50%; background:rgba(255,255,255,.1); backdrop-filter:blur(6px); display:flex; align-items:center; justify-content:center; }
+  .stack { position:relative; display:flex; flex-direction:column; align-items:center; gap:10px; text-align:center; }
+  .brand { font-size:132px; font-weight:800; letter-spacing:-.01em; line-height:1; }
+  .brand b { color:var(--accent); font-weight:800; }
+  .desc { font-size:40px; font-weight:500; color:#CBD5E1; letter-spacing:.14em; text-transform:uppercase; }
+  .by { margin-top:46px; font-size:34px; color:#94A3B8; }
+  .by strong { color:#fff; font-weight:600; }
+  .powered { position:absolute; bottom:8vh; left:0; right:0; text-align:center; font-size:26px; color:#64748B; letter-spacing:.06em; }
+  .site { font-size:26px; color:#94A3B8; margin-top:8px; }
+  /* ---- animation (paused; driven frame by frame) ---- */
+  .a { animation-fill-mode:both !important; animation-play-state:paused !important; }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(28px);} to { opacity:1; transform:none;} }
+  @keyframes pop { from { opacity:0; transform:scale(.82);} to { opacity:1; transform:none;} }
+  @keyframes draw { from { transform:scaleX(0);} to { transform:scaleX(1);} }
+  @keyframes fade { from { opacity:0;} to { opacity:1;} }
+  @keyframes spin { to { transform:rotate(360deg);} }
+  @keyframes pulse { 0%,100% { opacity:.28; transform:scale(.9);} 50% { opacity:.5; transform:scale(1.1);} }
+  @keyframes fadeOut { from { opacity:1;} to { opacity:0;} }
+  /* ---- portrait (phone) layout ---- */
+  @media (orientation: portrait) {
+    .lockup { flex-direction:column; gap:30px; }
+    .lockup img { height:400px; }
+    .words { align-items:center; }
+    .top { font-size:160px; }
+    .bottom { width:100%; }
+    .group { font-size:76px; }
+    .tag { bottom:12vh; }
+    .brand { font-size:150px; }
+    .desc { font-size:40px; }
+    .by { font-size:38px; padding:0 60px; line-height:1.4; }
+  }
+</style></head>
+<body>
+<section class="card intro" id="intro">
+  <div class="glow"></div>
+  <div class="lockup">
+    <img class="a" style="animation:pop .9s cubic-bezier(.22,.8,.3,1) 0s both" src="LOGO" alt="">
+    <div class="words">
+      <div class="top a" style="animation:fadeUp .8s cubic-bezier(.22,.8,.3,1) .45s both">Kewalram</div>
+      <div class="bottom">
+        <div class="rule a" style="animation:draw .7s cubic-bezier(.22,.8,.3,1) 1.1s both"></div>
+        <div class="group a" style="animation:fade .7s cubic-bezier(.22,.8,.3,1) 1.5s both">Chanrai Group</div>
+      </div>
+    </div>
+  </div>
+  <div class="tag a" style="animation:fadeUp .9s cubic-bezier(.22,.8,.3,1) 2.5s both">
+    <div class="line">
+      <svg width="52" height="52" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" stroke="#16A34A" stroke-width="1.5" fill="rgba(34,197,94,.15)"/><circle cx="12" cy="12" r="3" fill="#16A34A"/></svg>
+      <span>EJO 100 Enterprise Platform</span>
+    </div>
+    <div class="sub">Built by JusTech</div>
+  </div>
+  <div class="card a" style="position:absolute; inset:0; background:#000; animation:fadeOut .6s cubic-bezier(.22,.8,.3,1) 0s both; animation-direction:normal; pointer-events:none"></div>
+</section>
+<section class="card outro" id="outro" style="display:none">
+  <div class="glow a" style="animation:fade 1.2s cubic-bezier(.22,.8,.3,1) 0s both"></div>
+  <div class="stack">
+    <div class="mark a" style="animation:pop 1s cubic-bezier(.22,.8,.3,1) .1s both">
+      <div class="halo a" style="animation:pulse 1.8s 0s infinite ease-in-out"></div>
+      <div class="ring a" style="animation:spin 2.2s 0s infinite linear"></div>
+      <div class="ring2 a" style="animation:spin 3s 0s infinite linear reverse"></div>
+      <div class="disc">
+        <svg width="64" height="64" viewBox="0 0 24 24" fill="none"><path d="M12 2 L21 7 V17 L12 22 L3 17 V7 Z" stroke="#22C55E" stroke-width="1.5" fill="rgba(34,197,94,.15)"/><circle cx="12" cy="12" r="3" fill="#22C55E"/></svg>
+      </div>
+    </div>
+    <div class="brand a" style="animation:fadeUp .9s cubic-bezier(.22,.8,.3,1) .7s both">EJO <b>100</b></div>
+    <div class="desc a" style="animation:fadeUp .9s cubic-bezier(.22,.8,.3,1) 1.0s both">Enterprise Platform</div>
+    <div class="by a" style="animation:fadeUp .9s cubic-bezier(.22,.8,.3,1) 2.4s both">Built by <strong>Just Technologies (JusTech)</strong><br>for <strong>Kewalram Chanrai Group</strong></div>
+    <div class="site a" style="animation:fade .9s cubic-bezier(.22,.8,.3,1) 3.0s both">justech-dev.vercel.app</div>
+  </div>
+  <div class="powered a" style="animation:fade 1s cubic-bezier(.22,.8,.3,1) 4.2s both">POWERED BY EJO 100</div>
+</section>
+</body></html>
