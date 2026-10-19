@@ -127,7 +127,7 @@ export function HeroSlider() {
         aria-hidden="true"
       />
 
-      <div className="relative z-10 mx-auto w-full max-w-7xl px-6 pt-20">
+      <div className="relative z-10 mx-auto w-full max-w-[1480px] px-4 pt-20 sm:px-6 lg:px-10">
         <AnimatePresence mode="wait">
           <motion.div
             key={index}

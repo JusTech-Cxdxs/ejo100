@@ -6,6 +6,7 @@ const ar: Record<keyof typeof en, string> = {
   'nav.businesses': 'أعمالنا',
   'nav.products': 'المنتجات',
   'nav.store': 'المتجر',
+  'nav.more': 'المزيد',
   'nav.investors': 'المستثمرون',
   'nav.sustainability': 'الاستدامة',
   'nav.careers': 'الوظائف',

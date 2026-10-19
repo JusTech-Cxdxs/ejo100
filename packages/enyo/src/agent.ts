@@ -4,7 +4,7 @@
  * time, and every figure in the final answer is checked against the tool results.
  */
 import type { LlmConfig } from './config';
-import { LlmError, llmErrorMessage, stream, type ChatMessage, type ToolCall, type Usage } from './llm';
+import { LlmError, llmErrorMessage, MAX_RETRY_WAIT_MS, retryAfterMs, stream, type ChatMessage, type ToolCall, type Usage } from './llm';
 import { clip, stripCitationMarks, ungroundedFigures } from './guardrails';
 import { parseArgs, toolSpec, validateArgs, type Source, type Tool, type ToolResult } from './tools';
 import type { EnyoDraft, EnyoEvent } from './protocol';
@@ -70,6 +70,7 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
   const convo: ChatMessage[] = [{ role: 'system', content: o.system }, ...o.messages];
   let config = o.config;
   let retried = false;
+  let budgetWaits = 0;
   const transcript: ChatMessage[] = [];
   const toolRuns: ToolRun[] = [];
   const evidence: unknown[] = [];
@@ -119,6 +120,19 @@ export async function runAgent<Ctx>(o: AgentOptions<Ctx>): Promise<AgentResult> 
         if (err instanceof LlmError && err.kind === 'rate_limited') await new Promise((ok) => setTimeout(ok, 1500));
         step -= 1;
         continue;
+      }
+      // The per-minute budget ran out part-way (after a tool or two): wait for it and try the same step again,
+      // rather than throwing away what was gathered — when there is time left to do so.
+      if (err instanceof LlmError && err.kind === 'rate_limited' && budgetWaits < 2 && !outOfTime() && !o.signal?.aborted) {
+        const asked = retryAfterMs(err.detail) ?? 4_000;
+        const left = deadlineAt - Date.now();
+        if (asked <= MAX_RETRY_WAIT_MS && left > asked + 8_000) {
+          budgetWaits += 1;
+          o.emit({ type: 'status', text: 'Waiting a moment for my thinking engine…' });
+          await new Promise((ok) => setTimeout(ok, asked + 250));
+          step -= 1;
+          continue;
+        }
       }
       const kind = outOfTime() ? 'timeout' : err instanceof LlmError ? err.kind : 'bad_response';
       const message = llmErrorMessage(kind as never);

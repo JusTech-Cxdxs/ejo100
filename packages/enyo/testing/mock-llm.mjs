@@ -6,6 +6,7 @@
  *   "[[tool:part_lookup {"query":"oil filter"}]]"  → asks for that tool (if offered)
  *   after a tool result                            → "Here is what I found: <result>"
  *   "[[say:Hello there]]"                          → answers exactly "Hello there"
+ *   "[[busy]]"                                     → refuses with 429 "try again in 1m" (a free tier's per-minute budget)
  *   anything else                                  → "Hello! I'm Enyo. You said: <message>"
  *
  * Start: node packages/enyo/testing/mock-llm.mjs   (port MOCK_LLM_PORT, default 4010)
@@ -60,6 +61,11 @@ const server = http.createServer((req, res) => {
   req.on('end', () => {
     let body;
     try { body = JSON.parse(raw); } catch { res.writeHead(400).end(); return; }
+    if (/\[\[busy\]\]/.test(lastText(body.messages || []))) {
+      res.writeHead(429, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: { message: 'Rate limit reached for model `mock` on tokens per minute (TPM): Limit 8000, Used 7900, Requested 2000. Please try again in 1m2.5s.', type: 'tokens', code: 'rate_limit_exceeded' } }));
+      return;
+    }
     const out = decide(body);
     const usage = { prompt_tokens: Math.ceil(raw.length / 4), completion_tokens: Math.ceil((out.content || '').length / 4) };
     if (!body.stream) {

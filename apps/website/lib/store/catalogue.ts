@@ -173,12 +173,8 @@ export const PRODUCTS: Product[] = [
     price: 68_000, listPrice: 75_000, offerLabel: 'Fitted price', offerUntil: '30 November 2026', priceNote: 'Indicative fitted price; the exact set depends on the model.' },
 ];
 
-/** Offers and referral terms are illustrative for the demonstration; the group sets the real ones. */
-export const OFFERS: { kicker: string; title: string; text: string; cta: string; href: string; tint: string; mark: string }[] = [
-  { kicker: 'Launch offer', title: 'SOUEAST: first two services free', text: 'On every S05, S06, S07 and S09 ordered before 31 December 2026 — plus the five-year, 100,000 km warranty.', cta: 'See the SUVs', href: '/store?c=suvs', tint: 'linear-gradient(135deg, #0b2416 0%, #22983f 100%)', mark: 'S' },
-  { kicker: 'Fleet programme', title: 'Five trucks or more: one account manager', text: 'Isuzu N- and Q-series and Foton pickups and buses, with scheduled servicing and parts stocked for your models.', cta: 'See the trucks', href: '/store?c=trucks', tint: 'linear-gradient(135deg, #1a1f2b 0%, #c0392b 100%)', mark: 'N' },
-  { kicker: 'Tyres and parts', title: 'Buy four tyres, alignment free', text: 'Bridgestone and Firestone fitted and balanced in our workshop; genuine parts matched by chassis number.', cta: 'See tyres', href: '/store?c=tyres', tint: 'linear-gradient(135deg, #1a1a1a 0%, #555 100%)', mark: '4' },
-];
+/** The store's adverts are the group's current offers (lib/content/offers.ts). Referral terms are illustrative until the programme launches. */
+export { OFFERS } from '@/lib/content/offers';
 
 export const REFERRAL = {
   rewards: [

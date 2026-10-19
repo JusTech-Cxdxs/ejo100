@@ -4,6 +4,7 @@
  * (opening hours, prices) is reported as missing.
  */
 import { prisma } from '@ejo/database';
+import { BUSINESSES, COMPANIES, GROUP_OFFICE, MILESTONES, PLANT } from '@/lib/content/group';
 import { siteConfig } from '@/lib/site-config';
 import { SEARCH_INDEX } from '@/lib/search-index';
 
@@ -15,6 +16,8 @@ export type CompanyInfo = {
   businesses: string[];
   /** The organisation's leadership and other people it publishes (name, title, area, short biography, public profile link). */
   people: { name: string; title: string; area: string | null; about: string | null; profile: string | null }[];
+  /** The group's own published background (About and Businesses pages): group, offices, plant, businesses, companies, milestones. */
+  about: { group: string; groupOffice: string; plant: string; businesses: { name: string; summary: string }[]; companies: { name: string; does: string; business: string; where?: string }[]; milestones: string[] };
   websitePages: { title: string; link: string }[];
   howToBook: string[];
   customerPortal: string;
@@ -55,6 +58,16 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     openingHours: setting?.hours ? hoursText(setting.hours) : null,
     businesses: unique(units.map((u) => u.name)),
     people: people.map((p) => ({ name: p.name, title: p.title, area: p.area, about: p.bio, profile: p.profileUrl })),
+    // v42: the group's own published background (the About and Businesses pages), so the group, its brands,
+    // its plant and its history are answered without the web — the same words the website shows.
+    about: {
+      group: 'Kewalram Chanrai Group: a family-owned diversified business group founded in 1860, with group management in Singapore and its largest presence in Nigeria, where it has operated for over 70 years.',
+      groupOffice: GROUP_OFFICE.address,
+      plant: `${PLANT.name}, ${PLANT.address}`,
+      businesses: BUSINESSES.map((b) => ({ name: b.name, summary: b.summary })),
+      companies: COMPANIES.map((c) => ({ name: c.name, does: c.does, business: c.business, ...(c.where ? { where: c.where } : {}) })),
+      milestones: MILESTONES.map((m) => `${m.year}: ${m.title}`),
+    },
     websitePages: SEARCH_INDEX.filter((e) => e.category === 'Business' || ['/contact', '/support', '/about'].includes(e.href)).map((e) => ({ title: e.title, link: e.href })),
     howToBook: [
       'Call or email the branch nearest to you to book a service or repair; the team arranges the time with you.',
