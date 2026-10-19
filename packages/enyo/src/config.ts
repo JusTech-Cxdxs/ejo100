@@ -14,7 +14,23 @@ export type LlmConfig = {
   /** A short label shown on the Enyo settings page ("Groq", "Company server"). */
   providerLabel: string;
   timeoutMs: number;
+  /**
+   * Models to try, in order, when the one asked for is out of its per-minute
+   * or per-day budget. Free tiers (Groq) budget each model separately, so a
+   * chain of models multiplies what Enyo can answer. ENYO_LLM_FALLBACK_MODELS
+   * (comma-separated; "off" for none); Groq gets a sensible chain by default.
+   */
+  fallbackModels?: string[];
 };
+
+/** Groq's production chat models, strongest first (each has its own free-tier budget). */
+export const GROQ_CHAIN = ['openai/gpt-oss-120b', 'llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant'];
+
+/** The models to try after `primary`, in order, never repeating it. */
+export function fallbacksFor(config: LlmConfig, primary: string): string[] {
+  const list = config.fallbackModels ?? (/groq\.com/i.test(config.baseUrl) ? GROQ_CHAIN : []);
+  return [...new Set(list.filter((m) => m && m !== primary))];
+}
 
 type Env = Record<string, string | undefined>;
 
@@ -39,7 +55,15 @@ export function readLlmConfig(env: Env = process.env): LlmConfig | null {
     fastModel: clean(env.ENYO_LLM_FAST_MODEL) || model,
     providerLabel: clean(env.ENYO_LLM_PROVIDER_LABEL) || hostLabel(baseUrl),
     timeoutMs: Number.isFinite(timeout) && timeout >= 5_000 && timeout <= 120_000 ? timeout : 45_000,
+    ...readFallbacks(env.ENYO_LLM_FALLBACK_MODELS),
   };
+}
+
+function readFallbacks(raw: string | undefined): { fallbackModels?: string[] } {
+  const v = clean(raw);
+  if (!v) return {};
+  if (/^(off|none|false|0)$/i.test(v)) return { fallbackModels: [] };
+  return { fallbackModels: v.split(',').map((m) => m.trim()).filter((m) => /^[\w./:-]{1,120}$/.test(m)).slice(0, 6) };
 }
 
 function hostLabel(baseUrl: string): string {

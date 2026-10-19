@@ -2,7 +2,8 @@ import type { NextRequest } from 'next/server';
 import { prisma, type Prisma } from '@ejo/database';
 import { clip, encodeEvent, lagosNow, redactForLog, routeModel, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
 import { briefing, isBriefingRequest } from '@/lib/enyo/briefing';
-import { briefingSystemPrompt } from '@/lib/enyo/briefing-core';
+import { briefingSystemPrompt, isGreetingOnly, staffBusyText, staffGreeting } from '@/lib/enyo/briefing-core';
+import { allows } from '@/lib/authz/server';
 import { requireUser } from '@/lib/actions/workshop';
 import { enyoReady } from '@/lib/enyo/settings';
 import { staffToolsFor } from '@/lib/enyo/tools';
@@ -126,6 +127,26 @@ export async function POST(request: NextRequest) {
           }
           return;
         }
+        // Who may see the business figures: leaders get those suggested and pointed to.
+        const leader = await allows('analytics.business.view').catch(() => false);
+        const sayPlainly = async (text: string, model: string) => {
+          emit({ type: 'text', text });
+          const saved = await prisma.enyoMessage.create({ data: { conversationId: conversation.id, role: 'ASSISTANT', content: text, model, latencyMs: Date.now() - started }, select: { id: true } });
+          await prisma.enyoConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }).catch(() => undefined);
+          emit({ type: 'done', messageId: saved.id });
+        };
+        // "Hi": answered at once, at no cost from the model's budget, with what to ask.
+        if (isGreetingOnly(message)) {
+          try {
+            await sayPlainly(staffGreeting({ firstName: ctx.name.split(/\s+/)[0] || ctx.name, assistantName: ready.settings.displayName || 'Enyo', leader }), 'records');
+          } catch (err) {
+            const ref = logError('enyo.chat', err, { conversationId: conversation.id });
+            emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+          } finally {
+            finish();
+          }
+          return;
+        }
         // "Brief me": the figures gathered in code as this person, one small model request to write them up,
         // and a hand-written briefing when the model is refused or away (lib/enyo/briefing.ts).
         if (isBriefingRequest(message)) {
@@ -180,6 +201,12 @@ export async function POST(request: NextRequest) {
             }
           }
           if (rows.length) await prisma.enyoMessage.createMany({ data: rows });
+          // Every model busy, away or too slow, and nothing said: where to look, and that "brief me" always works.
+          if (result.error && !result.answer.trim() && ['rate_limited', 'unavailable', 'timeout', 'bad_response'].includes(result.error.kind)) {
+            logError('enyo.model.busy', new Error(`${result.error.kind} ${result.error.status ?? ''} ${result.error.code ?? ''} ${result.error.detail ?? ''}`.trim()));
+            await sayPlainly(staffBusyText({ leader }), 'records');
+            return;
+          }
           let messageId: string | null = null;
           if (result.answer.trim()) {
             const saved = await prisma.enyoMessage.create({

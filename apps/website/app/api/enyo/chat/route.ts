@@ -16,7 +16,7 @@
  */
 import { NextResponse, type NextRequest } from 'next/server';
 import { prisma, setAuditActor } from '@ejo/database';
-import { buildSystemPrompt, encodeEvent, lagosNow, routeModel, runAgent, SSE_HEADERS, trimHistory, webLookupEnabled, webLookupTool, type EnyoEvent } from '@ejo/enyo';
+import { buildSystemPrompt, encodeEvent, lagosNow, llmErrorMessage, routeModel, runAgent, SSE_HEADERS, trimHistory, webLookupEnabled, webLookupTool, type EnyoEvent } from '@ejo/enyo';
 import { currentCustomer, type SignedInCustomer } from '@/lib/customer-portal/session';
 import { clientIp } from '@/lib/customer-audit';
 import { recordErrorEvent, newRef, redact } from '@/lib/error-events';
@@ -28,6 +28,10 @@ import { publicTools, CONSENT_LINE } from '@/lib/enyo/public-tools';
 import { customerCounts, history, ipHash, ownConversation, publicCounts, startConversation, storeAgentResult, storeUserMessage, visibleMessages } from '@/lib/enyo/conversation';
 import { isPlainId, isVisitorKey, MESSAGE_MAX, newVisitorKey, originAllowed, rateVerdict, readLimits, VISITOR_COOKIE, VISITOR_COOKIE_DAYS } from '@/lib/enyo/rules';
 import type { WebCtx, WebMode } from '@/lib/enyo/types';
+import { loadCompanyInfo } from '@/lib/enyo/company';
+import { busyAnswer, cleanHistory, quickAnswer, type QuickInfo } from '@/lib/enyo/quick-core';
+import { OFFERS } from '@/lib/content/offers';
+import type { AgentResult } from '@ejo/enyo';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -151,7 +155,8 @@ export async function POST(req: NextRequest) {
     const requested = isPlainId(body.conversationId) ? body.conversationId : null;
     const conversation = (await ownConversation(owner, requested)) ?? (await startConversation(owner, message));
     await storeUserMessage(conversation.id, message, hashedIp);
-    const turns = trimHistory(await history(conversation.id), 12_000, 16);
+    // Without the turns the model could not answer, and small: every word counts against a free tier's per-minute budget.
+    const turns = trimHistory(cleanHistory(await history(conversation.id), ['timeout', 'rate_limited', 'unavailable', 'rejected', 'auth', 'bad_response'].map((k) => llmErrorMessage(k as never))), 6_000, 10);
 
     const org = await prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } });
     const organisationName = org?.name ?? 'the organisation';
@@ -183,6 +188,28 @@ export async function POST(req: NextRequest) {
         };
         try {
           emit({ type: 'conversation', id: conversation.id });
+          // The records answer greetings, "who is …", how to reach us and the offers at once, without the model.
+          let quickInfo: QuickInfo | null = null;
+          const info = async (): Promise<QuickInfo> => {
+            if (quickInfo) return quickInfo;
+            const c = await loadCompanyInfo(organisationId).catch(() => null);
+            quickInfo = {
+              organisation: organisationName,
+              assistantName: ready.settings.displayName || 'Enyo',
+              people: c?.people ?? [],
+              headOffice: { address: c?.headOffice.address ?? null, phones: c?.headOffice.phones ?? [], email: c?.headOffice.email ?? null },
+              offers: OFFERS.map((o) => ({ title: o.title, text: o.text, href: o.href, ...(o.until ? { until: o.until } : {}), ...(o.partner ? { partner: o.partner } : {}) })),
+            };
+            return quickInfo;
+          };
+          const answerFromRecords = async (text: string, model: string) => {
+            emit({ type: 'text', text });
+            const plain: AgentResult = { answer: text, transcript: [], toolRuns: [], sources: [], drafts: [], usage: { tokensIn: 0, tokensOut: 0 }, model, unverified: [] };
+            const id = await storeAgentResult(conversation.id, plain, Date.now() - started);
+            emit({ type: 'done', messageId: id });
+          };
+          const quick = mode === 'PUBLIC' ? quickAnswer(message, await info()) : null;
+          if (quick) { await answerFromRecords(quick, 'records'); return; }
           const ctx: WebCtx = {
             mode, organisationId, organisationName, conversationId: conversation.id,
             customer: who.customer, visitorKey: who.mode === 'PUBLIC' ? who.visitorKey : null,
@@ -203,6 +230,12 @@ export async function POST(req: NextRequest) {
             // Too big or too frequent for the model's per-minute budget: once more with the last turns only, on the fast model.
             retrySmaller: { tools: (mode === 'CUSTOMER' ? customerTools : publicTools).slice(0, 6), model: ready.config.fastModel, keepMessages: 4 },
           });
+          // The model could not answer at all (busy, away, too slow) and said nothing: the records, or how to reach a person.
+          if (result.error && result.error.kind !== 'aborted' && !result.answer.trim() && ['rate_limited', 'unavailable', 'timeout', 'bad_response'].includes(result.error.kind)) {
+            console.error(JSON.stringify({ level: 'warn', where: 'enyo.model.busy', kind: result.error.kind, status: result.error.status, code: result.error.code, detail: result.error.detail }));
+            await answerFromRecords(busyAnswer(message, await info()), 'records');
+            return;
+          }
           const messageId = await storeAgentResult(conversation.id, result, Date.now() - started);
           if (result.error) {
             emit({ type: 'error', message: result.error.message });

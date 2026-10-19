@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { briefingSystemPrompt, isBriefingRequest, packToText, renderBriefing, type BriefingPack } from '../lib/enyo/briefing-core';
+import { briefingSystemPrompt, isBriefingRequest, isGreetingOnly, packToText, renderBriefing, staffBusyText, staffGreeting, type BriefingPack } from '../lib/enyo/briefing-core';
 
 test('a briefing request is the whole picture, not one record or a how-to', () => {
   for (const m of [
@@ -16,6 +16,17 @@ test('a briefing request is the whole picture, not one record or a how-to', () =
     "What's happening today?",
     'what is going on',
     'A quick briefing please',
+    'What needs my attention today?',
+    'what work needs my attention',
+    'Anything that needs my approval?',
+    "What's pending?",
+    'What is waiting for me',
+    'my to-do list',
+    'Show me the analytics',
+    'Give me the numbers for this month',
+    'Business performance summary',
+    'How much did we make this month?',
+    'What do I need to do today?',
   ]) assert.equal(isBriefingRequest(m), true, m);
   for (const m of [
     'Status of JC-2026-000412',
@@ -102,4 +113,17 @@ test('the briefing prompt is small and names the person, role and branch', () =>
   assert.match(p, /briefing Sudeep \(Executive\)/);
   assert.match(p, /lead with that branch/);
   assert.match(p, /never invent/);
+});
+
+test('a greeting is answered without the model, by Lagos time, with what this person can ask', () => {
+  for (const g of ['Hi', 'hey Enyo', 'Good evening', 'Hello there!', 'how far']) assert.equal(isGreetingOnly(g), true, g);
+  for (const q of ['Hi, brief me', 'hey what needs my attention', 'hello who is Sudeep']) assert.equal(isGreetingOnly(q), false, q);
+  const leader = staffGreeting({ firstName: 'Sudeep', assistantName: 'Enyo', leader: true, now: new Date('2026-10-19T21:00:00Z') });
+  assert.match(leader, /^Good evening, Sudeep! I'm Enyo\./);
+  assert.match(leader, /Are we on profit this month/);
+  const tech = staffGreeting({ firstName: 'Tunde', assistantName: 'Enyo', leader: false, now: new Date('2026-10-19T08:00:00Z') });
+  assert.match(tech, /^Good morning, Tunde!/);
+  assert.doesNotMatch(tech, /profit/);
+  assert.doesNotMatch(staffBusyText({ leader: false }), /analytics/);
+  assert.match(staffBusyText({ leader: true }), /brief me[\s\S]*\[Business analytics\]\(\/analytics\)/);
 });

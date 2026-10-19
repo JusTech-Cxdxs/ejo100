@@ -3,7 +3,7 @@
  * and streaming. No SDK: plain fetch, so it runs the same on Vercel, Render,
  * a company's own server or in tests.
  */
-import type { LlmConfig } from './config';
+import { fallbacksFor, type LlmConfig } from './config';
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
 
@@ -198,7 +198,7 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
 export const MAX_RETRY_WAIT_MS = 12_000;
 
 /** POST with a timeout and up to three retries on 429 / 5xx / network errors. */
-async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal | undefined, fetchImpl: Fetch): Promise<Response> {
+async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal | undefined, fetchImpl: Fetch, quickFail = false): Promise<Response> {
   let lastError: LlmError = new LlmError('unavailable', 'No attempt made');
   let payload = firstPayload;
   let toolRetry = false;
@@ -245,6 +245,9 @@ async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal
       // Wait as long as the server asked, when that is short enough to be worth it (a per-minute
       // token budget usually frees in seconds); a long wait is reported at once instead.
       const asked = retryAfterMs(detail, res.headers.get('retry-after'));
+      if (kind === 'rate_limited') noteLimited(modelOf(payload), asked);
+      // Another model is waiting: move on at once rather than wait for this one.
+      if (kind === 'rate_limited' && quickFail) { giveUp = true; throw lastError; }
       if (asked !== undefined && asked > MAX_RETRY_WAIT_MS) { giveUp = true; throw lastError; }
       await sleep(asked !== undefined ? Math.max(asked + 250, 500) : 600 * (attempt + 1), signal);
     } catch (err) {
@@ -267,6 +270,46 @@ async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal
   throw lastError;
 }
 
+/** Models that said "too many" recently, and until when to leave them alone (per server process). */
+const limitedUntil = new Map<string, number>();
+const modelOf = (payload: string): string => { try { return String((JSON.parse(payload) as { model?: unknown }).model ?? ''); } catch { return ''; } };
+function noteLimited(model: string, askedMs: number | undefined): void {
+  if (!model) return;
+  limitedUntil.set(model, Date.now() + Math.min(Math.max(askedMs ?? 20_000, 5_000), 10 * 60_000));
+}
+/** For tests: forget which models were busy. */
+export function resetModelBudgets(): void { limitedUntil.clear(); }
+
+/**
+ * Sends the request to the model asked for and, when that model is out of
+ * budget (429), refuses the tools it was given (tool_use_failed twice) or has
+ * been withdrawn (404), to the next model in the chain — so a busy free tier
+ * means a slightly different model, not "try again in a minute". Models known
+ * to be busy are skipped until their wait is over.
+ */
+async function send(config: LlmConfig, req: CompletionRequest, streaming: boolean, fetchImpl: Fetch): Promise<Response> {
+  const primary = req.model ?? config.model;
+  const chain = [primary, ...fallbacksFor(config, primary)];
+  const now = Date.now();
+  const ready = chain.filter((m) => (limitedUntil.get(m) ?? 0) <= now);
+  // Everything busy: try the one that frees first, waiting as usual.
+  const order = ready.length ? ready : [...chain].sort((a, b) => (limitedUntil.get(a) ?? 0) - (limitedUntil.get(b) ?? 0)).slice(0, 1);
+  let last: unknown = new LlmError('unavailable', 'No model tried');
+  for (let i = 0; i < order.length; i += 1) {
+    const model = order[i]!;
+    const more = i < order.length - 1;
+    try {
+      return await post(config, body(config, { ...req, model }, streaming), req.signal, fetchImpl, more);
+    } catch (err) {
+      last = err;
+      if (!(err instanceof LlmError) || !more) throw err;
+      const next = err.kind === 'rate_limited' || err.kind === 'not_found' || err.kind === 'unavailable' || (err.kind === 'rejected' && (err.code === 'tool_use_failed' || /model/i.test(err.detail ?? '') && /decommission|not exist|not found|deprecat/i.test(err.detail ?? '')));
+      if (!next) throw err;
+    }
+  }
+  throw last;
+}
+
 type WireToolCall = { id?: string; index?: number; function?: { name?: string; arguments?: string } };
 
 function readUsage(u: unknown): Usage {
@@ -276,7 +319,7 @@ function readUsage(u: unknown): Usage {
 
 /** One request, whole answer. */
 export async function complete(config: LlmConfig, req: CompletionRequest, fetchImpl: Fetch = fetch): Promise<Completion> {
-  const res = await post(config, body(config, req, false), req.signal, fetchImpl);
+  const res = await send(config, req, false, fetchImpl);
   let json: { choices?: { message?: { content?: string | null; tool_calls?: WireToolCall[] }; finish_reason?: string }[]; usage?: unknown; model?: string };
   try {
     json = await res.json();
@@ -296,7 +339,7 @@ export type StreamPiece = { type: 'text'; text: string } | { type: 'done'; compl
  * and returned with the final `done` piece.
  */
 export async function* stream(config: LlmConfig, req: CompletionRequest, fetchImpl: Fetch = fetch): AsyncGenerator<StreamPiece> {
-  const res = await post(config, body(config, req, true), req.signal, fetchImpl);
+  const res = await send(config, req, true, fetchImpl);
   if (!res.body) throw new LlmError('bad_response', 'The model server sent no stream');
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
