@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation';
 import { guardPage } from '@/lib/authz/server';
 import { getNews, listNews } from '@/lib/actions/news';
-import { deleteNewsFormAction, newsStatusFormAction, saveNewsFormAction } from '@/lib/actions/news-form-handlers';
+import { deleteNewsFormAction, newsStatusFormAction, publishNewsFormAction, saveNewsFormAction } from '@/lib/actions/news-form-handlers';
 import { NewsEditor } from '@/components/news/NewsEditor';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { SubmitButton } from '@/components/SubmitButton';
@@ -47,7 +47,7 @@ export default async function EditNewsPage({ params, searchParams }: { params: P
       </div>
       {status && DONE[status] ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="success" message={DONE[status]!} /></div> : null}
       {error ? <div className="mb-6 max-w-2xl"><FormFeedbackBanner kind="error" message={error} /></div> : null}
-      <NewsEditor row={row} areas={areas} action={saveNewsFormAction} websiteUrl={websiteUrl} />
+      <NewsEditor row={row} areas={areas} action={saveNewsFormAction} publishAction={publishNewsFormAction} websiteUrl={websiteUrl} />
     </div>
   );
 }

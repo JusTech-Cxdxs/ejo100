@@ -17,7 +17,7 @@ const label = 'mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]';
  * (the same renderer the website uses), updated as you type. Saving keeps a
  * draft; "Publish" saves and puts it on the website at once.
  */
-export function NewsEditor({ row, areas, action, websiteUrl }: { row?: NewsRow; areas: string[]; action: (f: FormData) => Promise<void>; websiteUrl: string | null }) {
+export function NewsEditor({ row, areas, action, publishAction, websiteUrl }: { row?: NewsRow; areas: string[]; action: (f: FormData) => Promise<void>; publishAction: (f: FormData) => Promise<void>; websiteUrl: string | null }) {
   const [title, setTitle] = useState(row?.title ?? '');
   const [slug, setSlug] = useState(row?.slug ?? '');
   const [slugTouched, setSlugTouched] = useState(Boolean(row));
@@ -98,7 +98,7 @@ export function NewsEditor({ row, areas, action, websiteUrl }: { row?: NewsRow; 
         </label>
         <div className="flex flex-wrap gap-2 border-t border-[var(--ejo-border)] pt-4">
           <SubmitButton label={row ? 'Save changes' : 'Save draft'} pendingLabel="Saving…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white hover:opacity-90" />
-          {row?.status !== 'PUBLISHED' ? <SubmitButton name="then" value="publish" label={row ? 'Save and publish' : 'Publish now'} pendingLabel="Publishing…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10" /> : null}
+          {row?.status !== 'PUBLISHED' ? <SubmitButton formAction={publishAction} label={row ? 'Save and publish' : 'Publish now'} pendingLabel="Publishing…" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)] bg-transparent px-4 py-2 text-sm font-semibold text-[var(--ejo-primary)] hover:bg-[var(--ejo-primary)]/10" /> : null}
           <button type="button" onClick={() => setPreview((v) => !v)} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] xl:hidden">{preview ? 'Hide preview' : 'Preview'}</button>
           <LoadingLink href="/news" className="inline-flex items-center rounded-[var(--ejo-radius-md)] px-4 py-2 text-sm font-medium text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-bg)]">Back to the list</LoadingLink>
         </div>

@@ -15,6 +15,7 @@ export function SubmitButton({
   ariaLabel,
   name,
   value,
+  formAction,
 }: {
   label: string;
   pendingLabel: string;
@@ -24,6 +25,8 @@ export function SubmitButton({
   /** A second submit on the same form ("Save and publish"): the field it sets. */
   name?: string;
   value?: string;
+  /** A second submit on the same form that runs a different server action (the reliable way). */
+  formAction?: (f: FormData) => void | Promise<void>;
 }) {
   const { pending } = useFormStatus();
   return (
@@ -34,6 +37,7 @@ export function SubmitButton({
       aria-busy={pending || undefined}
       name={name}
       value={value}
+      formAction={formAction}
       className={`${className ?? ''} inline-flex items-center justify-center gap-2 disabled:cursor-not-allowed disabled:opacity-70`}
     >
       {pending ? <EjoSpinner size={16} /> : null}
