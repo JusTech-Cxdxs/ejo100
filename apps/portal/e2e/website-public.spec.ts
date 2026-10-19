@@ -85,7 +85,7 @@ test('the contact form becomes a support request the support team finds by its n
   await page.getByLabel('Your name').fill(`Visitor ${tag}`);
   await page.getByLabel('Your message').fill('I would like a quote for two SOUEAST S07 SUVs for my company fleet.');
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByRole('alert')).toContainText(/email address or a phone number/);
+  await expect(page.locator('#contact-error')).toContainText(/email address or a phone number/);
   await page.getByLabel('Phone').fill('0803 000 1234');
   await page.getByRole('button', { name: 'Send message' }).click();
   const status = page.getByTestId('contact-sent');
@@ -109,7 +109,7 @@ async function fillStory(page: Page, title: string) {
   await page.getByLabel('Kind of story').selectOption('MILESTONE');
   await page.getByLabel('Business it is about').fill('Automotive');
   await page.getByLabel('Summary — one or two sentences').fill('The first locally assembled SUVs leave the Lagos line — a milestone for the plant and its people.');
-  await page.getByLabel('The story').fill('## The line\n\nTechnicians trained on body, trim and final inspection.\n\n- Jobs\n- Skills\n\n> “We came to build them here.”');
+  await page.getByLabel('The story', { exact: true }).fill('## The line\n\nTechnicians trained on body, trim and final inspection.\n\n- Jobs\n- Skills\n\n> “We came to build them here.”');
 }
 
 test('a story written in the portal is published to the website; a draft is not', async ({ page }) => {
