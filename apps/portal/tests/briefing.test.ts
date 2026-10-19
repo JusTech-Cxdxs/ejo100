@@ -13,6 +13,9 @@ test('a briefing request is the whole picture, not one record or a how-to', () =
     'Catch me up',
     'How are we doing?',
     'Brief me on the Isolo branch',
+    "What's happening today?",
+    'what is going on',
+    'A quick briefing please',
   ]) assert.equal(isBriefingRequest(m), true, m);
   for (const m of [
     'Status of JC-2026-000412',
@@ -22,6 +25,14 @@ test('a briefing request is the whole picture, not one record or a how-to', () =
     'hi',
     'What is the price of a brake pad?',
     'Update JC-2026-000001 please',
+    'keep it brief, what is the reorder point of brake pads',
+    'in brief, who approves purchase orders?',
+    'give me a brief description of the warranty policy',
+    'what is happening with the Toyota Hilux in bay 3',
+    "what's going on with my leave request",
+    'what is going on with job card 412',
+    'I was briefed about the new policy yesterday, is it live?',
+    "what's the status of my parts request",
   ]) assert.equal(isBriefingRequest(m), false, m);
 });
 

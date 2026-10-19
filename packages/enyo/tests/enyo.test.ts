@@ -451,7 +451,7 @@ test('agent: the per-minute budget running out after a tool call waits and finis
 });
 
 test('free web search: when the html site refuses the server, the lite site is tried', async () => {
-  const lite = '<table><tr><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.kewalramchanrai.com%2Fabout&amp;rut=1" class="result-link">Kewalram Chanrai Group — About</a></td></tr><tr><td class="result-snippet">A diversified family business group founded in 1860 with its largest presence in Nigeria, Kewalram Chanrai Group operates across Africa and Asia.</td></tr></table>';
+  const lite = "<table><tr><td><a rel='nofollow' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.kewalramchanrai.com%2Fabout&amp;rut=1' class='result-link'>Kewalram Chanrai Group — About</a></td></tr><tr><td class='result-snippet'>A diversified family business group founded in 1860 with its largest presence in Nigeria, Kewalram Chanrai Group operates across Africa and Asia.</td></tr></table>";
   const urls: string[] = [];
   const fake = (async (url: string) => {
     urls.push(url);

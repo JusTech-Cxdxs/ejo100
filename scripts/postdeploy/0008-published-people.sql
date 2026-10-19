@@ -13,6 +13,5 @@ BEGIN
 
   INSERT INTO "public_profiles" ("id", "organisationId", "name", "title", "area", "bio", "profileUrl", "isPublic", "sortOrder", "createdAt", "updatedAt") VALUES
     ('pp_' || substr(md5(random()::text || clock_timestamp()::text), 1, 20), org, 'Anil Sahgal', 'Managing Director, Auto & Transport Vertical', 'Automobiles and transport (Africa)', 'Leads the group''s auto and transport businesses across Africa.', NULL, TRUE, 10, now(), now()),
-    ('pp_' || substr(md5(random()::text || clock_timestamp()::text), 1, 20), org, 'Sudeep Mittal', 'Head of Automobiles, Nigeria', 'Automobiles', 'Leads the automobile business in Nigeria — vehicle sales, the assembly hub at Isolo, the workshops and parts — and speaks for the group at vehicle launches.', NULL, TRUE, 20, now(), now()),
-    ('pp_' || substr(md5(random()::text || clock_timestamp()::text), 1, 20), org, 'Bhushan Salgar', 'Information Technology', 'Group IT, Nigeria', 'Leads information technology for the group in Nigeria.', NULL, FALSE, 30, now(), now());
+    ('pp_' || substr(md5(random()::text || clock_timestamp()::text), 1, 20), org, 'Sudeep Mittal', 'Head of Automobiles, Nigeria', 'Automobiles', 'Leads the automobile business in Nigeria — vehicle sales, the assembly hub at Isolo, the workshops and parts — and speaks for the group at vehicle launches.', NULL, TRUE, 20, now(), now());
 END $$;

@@ -34,7 +34,6 @@ const KEWALRAM: OrganisationKnowledge = {
   people: [
     { name: 'Sudeep Mittal', title: 'Head of Automobiles, Kewalram Chanrai Group Nigeria (General Manager, Automobile)', note: 'Leads the automobile business in Nigeria: vehicle sales, assembly, workshops and parts; speaks for the group at vehicle launches (Foton View C2 2022, Fiat Strada 2024, SOUEAST 2026).', source: 'BusinessDay (Jan 2022); ThisDay (Feb 2024)' },
     { name: 'Anil Sahgal', title: 'Managing Director, Auto & Transport Vertical, Kewalram Chanrai Group (Africa)', note: 'Group-level head of the auto and transport businesses across Africa.', source: 'BusinessDay (Jan 2022); ThisDay (Feb 2024)' },
-    { name: 'Bhushan Salgar', title: 'Information Technology, Kewalram Chanrai Group Nigeria', note: 'The group\'s IT lead in Nigeria, as recorded by the organisation.', source: 'Organisation' },
   ],
   sources: [
     { label: 'Kewalram Chanrai Group', href: 'https://www.kewalramchanrai.com' },

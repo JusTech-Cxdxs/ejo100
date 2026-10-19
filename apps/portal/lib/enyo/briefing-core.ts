@@ -19,9 +19,9 @@ export type BriefingPack = {
   generatedAt: string;
 };
 
-const ASK = /\bbrief(ing|ed)?\b|\bcatch me up\b|\bupdate me\b|\bbring me up to (date|speed)\b|what('s| is| has been) (happening|going on)\b|everything (that is |that's )?(happening|going on)\b|\bhow (are|is) (we|the business|business|things|everything) (doing|going)\b|\bare we (on|in|making) (a )?profit\b|\b(business|general) analytics\b|\boverview of (the business|everything|the day|today)\b|\bstate of (the business|things|play)\b|\bdaily (brief|summary|update)\b|\bmorning (brief|summary|update)\b/i;
-/** A question about one record or one thing is not a briefing, even if it says "update". */
-const SPECIFIC = /\b(JC|SV|EPR|PRS|GRN|RF|WR|WC|VIS|EP|VX|RT|INC|DLV|CTR|APT|BC|SUP)-\d|\bhow do i\b|\bhow to\b|\bremind me\b|\bdraft\b|\bwrite (a|an|the)\b|\bemail\b|\bmail\b/i;
+const ASK = /^\s*brief(ing)?\b|\b(brief|briefing) (me|us|on)\b|\ba (daily |morning |quick |full )?briefing\b|\bcatch me up\b|\bupdate me\b|\bbring me up to (date|speed)\b|\bwhat('s| is| has been) (happening|going on)(\s+(today|here|now|everywhere|(in|at|across) (the|our|my) (business|branch|workshop|company|group|plant|showroom)))?\s*[?!.]*\s*$|\beverything (that is |that's )?(happening|going on)\b|\bhow (are|is) (we|the business|business|things|everything) (doing|going)\b|\bare we (on|in|making) (a )?profit\b|\b(business|general) analytics\b|\boverview of (the business|everything|the day|today)\b|\bstate of (the business|things|play)\b|\bdaily (brief|summary|update)\b|\bmorning (brief|summary|update)\b/i;
+/** A question about one record, one thing or one request is not a briefing, even if it says "update" or "brief". */
+const SPECIFIC = /\b(JC|SV|EPR|PRS|GRN|RF|WR|WC|VIS|EP|VX|RT|INC|DLV|CTR|APT|BC|SUP)-\d|\bjob ?card\b|\bbay \d|\bmy [a-z ]{0,20}request\b|\bhow do i\b|\bhow to\b|\bremind me\b|\bdraft\b|\bwrite (a|an|the)\b|\bemail\b|\bmail\b|\bkeep it brief\b|\bin brief\b|\bbrief (description|explanation|summary of)\b|\bbriefed\b|\bwhat('s| is) (happening|going on) with\b/i;
 
 /** "Brief me", "what is happening", "are we on profit", "business analytics" — the whole picture, not one record. */
 export function isBriefingRequest(message: string): boolean {

@@ -133,7 +133,8 @@ export async function POST(request: NextRequest) {
             const org = await prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } }).catch(() => null);
             const result = await briefing({
               ctx, config: ready.config, model: ready.config.model, message, emit, signal: request.signal,
-              system: briefingSystemPrompt({ assistantName: ready.settings.displayName || 'Enyo', organisationName: org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the organisation', personName: ctx.name.split(/\s+/)[0] || ctx.name, roleDescription: roleDescription(ctx.roleSlugs, ctx.isSuperAdmin), now: lagosNow(), branch: null }),
+              deadlineMs: Math.max(8_000, 50_000 - (Date.now() - requestStarted)),
+              system: (branch) => briefingSystemPrompt({ assistantName: ready.settings.displayName || 'Enyo', organisationName: org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the organisation', personName: ctx.name.split(/\s+/)[0] || ctx.name, roleDescription: roleDescription(ctx.roleSlugs, ctx.isSuperAdmin), now: lagosNow(), branch }),
             });
             if (result.toolRuns.length) await prisma.enyoMessage.createMany({ data: result.toolRuns.map((t) => ({ conversationId: conversation.id, role: 'TOOL' as const, toolName: t.name, content: JSON.stringify({ ok: t.ok, ...(t.refused ? { refused: true } : {}) }) })) });
             const saved = await prisma.enyoMessage.create({
@@ -144,8 +145,11 @@ export async function POST(request: NextRequest) {
             await prisma.enyoConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }).catch(() => undefined);
             emit({ type: 'done', messageId: saved.id });
           } catch (err) {
-            const ref = logError('enyo.briefing', err, { conversationId: conversation.id });
-            emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+            // The person closed the panel: nothing to log or say.
+            if (!request.signal.aborted) {
+              const ref = logError('enyo.briefing', err, { conversationId: conversation.id });
+              emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+            }
           } finally {
             finish();
           }

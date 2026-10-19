@@ -137,7 +137,8 @@ export function parseDuckDuckGo(html: string): { title: string; url: string; tex
 /** The lite site: a table of result links followed by a snippet row. */
 export function parseDuckDuckGoLite(html: string): { title: string; url: string; text: string }[] {
   const out: { title: string; url: string; text: string }[] = [];
-  const re = /<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*class="result-link"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi;
+  // The lite page quotes attributes with single quotes; either kind is accepted.
+  const re = /<a[^>]+href=["']([^"']+)["'][^>]*class=["']result-link["'][^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class=["']result-snippet["'][^>]*>([\s\S]*?)<\/td>/gi;
   for (const m of html.matchAll(re)) {
     let href = m[1]!.replace(/&amp;/g, '&');
     const uddg = href.match(/[?&]uddg=([^&]+)/);
