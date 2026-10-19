@@ -22,6 +22,8 @@ const GUARDS = [
   'integrityReviewer(',
   // People the organisation publishes (lib/actions/public-profiles.ts): authorize('admin.organisation.manage') + the person's own organisation.
   'profileOrg(',
+  // News & media (lib/actions/news.ts): authorize('website.news.manage') + the person's own organisation.
+  'newsOrg(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',

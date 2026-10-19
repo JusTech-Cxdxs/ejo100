@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Shared article renderer (news & media preview) lives in packages/ui; scan it so its classes are generated. */
+@source "../../../packages/ui/src";
 
 /* Same token contract as apps/website — kept in sync so both experiences
    feel like one ecosystem, per the branding spec. See that app's

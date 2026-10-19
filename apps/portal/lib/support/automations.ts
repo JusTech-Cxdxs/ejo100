@@ -57,7 +57,7 @@ export async function runSupportAutomations(budgetMs: number, only: 'enyo' | 're
  * organisation has such a team; otherwise the default team.
  */
 async function teamFor(organisationId: string, tags: string[]): Promise<QueueRow> {
-  const kind = tags.includes('complaint') ? 'customer_care' : tags.includes('topic:warranty') ? 'warranty' : tags.includes('topic:vehicle') ? 'technical' : null;
+  const kind = tags.includes('complaint') ? 'customer_care' : tags.includes('topic:warranty') ? 'warranty' : tags.includes('topic:vehicle') ? 'technical' : tags.includes('topic:sales') ? 'sales' : tags.includes('topic:parts') ? 'parts' : null;
   if (kind) {
     const q = await prisma.supportQueue.findFirst({ where: { organisationId, kind, active: true }, orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }], select: { id: true } });
     if (q) return queueById(organisationId, q.id);
@@ -66,10 +66,11 @@ async function teamFor(organisationId: string, tags: string[]): Promise<QueueRow
 }
 
 async function normaliseHandovers(): Promise<number> {
-  // Hand-overs from a chat (since v36 they carry the reason) and requests a customer opened in the portal (v38);
+  // Hand-overs from a chat (since v36 they carry the reason), requests a customer opened in the portal (v38)
+  // and messages from the website's contact form (v41);
   // older tickets keep their history as it was.
   const rows = await prisma.supportTicket.findMany({
-    where: { queueId: null, OR: [{ handoverReason: 'chat_handover' }, { tags: { has: 'portal_request' } }] },
+    where: { queueId: null, OR: [{ handoverReason: 'chat_handover' }, { tags: { has: 'portal_request' } }, { tags: { has: 'website_contact' } }] },
     orderBy: { createdAt: 'asc' }, take: 50,
     select: { id: true, organisationId: true, createdAt: true, subject: true, summary: true, assignedToId: true, token: true, priority: true, status: true, tags: true, handoverReason: true },
   });

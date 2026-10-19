@@ -1,5 +1,8 @@
-import { PagePlaceholder } from '@/components/PagePlaceholder';
+import { BusinessPage, businessMetadata } from '@/components/site/BusinessPage';
+
+export const metadata = businessMetadata('manufacturing');
+export const revalidate = 300;
 
 export default function Page() {
-  return <PagePlaceholder title="Manufacturing" description="Textiles and industrial production across our facilities." />;
+  return <BusinessPage slug="manufacturing" />;
 }

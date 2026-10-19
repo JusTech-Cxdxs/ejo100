@@ -5,6 +5,7 @@ const fr: Record<keyof typeof en, string> = {
   'nav.about': 'À propos',
   'nav.businesses': 'Nos activités',
   'nav.products': 'Produits',
+  'nav.store': 'Boutique',
   'nav.investors': 'Investisseurs',
   'nav.sustainability': 'Durabilité',
   'nav.careers': 'Carrières',

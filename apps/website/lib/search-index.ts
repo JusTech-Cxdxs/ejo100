@@ -1,4 +1,5 @@
 import { siteConfig } from './site-config';
+import { FIRST_STORY_ENTRIES } from './news/index-entries';
 /**
  * Static, client-side search index for the site search. Add an entry when a
  * page, business unit, product, news item or careers listing is added.
@@ -14,6 +15,7 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Home', category: 'Page', href: '/' },
   { title: 'About', category: 'Page', href: '/about' },
   { title: 'Our Businesses', category: 'Page', href: '/businesses' },
+  { title: 'Store', category: 'Page', href: '/store' },
   { title: 'Products', category: 'Page', href: '/products' },
   { title: 'Investors', category: 'Page', href: '/investors' },
   { title: 'Sustainability', category: 'Page', href: '/sustainability' },
@@ -36,12 +38,13 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Logistics', category: 'Business', href: '/businesses/logistics' },
 
   // Products
-  { title: 'Product Catalogue', category: 'Product', href: '/products' },
+  { title: 'Products', category: 'Product', href: '/products' },
+  { title: 'Services', category: 'Page', href: '/services' },
+  { title: 'Vehicle sales', category: 'Business', href: '/businesses/automotive/vehicle-sales' },
+  { title: 'Spare parts and tyres', category: 'Business', href: '/businesses/automotive/spare-parts' },
 
-  // News
-  { title: `${siteConfig.organisationName} Expands Operations in West Africa`, category: 'News', href: '/news' },
-  { title: 'New Partnerships With Industry Leaders', category: 'News', href: '/news' },
-  { title: 'New Manufacturing Facility Officially Opened', category: 'News', href: '/news' },
+  // News: the first stories (the live list comes from News & media in the staff portal).
+  ...FIRST_STORY_ENTRIES.map((st) => ({ title: st.title, category: 'News' as const, href: `/news/${st.slug}` })),
 
   // Careers
   { title: `Careers at ${siteConfig.organisationName}`, category: 'Careers', href: '/careers' },

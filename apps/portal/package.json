@@ -8,7 +8,7 @@
     "start": "next start -p 3001",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
-    "test": "tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js"
+    "test": "rm -rf .test-out && tsc ../../packages/ui/src/article.ts --module commonjs --target es2022 --strict --outDir ../../packages/ui/src && tsc -p tsconfig.test.json && node --test .test-out/tests/*.test.js; s=$?; rm -f ../../packages/ui/src/article.js; exit $s"
   },
   "dependencies": {
     "@ejo/database": "*",

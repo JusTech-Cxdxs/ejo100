@@ -6,6 +6,9 @@ import { NewsSection } from '@/components/site/NewsSection';
 import { PartnersMarquee } from '@/components/site/PartnersMarquee';
 import { CTASection } from '@/components/site/CTASection';
 
+/** The home page is rebuilt every five minutes (the news section reads News & media). */
+export const revalidate = 300;
+
 export default function HomePage() {
   return (
     <main>

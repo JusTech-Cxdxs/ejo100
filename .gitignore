@@ -27,3 +27,4 @@ __pycache__/
 .pytest_cache/
 ml/.venv/
 ml-out/
+packages/ui/src/*.js

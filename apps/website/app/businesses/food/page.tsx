@@ -1,5 +1,8 @@
-import { PagePlaceholder } from '@/components/PagePlaceholder';
+import { BusinessPage, businessMetadata } from '@/components/site/BusinessPage';
+
+export const metadata = businessMetadata('food');
+export const revalidate = 300;
 
 export default function Page() {
-  return <PagePlaceholder title="Food, Agriculture and FMCG" description="Cooking oils, seasoning cubes and packaged foods." />;
+  return <BusinessPage slug="food" />;
 }

@@ -21,6 +21,7 @@ export type Tenancy =
   | 'VIA_PARENT'; //   a child row — isolated through its parent record
 
 export type Classification =
+  | 'PUBLIC' //         written to be published (the website's news & media)
   | 'INTERNAL' //       ordinary business data
   | 'PERSONAL' //       identifies a person (NDPA 2023 personal data)
   | 'FINANCIAL' //      money: prices, costs, payments, refunds
@@ -103,6 +104,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   CustomerNote: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
   CustomerNotificationRead: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'Life of the customer account', ai: 'NEVER' },
   AssistSession: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['SECURITY', 'AUDIT'], lifecycle: 'IMMUTABLE', retention: 'Kept with the audit trail', ai: 'NEVER' },
+  NewsPost: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PUBLIC'], lifecycle: 'EDITABLE', retention: 'Kept while published or archived; the communications team deletes drafts', ai: 'AUTHORISED_USER' },
   SiteVisit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EXPIRES', retention: '13 months, then removed by the clean-up job (anonymous, no cookie: a daily keyed hash of address + browser, masked paths, never the customer portal)', ai: 'AUTHORISED_USER' },
   ErrorEvent: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EXPIRES', retention: '90 days, then removed by the clean-up job', ai: 'NEVER' },
   CustomerVehicle: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['PERSONAL'], lifecycle: 'RECYCLE_BIN', retention: OPS_RETENTION, ai: 'AUTHORISED_USER', recycleBin: true },

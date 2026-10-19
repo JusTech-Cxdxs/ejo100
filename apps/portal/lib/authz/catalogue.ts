@@ -80,6 +80,7 @@ export const PERMISSIONS = {
   'schedule.view': { module: 'Scheduling', label: 'Keep a calendar and book appointments (own calendar, or as an aide)' },
   'schedule.manage': { module: 'Scheduling', label: 'Manage meeting rooms and aides, and book on any calendar' },
   'notifications.broadcast.send': { module: 'Notifications', label: 'Send broadcasts' },
+  'website.news.manage': { module: 'Website', label: 'Write and publish news & media on the public website' },
   // Support
   'support.assist': { module: 'Support', label: 'Help colleagues with their tasks (assisted session)' },
 } as const;
@@ -114,7 +115,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // oversees everything (read-only) — but does not do the departments'
   // transactions (no opening jobs, approving money or recording payments).
   administrator: {
-    'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A,
+    'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'website.news.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
     'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
@@ -178,7 +179,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // ── Scheduling & communication ───────────────────────────────────
   'calendar-user': { 'schedule.view': 'OWN' },
   'scheduling-admin': { 'schedule.view': A, 'schedule.manage': A },
-  broadcaster: { 'notifications.broadcast.send': A },
+  broadcaster: { 'notifications.broadcast.send': A, 'website.news.manage': A },
   // ── Support ──────────────────────────────────────────────────────
   // Sits with a colleague who is not at ease with computers and works on
   // their behalf, with their password as consent. Nothing else: while
@@ -202,7 +203,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   executive: {
     'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'crm.view': A,
-    'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
+    'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT', 'website.news.manage': A,
     // Leadership speaks to the organisation: notices to staff (and customers).
     'notifications.broadcast.send': A,
   },
@@ -212,7 +213,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // records carry amounts).
   'it-administrator': {
     'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'admin.structure.manage': A, 'audit.view': A,
-    'enyo.manage': A, 'schedule.view': 'OWN',
+    'enyo.manage': A, 'schedule.view': 'OWN', 'website.news.manage': A,
     // System notices: planned downtime, a security warning, a password reminder.
     'notifications.broadcast.send': A,
   },

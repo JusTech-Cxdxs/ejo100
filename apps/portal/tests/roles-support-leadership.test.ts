@@ -22,7 +22,8 @@ test('customer care works support requests, never the set-up', () => {
 test('executive: everything read-only with analytics, approves nothing but their own department’s passes', () => {
   const g = ROLE_GRANTS.executive!;
   for (const k of ['analytics.business.view', 'workshop.view', 'store.view', 'warranty.view', 'security.view', 'crm.view'] as const) assert.equal(g[k], 'ALL', k);
-  for (const k of Object.keys(g)) if (/approve|record|manage|create|release|disburse|operate/.test(k)) assert.equal(k, 'security.pass.approve', k);
+  // The Executive decides nothing in the branches — but publishes to the website and approves escalated passes.
+  for (const k of Object.keys(g)) if (/approve|record|manage|create|release|disburse|operate/.test(k)) assert.ok(k === 'security.pass.approve' || k === 'website.news.manage', k);
   assert.equal(g['security.pass.approve'], 'DEPARTMENT');
   // Leadership can send a notice to the whole organisation.
   assert.equal(g['notifications.broadcast.send'], 'ALL');
@@ -73,8 +74,8 @@ test('System health says when the database is behind this release', async () => 
   const r = schemaVerdict(v37);
   assert.equal(r.state, 'behind');
   assert.equal(r.at, 'v37');
-  assert.equal(r.expected, 'v40');
-  assert.equal(r.missing.length, 5);
+  assert.equal(r.expected, 'v41');
+  assert.equal(r.missing.length, 6);
   assert.equal(schemaVerdict(new Set()).at, 'older than v36');
   assert.match(read('app/(app)/settings/page.tsx'), /schemaHealth\(\)/);
 });

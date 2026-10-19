@@ -424,6 +424,15 @@ export const GUIDE: GuideEntry[] = [
   },
   // ── Notifications, broadcasts, approvals ──────────────────────────
   {
+    id: 'news', title: 'Publish news on the website', page: '/news', needs: ['website.news.manage'],
+    keywords: ['news', 'press release', 'media', 'publish', 'website story', 'milestone', 'announcement for the public', 'blog'],
+    steps: [
+      'Go to News & media and press "Write a story".',
+      'Give it a headline, a one-line summary and the story itself (Markdown: ## headings, lists, links, quotes, pictures by https address). The right-hand side shows the page as the website will.',
+      'Save it as a draft, or press "Publish now" — it is on the website at once. Tick "Feature this story" for the home page.',
+    ],
+  },
+  {
     id: 'broadcast', title: 'Send a broadcast (notice)', page: '/notifications/broadcasts/new', needs: ['notifications.broadcast.send'],
     keywords: ['broadcast', 'notice', 'announcement', 'bc', 'message everyone', 'circular'],
     steps: [

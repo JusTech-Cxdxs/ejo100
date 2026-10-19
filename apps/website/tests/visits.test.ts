@@ -88,3 +88,10 @@ test('the beacon is same-site, rate-limited, ignores bots and Do Not Track, and 
   const tracker = readFileSync(join(__dirname, '..', '..', 'components', 'site', 'VisitTracker.tsx'), 'utf8');
   assert.ok(tracker.includes('doNotTrack') && tracker.includes("visibilityState === 'hidden'") && tracker.includes("startsWith('/customer-portal')"));
 });
+
+test('the site search lists the first stories by their real addresses', async () => {
+  const { FIRST_STORIES } = await import('../lib/news/stories');
+  const { FIRST_STORY_ENTRIES } = await import('../lib/news/index-entries');
+  assert.deepEqual(FIRST_STORY_ENTRIES, FIRST_STORIES.map((s) => ({ slug: s.slug, title: s.title })));
+  assert.doesNotMatch(FIRST_STORIES.map((s) => s.body).join('\n'), /^>/m, 'no invented quotations');
+});

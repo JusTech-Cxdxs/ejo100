@@ -5,6 +5,7 @@ const ha: Record<keyof typeof en, string> = {
   'nav.about': 'Game da Mu',
   'nav.businesses': 'Kasuwancinmu',
   'nav.products': 'Kayayyaki',
+  'nav.store': 'Shago',
   'nav.investors': 'Masu Zuba Jari',
   'nav.sustainability': 'Dorewa',
   'nav.careers': 'Ayyuka',

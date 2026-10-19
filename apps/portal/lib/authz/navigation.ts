@@ -57,6 +57,8 @@ export function navigationFor(p: Principal): NavItem[] {
   if (!p.isSuperAdmin) out.push({ key: 'get-help', name: 'Get help', href: '/support/help', status: 'LIVE' });
   // IT: the control room, for those who read the audit trail across the organisation.
   if (p.isSuperAdmin || scopeFor(p, 'audit.view') === 'ALL') out.push({ key: 'it', name: 'IT control room', href: '/it', status: 'LIVE' });
+  // News & media: the communications team publishes to the public website.
+  if (can('website.news.manage')) out.push({ key: 'news', name: 'News & media', href: '/news', status: 'LIVE' });
   // The integrity watch: reviewers only.
   if (can('integrity.review')) out.push({ key: 'integrity', name: 'Integrity watch', href: '/integrity', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.

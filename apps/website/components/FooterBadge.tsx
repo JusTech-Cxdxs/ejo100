@@ -1,32 +1,17 @@
 'use client';
 
 import { useState } from 'react';
-import Image from 'next/image';
-
-interface FooterBadgeProps {
-  src: string;
-  alt: string;
-}
 
 /**
- * One footer badge in a fixed box (96 × 40 on a phone, 128 × 56 from tablet up) (object-contain), so the row
- * never shifts. If the file is missing from public/images/footer-badges/,
- * the badge is not rendered.
+ * One footer badge: a fixed-height box (36px on a phone, 44px from tablet up)
+ * in which the picture keeps its own proportions — so three badges sit on one
+ * row, small and never stretched. A missing file renders nothing.
  */
-export function FooterBadge({ src, alt }: FooterBadgeProps) {
+export function FooterBadge({ src, alt }: { src: string; alt: string }) {
   const [failed, setFailed] = useState(false);
   if (failed) return null;
-
   return (
-    <div className="relative h-10 w-24 shrink-0 sm:h-14 sm:w-32">
-      <Image
-        src={src}
-        alt={alt}
-        fill
-        sizes="(min-width: 640px) 128px, 96px"
-        style={{ objectFit: 'contain' }}
-        onError={() => setFailed(true)}
-      />
-    </div>
+    // eslint-disable-next-line @next/next/no-img-element -- a plain onError fallback is needed
+    <img src={src} alt={alt} loading="lazy" decoding="async" className="h-9 w-auto max-w-[5.5rem] shrink-0 object-contain sm:h-11 sm:max-w-[6.5rem]" onError={() => setFailed(true)} />
   );
 }
