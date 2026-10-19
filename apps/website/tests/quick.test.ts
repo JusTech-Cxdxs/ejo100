@@ -59,3 +59,49 @@ test('turns the model could not answer are left out of the history, with their q
   ];
   assert.deepEqual(cleanHistory(turns, [busy]).map((t) => t.content), ['Who is Sudeep Mittal', 'Head of Automobiles.', 'Hi']);
 });
+
+const store: QuickInfo = {
+  ...info,
+  referral: ['₦150,000 for a vehicle sold', '₦1,000,000 for a fleet of five or more'],
+  products: [
+    { id: 'soueast-s07', name: 'SOUEAST S07', brand: 'SOUEAST', kind: 'Seven-seat SUV', category: 'suvs', price: 45_900_000, listPrice: 48_900_000, offerLabel: 'Launch price', offerUntil: '31 December 2026', blurb: 'Seven seats, assembled in Lagos.' },
+    { id: 'soueast-s05', name: 'SOUEAST S05', brand: 'SOUEAST', kind: 'Compact SUV', category: 'suvs', price: 29_900_000, listPrice: 31_500_000, blurb: 'The way into the range.' },
+    { id: 'isuzu-npr', name: 'Isuzu NPR (N-series)', brand: 'Isuzu', kind: 'Medium-light truck', category: 'trucks', price: 54_000_000, listPrice: 57_000_000, blurb: 'Nigeria’s favourite N-series.' },
+    { id: 'foton-view-c2-premium', name: 'Foton View C2 Premium', brand: 'Foton', kind: '15-seat minibus', category: 'buses', price: 59_900_000, listPrice: 63_000_000, blurb: 'The executive View.' },
+    { id: 'tyre-bs-265-65-17', name: 'Bridgestone Dueler H/T 265/65 R17', brand: 'Bridgestone', kind: 'SUV tyre', category: 'tyres', price: 85_000, listPrice: 92_000, blurb: 'Fitted and balanced.' },
+  ],
+};
+
+test('"what vehicles do you sell and the prices": the price list from the store, the offer and refer and earn', () => {
+  const a = quickAnswer('What vehicle do you have for sell and price', store)!;
+  assert.match(a, /\*\*SUVs\*\*[\s\S]*\*\*SOUEAST S07\*\* — Seven-seat SUV: \*\*₦45,900,000\*\* ~~₦48,900,000~~ \(launch price until 31 December 2026\)/);
+  assert.match(a, /\*\*Trucks\*\*[\s\S]*Isuzu NPR/);
+  assert.match(a, /\*\*Buses and vans\*\*/);
+  assert.doesNotMatch(a, /Dueler/, 'tyres only when asked');
+  assert.match(a, /15% off every SOUEAST with financing from Keystone Bank/);
+  assert.match(a, /Online checkout is coming soon/);
+  assert.match(a, /Refer and earn:\*\* know someone who needs a vehicle\? ₦150,000 for a vehicle sold/);
+  assert.match(quickAnswer('tyre prices', store)!, /Dueler H\/T 265\/65 R17\*\* — SUV tyre: \*\*₦85,000\*\*/);
+});
+
+test('"how much is the S07": that product, its price, the matching offer, how to reserve', () => {
+  for (const q of ['How much is the S07?', 'price of soueast s07', 'Tell me about the NPR']) {
+    const a = quickAnswer(q, store)!;
+    assert.ok(a, q);
+    assert.match(a, /indicative/);
+  }
+  const s07 = quickAnswer('How much is the S07?', store)!;
+  assert.match(s07, /^\*\*SOUEAST S07\*\* — Seven-seat SUV: \*\*₦45,900,000\*\*/);
+  assert.doesNotMatch(s07, /S05/);
+  assert.match(s07, /Keystone Bank/);
+  assert.match(s07, /\[reserve with the sales team\]\(\/contact\?topic=sales\)/);
+  assert.match(quickAnswer('Tell me about the NPR', store)!, /Isuzu NPR \(N-series\)\*\* — Medium-light truck: \*\*₦54,000,000\*\*/);
+  // Not about the store: left to the model.
+  assert.equal(quickAnswer('Which SUV is best for a family of six?', store), null);
+  assert.equal(quickAnswer('Do you service Toyota cars?', store), null);
+});
+
+test('the greeting carries this season\'s lead offer; the offers answer ends with refer and earn', () => {
+  assert.match(quickAnswer('Hi', store)!, /This season: \*\*15% off every SOUEAST with financing from Keystone Bank\*\*/);
+  assert.match(quickAnswer('Any offers !?', store)!, /Refer and earn/);
+});

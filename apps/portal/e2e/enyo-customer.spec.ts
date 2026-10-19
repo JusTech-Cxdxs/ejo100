@@ -145,7 +145,8 @@ test.describe('a website visitor', () => {
   test('greetings, "who is" one of our people, how to reach us and the offers are answered from the records at once', async ({ page }) => {
     // One of the people the organisation publishes (Organisation → People we publish).
     const org = await db().organisation.findFirstOrThrow({ where: { slug: process.env.WEBSITE_ORGANISATION_SLUG || 'kewalram-nigeria' }, select: { id: true } });
-    const tag = uniq();
+    // A real-looking name (letters only), unique to this run.
+    const tag = uniq().replace(/[^A-Z]/g, '').toLowerCase().replace(/^./, (c) => c.toUpperCase()) || 'Okafor';
     const name = `Sudeep Mittal${tag}`;
     await db().publicProfile.create({ data: { organisationId: org.id, name, title: 'Head of Automobiles, Nigeria', area: 'Automobiles', bio: 'Leads the automobile business in Nigeria.', isPublic: true, sortOrder: 1 } });
     await page.goto(`${WEB}/`);
@@ -161,6 +162,25 @@ test.describe('a website visitor', () => {
     await expect(reach).toContainText('Contact us');
     for (const a of [hi, who, offers, reach]) await expect(a.getByTestId('enyo-error')).toHaveCount(0);
     await db().publicProfile.deleteMany({ where: { organisationId: org.id, name } });
+  });
+
+  test('the store, prices and offers come from the website — never "prices are not published"', async ({ page }) => {
+    await page.goto(`${WEB}/`);
+    const list = await ask(page, 'What vehicle do you have for sell and price');
+    await expect(list).toContainText('SOUEAST S07');
+    await expect(list).toContainText('₦45,900,000');
+    await expect(list).toContainText('Isuzu NPR');
+    await expect(list).toContainText('Refer and earn');
+    await expect(list).not.toContainText(/not publish/i);
+    const one = await ask(page, 'How much is the S07?');
+    await expect(one).toContainText('₦45,900,000');
+    await expect(one).toContainText('reserve with the sales team');
+    // Through the model, the website search tool answers from the store.
+    const viaTool = await ask(page, '[[tool:search_website {"query":"Isuzu NPR truck price"}]]');
+    await expect(viaTool).toContainText('₦54,000,000');
+    const news = await ask(page, '[[tool:search_website {"query":"refer earn","area":"referral"}]]');
+    await expect(news).toContainText('₦150,000');
+    for (const a of [list, one, viaTool, news]) await expect(a.getByTestId('enyo-error')).toHaveCount(0);
   });
 
   test('when the model is out of budget, the visitor still gets an answer — never "try again in a minute"', async ({ page }) => {

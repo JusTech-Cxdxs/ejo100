@@ -7,6 +7,7 @@ import { loadCompanyInfo } from './company';
 import { openHandover } from './handover';
 import { checkHandoverContact } from './rules';
 import type { WebTool } from './types';
+import { searchWebsiteTool } from './site-knowledge';
 
 /** Shown to the visitor before they share contact details (the widget shows the same line). */
 export const CONSENT_LINE = 'We use your name and phone number or email only to reply to this request, and keep it with the conversation.';
@@ -62,4 +63,4 @@ const requestHandover: WebTool = {
   },
 };
 
-export const publicTools: WebTool[] = [companyInfo, requestHandover];
+export const publicTools: WebTool[] = [searchWebsiteTool, companyInfo, requestHandover];

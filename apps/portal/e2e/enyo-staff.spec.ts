@@ -189,6 +189,16 @@ test.describe('Enyo staff assistant (API)', () => {
     expect(busy.text).not.toMatch(/handling a lot of questions/);
   });
 
+  test('staff read the website through Enyo: store prices, offers, refer and earn', async ({ page }) => {
+    await as(page, 'receptionist');
+    const r = await ask(page, '[[tool:website_content {"show":"all","query":"S07"}]]');
+    expect(tool(r.events, 'website_content')?.ok).toBe(true);
+    expect(r.text).toContain('SOUEAST S07');
+    expect(r.text).toContain('₦45,900,000');
+    expect(r.text).toContain('Keystone Bank');
+    expect(r.text).toContain('₦150,000');
+  });
+
   test('"brief me": the figures are gathered as the person in one go, and written up even when the model is busy', async ({ page }) => {
     // An executive: every section, including the business this month and the website.
     await as(page, 'executive');

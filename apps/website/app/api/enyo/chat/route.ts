@@ -30,7 +30,7 @@ import { isPlainId, isVisitorKey, MESSAGE_MAX, newVisitorKey, originAllowed, rat
 import type { WebCtx, WebMode } from '@/lib/enyo/types';
 import { loadCompanyInfo } from '@/lib/enyo/company';
 import { busyAnswer, cleanHistory, quickAnswer, type QuickInfo } from '@/lib/enyo/quick-core';
-import { OFFERS } from '@/lib/content/offers';
+import { OFFERS, PRODUCTS, REFERRAL } from '@ejo/ui';
 import type { AgentResult } from '@ejo/enyo';
 
 export const runtime = 'nodejs';
@@ -199,6 +199,8 @@ export async function POST(req: NextRequest) {
               people: c?.people ?? [],
               headOffice: { address: c?.headOffice.address ?? null, phones: c?.headOffice.phones ?? [], email: c?.headOffice.email ?? null },
               offers: OFFERS.map((o) => ({ title: o.title, text: o.text, href: o.href, ...(o.until ? { until: o.until } : {}), ...(o.partner ? { partner: o.partner } : {}) })),
+              products: PRODUCTS.map((p) => ({ id: p.id, name: p.name, brand: p.brand, kind: p.kind, category: p.category, price: p.price, listPrice: p.listPrice, blurb: p.blurb, ...(p.offerLabel ? { offerLabel: p.offerLabel } : {}), ...(p.offerUntil ? { offerUntil: p.offerUntil } : {}) })),
+              referral: REFERRAL.rewards.map((r) => `${r.reward} for ${r.what.toLowerCase()}`),
             };
             return quickInfo;
           };

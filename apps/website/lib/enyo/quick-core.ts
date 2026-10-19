@@ -14,7 +14,33 @@ export type QuickInfo = {
   people: QuickPerson[];
   headOffice: { address: string | null; phones: string[]; email: string | null };
   offers: { title: string; text: string; href: string; until?: string; partner?: string }[];
+  /** The store (indicative prices), for "what do you sell", "how much is …". */
+  products?: QuickProduct[];
+  /** The refer-and-earn rewards, one line each. */
+  referral?: string[];
 };
+export type QuickProduct = { id: string; name: string; brand: string; kind: string; category: string; price: number; listPrice: number; offerLabel?: string; offerUntil?: string; blurb: string };
+
+const naira = (n: number) => `₦${Math.round(n).toLocaleString('en-NG')}`;
+const CATEGORY_OF: [RegExp, string, string][] = [
+  [/\b(suvs?|jeeps?|family cars?|cars?)\b/i, 'suvs', 'SUVs'],
+  [/\b(pick-?ups?|double cabs?)\b/i, 'pickups', 'Pickups'],
+  [/\b(trucks?|lorr(y|ies)|haulage)\b/i, 'trucks', 'Trucks'],
+  [/\b(bus|buses|minibus(es)?|vans?|shuttles?)\b/i, 'buses', 'Buses and vans'],
+  [/\b(tyres?|tires?)\b/i, 'tyres', 'Tyres'],
+  [/\b(parts?|spares?|batter(y|ies)|oil|filters?|brake)\b/i, 'parts', 'Parts'],
+];
+const GENERIC = new Set(['soueast', 'isuzu', 'foton', 'bridgestone', 'firestone', 'genuine', 'the', 'cab', 'double', 'series', 'set', 'front', 'and', 'for', 'with', 'of', 'free', 'fully', 'synthetic', 'litres', 'maintenance', 'q', 'n']);
+/** Words that name one product ("s07", "npr", "tunland", "d-max", "view c2"). */
+function productWords(p: QuickProduct): string[] {
+  return [...new Set([...p.id.split('-'), ...p.name.toLowerCase().replace(/[()]/g, ' ').split(/[\s/]+/)].map((w) => w.trim()).filter((w) => w.length >= 2 && !GENERIC.has(w) && !/^\d+$/.test(w)))];
+}
+function productLine(p: QuickProduct): string {
+  const was = p.listPrice > p.price ? ` ~~${naira(p.listPrice)}~~` : '';
+  const until = p.offerUntil ? ` (${(p.offerLabel ?? 'offer').toLowerCase()} until ${p.offerUntil})` : '';
+  return `**${p.name}** — ${p.kind}: **${naira(p.price)}**${was}${until}`;
+}
+const PRICE_Q = /\b(price|prices|pricing|cost|costs|how much|sell|selling|sale|for sale|buy|available|in stock|do you have|what (vehicles?|cars?|trucks?|suvs?|tyres?|parts?|buses?|pick-?ups?)|catalogue|catalog|range|models?)\b/i;
 
 const GREETING = /^\s*(hi+|hello+|hey+|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|yo|sup|what'?s up|how are you( doing)?|how far)([\s,!.]+(there|enyo|everyone|all|again))*[\s,!.?]*(?:\p{Extended_Pictographic}[\s,!.?]*)*$/iu;
 
@@ -74,7 +100,8 @@ function contactText(info: QuickInfo): string {
 export function quickAnswer(message: string, info: QuickInfo, now: Date = new Date()): string | null {
   const text = message.trim();
   if (isGreeting(text)) {
-    return `Good ${partOfDay(now)}! I'm ${info.assistantName}, ${info.organisation}'s assistant. I can tell you about our vehicles, offers and businesses, help you book a service, or have the right person call you back. What can I do for you?`;
+    const lead = info.offers[0];
+    return `Good ${partOfDay(now)}! I'm ${info.assistantName}, ${info.organisation}'s assistant. I can show you our vehicles, tyres and parts with prices, tell you about our businesses, help you book a service, or have the right person call you back.${lead ? `\n\nThis season: **${lead.title}**${lead.until ? ` (until ${lead.until})` : ''} — [see the offer](${lead.href}).` : ''}\n\nWhat can I do for you?`;
   }
   const name = askedAbout(text);
   if (name) {
@@ -83,13 +110,47 @@ export function quickAnswer(message: string, info: QuickInfo, now: Date = new Da
     if (found.length > 1) return `A few people match "${name}":\n${found.slice(0, 5).map((p) => `- ${personText(p)}`).join('\n')}`;
     return null;
   }
+  const store = storeAnswer(text, info);
+  if (store) return store;
   if (OFFERS.test(text) && info.offers.length && text.length < 140) {
-    return `Here is what we are offering now:\n${info.offers.slice(0, 4).map((o) => `- **${o.title}**${o.partner && !o.title.includes(o.partner) ? ` (with ${o.partner})` : ''}${o.until ? ` — until ${o.until}` : ''}. [See more](${o.href})`).join('\n')}\n\nThe sales team confirms the terms; [talk to sales](/contact?topic=sales) or visit the showroom.`;
+    return `Here is what we are offering now:\n${info.offers.slice(0, 4).map((o) => `- **${o.title}**${o.partner && !o.title.includes(o.partner) ? ` (with ${o.partner})` : ''}${o.until ? ` — until ${o.until}` : ''}. [See more](${o.href})`).join('\n')}\n\nThe sales team confirms the terms; [talk to sales](/contact?topic=sales) or visit the showroom.${referLine(info)}`;
   }
   if (CONTACT.test(text) && text.length < 120 && !/\d{5,}|\b(my (phone|number|email)|call me|job|estimate|invoice|my car|my vehicle|JC-|SV-)\b/i.test(text)) {
     return `Here is how to reach ${info.organisation}:\n${contactText(info)}`;
   }
   return null;
+}
+
+function referLine(info: QuickInfo): string {
+  return info.referral?.length ? `\n\n**Refer and earn:** know someone who needs a vehicle? ${info.referral.slice(0, 2).join('; ')} — and digital marketers, dealers and fleet consultants can sell for us. [How it works](/store#refer)` : '';
+}
+
+/** "What do you sell and the prices", "how much is the S07", "truck prices": straight from the store. */
+export function storeAnswer(message: string, info: QuickInfo): string | null {
+  const products = info.products ?? [];
+  if (!products.length || message.length > 200) return null;
+  const lower = message.toLowerCase();
+  const words = new Set(lower.replace(/[^a-z0-9-\s]/g, ' ').split(/\s+/).filter(Boolean));
+  const named = products.filter((p) => productWords(p).some((w) => words.has(w) || (w.includes('-') && lower.includes(w)) || (w.length >= 4 && lower.includes(w))));
+  const asksPrice = PRICE_Q.test(message);
+  // One or a few products named ("how much is the S07", "tell me about the NPR"): their prices and a line each.
+  if (named.length && named.length <= 4 && (asksPrice || /\b(about|tell me|details?|specs?|what is|what's)\b/i.test(message))) {
+    const offer = info.offers.find((o) => named.some((p) => o.title.toLowerCase().includes(p.brand.toLowerCase())));
+    return `${named.map((p) => `${productLine(p)}\n  ${p.blurb} [See it in the store](/store?c=${p.category})`).join('\n')}\n\nPrices are indicative and include VAT; the sales team confirms when you reserve.${offer ? ` Also: **${offer.title}**${offer.until ? ` until ${offer.until}` : ''}.` : ''} Online checkout is coming soon — [reserve with the sales team](/contact?topic=sales) and they will call you within a working day.${referLine(info)}`;
+  }
+  if (!asksPrice) return null;
+  const cats = CATEGORY_OF.filter(([re]) => re.test(message));
+  const mentionsStore = cats.length || /\b(vehicles?|cars?|products?|store|shop|everything)\b/i.test(message);
+  if (!mentionsStore) return null;
+  const chosen = cats.length ? cats : CATEGORY_OF.filter(([, key]) => ['suvs', 'pickups', 'trucks', 'buses'].includes(key));
+  const sections = chosen.map(([, key, label]) => {
+    const items = products.filter((p) => p.category === key);
+    return items.length ? `**${label}**\n${items.map((p) => `- ${productLine(p)}`).join('\n')}` : null;
+  }).filter(Boolean);
+  if (!sections.length) return null;
+  const lead = info.offers[0];
+  const more = cats.length ? '' : '\n\nWe also sell Bridgestone and Firestone tyres and genuine parts — ask me for those prices.';
+  return `Here is what we have, with this season's prices:\n\n${sections.join('\n\n')}${more}\n\nPrices are indicative and include VAT; the sales team confirms when you reserve.${lead ? ` **${lead.title}**${lead.until ? ` until ${lead.until}` : ''}.` : ''} Online checkout is coming soon — [browse the store](/store) or [reserve with the sales team](/contact?topic=sales).${referLine(info)}`;
 }
 
 /** What to say when the model cannot answer at all just now: the records if they help, else how to reach a person. */

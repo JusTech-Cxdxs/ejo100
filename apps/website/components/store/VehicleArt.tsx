@@ -4,7 +4,8 @@
  * pictures), on a tinted ground. The real photographs come from the
  * organisation's own media when the store goes live.
  */
-export type ArtKind = 'suv' | 'pickup' | 'truck' | 'minibus' | 'tyre' | 'part' | 'battery' | 'oil';
+import type { ArtKind } from '@ejo/ui';
+export type { ArtKind };
 
 const TINT: Record<string, [string, string]> = {
   SOUEAST: ['#0b2416', '#22983f'], Isuzu: ['#1a1f2b', '#c0392b'], Foton: ['#0f1f2e', '#2f6e8a'], Bridgestone: ['#1a1a1a', '#555'], Firestone: ['#2a0a0a', '#b3261e'], Bosch: ['#1a1a1a', '#c0392b'], Genuine: ['#0b2416', '#3f6b52'],

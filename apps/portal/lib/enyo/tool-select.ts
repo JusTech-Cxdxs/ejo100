@@ -30,6 +30,7 @@ const GROUPS: Group[] = [
   { test: /error|ref(erence)?\b|\bbug|crash|fail|broken|not working|\bIT\b|sign.?in|log.?in|password|security|visitor|website|traffic|page views?/i, tools: ['explain_error', 'website_traffic', 'my_security'] },
   { test: /who('?s| is| are)|staff|employee|colleague|manager|supervisor|technician|\bhod\b|head of|director|executive|role|team|people|department|works? (in|at)/i, tools: ['staff_directory', 'organisation_info'] },
   { test: /\bmy (recent|last) (activity|actions)|what did i (do|change)/i, tools: ['my_recent_activity'] },
+  { test: /\b(website|store|shop|price list|catalogue|offers?|promo|promotion|discount|financing|keystone|refer(ral)?|earn|commission|news|press|story|stories|announcement|soueast|s0[5-9]|tunland|view c2|d-?max|mu-?x|npr|nqr|qlr|qmr|bridgestone|firestone|tyres?)\b/i, tools: ['website_content'] },
 ];
 
 /** The everyday set when nothing in particular matched. */
