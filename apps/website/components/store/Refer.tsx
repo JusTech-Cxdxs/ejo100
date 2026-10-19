@@ -9,7 +9,7 @@ const label = 'mb-1.5 block text-sm font-medium';
 
 /**
  * Refer and earn: the programme in plain words, and one short form that
- * becomes a request in the Support centre (topic "business") — for a
+ * becomes a request in the Support centre (topic "referral", routed to sales) — for a
  * referral, or for a digital marketer or dealer who wants to sell for us.
  */
 export function Refer() {
@@ -35,7 +35,7 @@ export function Refer() {
           <div className="rounded-[var(--ejo-radius-xl)] bg-white p-5 text-[#0f172a] sm:p-7" style={{ colorScheme: 'light' }}>
             <div className="mb-5 flex gap-1 rounded-full bg-[#f1f5f9] p-1" role="tablist" aria-label="What would you like to do?">
               {([['refer', 'Refer a buyer'], ['partner', 'Sell for us']] as const).map(([k, l]) => (
-                <button key={k} type="button" role="tab" aria-selected={mode === k} onClick={() => setMode(k)} className={`min-h-10 flex-1 rounded-full text-sm font-semibold ${mode === k ? 'bg-[#0b2416] text-white' : 'text-[#334155]'}`}>{l}</button>
+                <button key={k} type="button" role="tab" aria-selected={mode === k} aria-controls="refer-panel" onClick={() => setMode(k)} className={`min-h-10 flex-1 rounded-full text-sm font-semibold ${mode === k ? 'bg-[#0b2416] text-white' : 'text-[#334155]'}`}>{l}</button>
               ))}
             </div>
             {state?.ok ? (
@@ -44,7 +44,7 @@ export function Refer() {
                 <p className="mt-1 text-sm text-[#334155]">{state.number !== 'received' ? <>Your reference is <strong className="font-mono">{state.number}</strong>. The sales team will be in touch within a working day.</> : 'We will be in touch.'}</p>
               </div>
             ) : (
-              <form action={action} className="space-y-4">
+              <form id="refer-panel" role="tabpanel" action={action} className="space-y-4">
                 <input type="hidden" name="topic" value="referral" />
                 <div className="absolute -left-[9999px] top-0 h-0 w-0 overflow-hidden" aria-hidden="true"><label htmlFor="r-website">Website</label><input id="r-website" name="website" tabIndex={-1} autoComplete="off" /></div>
                 {state && !state.ok ? <p role="alert" className="rounded-[var(--ejo-radius-md)] border border-[#dc2626]/40 bg-[#dc2626]/8 px-4 py-3 text-sm">{state.error}</p> : null}

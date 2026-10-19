@@ -124,7 +124,8 @@ test('the store: a model opens its details, "Add to cart" says checkout is comin
   await expect(toast).toContainText(/Online checkout is coming soon/);
   await expect(toast.getByRole('link', { name: /Reserve with the sales team/ })).toBeVisible();
   await expect(page.getByText(/in your cart/)).toHaveCount(0);
-  await dialog.getByRole('button', { name: 'Close' }).first().click();
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toHaveCount(0);
   // Refer and earn becomes a request for the sales team.
   await page.getByRole('tab', { name: 'Refer a buyer' }).click();
   await page.locator('#r-name').fill(`Referrer ${tag}`);

@@ -24,14 +24,17 @@ function Body({ kind }: { kind: ArtKind }) {
   }
 }
 
+import { useId } from 'react';
+
 export function VehicleArt({ kind, brand, className = '', label }: { kind: ArtKind; brand: string; className?: string; label?: string }) {
   const [a, b] = TINT[brand] ?? TINT.Genuine!;
+  const id = useId();
   return (
-    <svg viewBox="0 0 320 180" role="img" aria-label={label ?? ''} className={className} preserveAspectRatio="xMidYMid meet">
+    <svg viewBox="0 0 320 180" {...(label ? { role: 'img', 'aria-label': label } : { 'aria-hidden': true })} className={className} preserveAspectRatio="xMidYMid meet">
       <defs>
-        <linearGradient id={`g-${brand}`} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient>
+        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient>
       </defs>
-      <rect width="320" height="180" fill={`url(#g-${brand})`} />
+      <rect width="320" height="180" fill={`url(#${id})`} />
       <ellipse cx="160" cy="146" rx="120" ry="10" fill="rgba(0,0,0,0.25)" />
       <Body kind={kind} />
     </svg>

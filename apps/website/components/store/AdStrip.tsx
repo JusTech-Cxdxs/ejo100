@@ -16,6 +16,7 @@ export function AdStrip() {
           </li>
         ))}
       </ul>
+      <p className="mx-auto max-w-7xl px-4 pb-4 text-xs text-[var(--ejo-text-muted)] sm:px-6">Prices and offers are indicative and confirmed by the sales team; a written quotation is what counts.</p>
     </section>
   );
 }

@@ -16,6 +16,8 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
   const [open, setOpen] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const timer = useRef<number | null>(null);
+  const panel = useRef<HTMLDivElement>(null);
+  const returnTo = useRef<HTMLElement | null>(null);
   const shown = useMemo(() => (cat === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === cat)), [cat]);
 
   const notify = (msg: string) => {
@@ -27,13 +29,28 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
     notify(`${p.name} noted. Online checkout opens soon — until then the sales team confirms price and availability within a working day.`);
   };
 
+  // Toast timer: cleared on unmount.
+  useEffect(() => () => { if (timer.current) window.clearTimeout(timer.current); }, []);
+
+  // The detail panel is a modal: focus moves in, Tab stays inside, Escape and
+  // the backdrop close it, focus returns to the button that opened it.
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(null); };
+    returnTo.current = document.activeElement as HTMLElement | null;
+    panel.current?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setOpen(null); return; }
+      if (e.key !== 'Tab' || !panel.current) return;
+      const items = Array.from(panel.current.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), [tabindex="0"]'));
+      if (!items.length) return;
+      const first = items[0]!, last = items[items.length - 1]!;
+      if (e.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; returnTo.current?.focus?.(); };
   }, [open]);
 
   return (
@@ -73,9 +90,9 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
                 <p className="mt-1 line-clamp-2 text-sm leading-relaxed text-[var(--ejo-text-muted)]">{p.blurb}</p>
                 <div className="mt-3 flex items-baseline gap-2">
                   <span className="text-xl font-extrabold tracking-[-0.01em]">{naira(p.price)}</span>
-                  {p.listPrice > p.price ? <span className="text-sm text-[var(--ejo-text-muted)] line-through">{naira(p.listPrice)}</span> : null}
+                  {p.listPrice > p.price ? <s className="text-sm text-[var(--ejo-text-muted)]">{naira(p.listPrice)}</s> : null}
                 </div>
-                {p.offerUntil ? <p className="mt-0.5 text-xs text-[var(--ejo-primary)]">{p.offerLabel ?? 'Launch price'} until {p.offerUntil}</p> : null}
+                <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Indicative price{p.offerUntil ? <> · <span className="text-[var(--ejo-primary)]">{p.offerLabel ?? 'Launch price'} until {p.offerUntil}</span></> : null}</p>
                 <div className="mt-auto flex gap-2 pt-4">
                   <button type="button" onClick={() => addToCart(p)} aria-label={`Add ${p.name} to cart`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white hover:opacity-90"><CartIcon />Add to cart</button>
                   <button type="button" onClick={() => setOpen(p)} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--ejo-border)] px-4 text-sm font-medium hover:bg-[var(--ejo-surface)]">Details</button>
@@ -89,8 +106,8 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
       {/* Detail panel */}
       {open ? (
         <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center" role="dialog" aria-modal="true" aria-labelledby="store-detail-title">
-          <button type="button" aria-label="Close" className="absolute inset-0 bg-black/55" onClick={() => setOpen(null)} />
-          <div className="ejo-pop relative max-h-[92vh] w-full overflow-y-auto rounded-t-[var(--ejo-radius-xl)] bg-[var(--ejo-bg)] shadow-2xl sm:max-w-3xl sm:rounded-[var(--ejo-radius-xl)]">
+          <div aria-hidden className="absolute inset-0 bg-black/55" onClick={() => setOpen(null)} />
+          <div ref={panel} tabIndex={-1} className="ejo-pop relative max-h-[92vh] outline-none w-full overflow-y-auto rounded-t-[var(--ejo-radius-xl)] bg-[var(--ejo-bg)] shadow-2xl sm:max-w-3xl sm:rounded-[var(--ejo-radius-xl)]">
             <VehicleArt kind={open.art} brand={open.brand} className="aspect-[16/7] w-full" label={open.name} />
             <button type="button" onClick={() => setOpen(null)} aria-label="Close" className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-black/40 text-white hover:bg-black/60"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg></button>
             <div className="p-5 sm:p-8">
