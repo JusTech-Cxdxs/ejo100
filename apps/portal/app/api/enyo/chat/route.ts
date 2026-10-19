@@ -1,10 +1,12 @@
 import type { NextRequest } from 'next/server';
 import { prisma, type Prisma } from '@ejo/database';
-import { clip, encodeEvent, redactForLog, routeModel, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
+import { clip, encodeEvent, lagosNow, redactForLog, routeModel, runAgent, SSE_HEADERS, trimHistory, type ChatMessage, type EnyoEvent } from '@ejo/enyo';
+import { briefing, isBriefingRequest } from '@/lib/enyo/briefing';
+import { briefingSystemPrompt } from '@/lib/enyo/briefing-core';
 import { requireUser } from '@/lib/actions/workshop';
 import { enyoReady } from '@/lib/enyo/settings';
 import { staffToolsFor } from '@/lib/enyo/tools';
-import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
+import { cleanPage, MAX_MESSAGE_CHARS, overRateLimit, roleDescription, sameOrigin, sseError, staffContext, staffSystemPrompt, titleFrom } from '@/lib/enyo/server';
 import { logError } from '@/lib/errors';
 import { findLearned, noteLearnedUse } from '@/lib/enyo/learned';
 import { workProfile } from '@/lib/enyo/work-profile';
@@ -119,6 +121,35 @@ export async function POST(request: NextRequest) {
           } catch (err) {
             const ref = logError('enyo.chat', err, { conversationId: conversation.id });
             emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+          } finally {
+            finish();
+          }
+          return;
+        }
+        // "Brief me": the figures gathered in code as this person, one small model request to write them up,
+        // and a hand-written briefing when the model is refused or away (lib/enyo/briefing.ts).
+        if (isBriefingRequest(message)) {
+          try {
+            const org = await prisma.organisation.findUnique({ where: { id: organisationId }, select: { name: true } }).catch(() => null);
+            const result = await briefing({
+              ctx, config: ready.config, model: ready.config.model, message, emit, signal: request.signal,
+              deadlineMs: Math.max(8_000, 50_000 - (Date.now() - requestStarted)),
+              system: (branch) => briefingSystemPrompt({ assistantName: ready.settings.displayName || 'Enyo', organisationName: org?.name || process.env.NEXT_PUBLIC_ORGANISATION_NAME || 'the organisation', personName: ctx.name.split(/\s+/)[0] || ctx.name, roleDescription: roleDescription(ctx.roleSlugs, ctx.isSuperAdmin), now: lagosNow(), branch }),
+            });
+            if (result.toolRuns.length) await prisma.enyoMessage.createMany({ data: result.toolRuns.map((t) => ({ conversationId: conversation.id, role: 'TOOL' as const, toolName: t.name, content: JSON.stringify({ ok: t.ok, ...(t.refused ? { refused: true } : {}) }) })) });
+            const saved = await prisma.enyoMessage.create({
+              data: { conversationId: conversation.id, role: 'ASSISTANT', content: result.answer, citations: { sources: result.sources } as Prisma.InputJsonValue, model: result.model, tokensIn: result.usage.tokensIn, tokensOut: result.usage.tokensOut, latencyMs: Date.now() - started },
+              select: { id: true },
+            });
+            if (result.sources.length) emit({ type: 'sources', sources: result.sources });
+            await prisma.enyoConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }).catch(() => undefined);
+            emit({ type: 'done', messageId: saved.id });
+          } catch (err) {
+            // The person closed the panel: nothing to log or say.
+            if (!request.signal.aborted) {
+              const ref = logError('enyo.briefing', err, { conversationId: conversation.id });
+              emit({ type: 'error', message: `${SOMETHING_WRONG} ${ref}.`, ref });
+            }
           } finally {
             finish();
           }

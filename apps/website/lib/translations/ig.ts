@@ -6,6 +6,7 @@ const ig: Record<keyof typeof en, string> = {
   'nav.businesses': 'Azụmahịa Anyị',
   'nav.products': 'Ngwaahịa',
   'nav.store': 'Ụlọ ahịa',
+  'nav.more': 'Ndị ọzọ',
   'nav.investors': 'Ndị Na-etinye Ego',
   'nav.sustainability': 'Ịdị Adịgide',
   'nav.careers': 'Ọrụ',

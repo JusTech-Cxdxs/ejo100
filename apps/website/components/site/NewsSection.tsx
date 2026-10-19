@@ -8,7 +8,7 @@ export async function NewsSection() {
   const stories = (await listStories()).slice(0, 4);
   if (!stories.length) return null;
   return (
-    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28" aria-labelledby="home-news">
+    <section className="mx-auto max-w-[1480px] px-4 py-20 sm:px-6 lg:px-10 sm:py-28" aria-labelledby="home-news">
       <div className="mb-10 flex flex-wrap items-end justify-between gap-4 sm:mb-14">
         <div>
           <p className="text-sm font-semibold text-[var(--ejo-primary)]">News & media</p>

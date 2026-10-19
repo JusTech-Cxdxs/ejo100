@@ -84,6 +84,25 @@ export function readErrorBody(text: string): { detail?: string; code?: string } 
   return { ...(clean ? { detail: clean } : {}), ...(code ? { code } : {}) };
 }
 
+/**
+ * How long the model server asked us to wait, in milliseconds: the Retry-After
+ * header, or the "Please try again in 1m2.5s" / "in 750ms" that Groq and others
+ * put in the message. Undefined when nothing was said.
+ */
+export function retryAfterMs(detail: string | undefined, header?: string | null): number | undefined {
+  const h = Number(header);
+  if (Number.isFinite(h) && h > 0) return Math.round(h * 1000);
+  const m = /try again in\s+((?:\d+(?:\.\d+)?\s*(?:ms|h|m|s)\s*)+)/i.exec(detail ?? '');
+  if (!m) return undefined;
+  let ms = 0;
+  for (const part of m[1]!.matchAll(/(\d+(?:\.\d+)?)\s*(h|ms|m|s)/gi)) {
+    const n = Number(part[1]);
+    const unit = part[2]!.toLowerCase();
+    ms += unit === 'h' ? n * 3_600_000 : unit === 'm' ? n * 60_000 : unit === 's' ? n * 1000 : n;
+  }
+  return ms > 0 ? Math.round(ms) : undefined;
+}
+
 /** Friendly text for each failure, shown to people instead of library messages. */
 export function llmErrorMessage(kind: LlmErrorKind): string {
   switch (kind) {
@@ -175,12 +194,16 @@ const sleep = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', () => { clearTimeout(t); reject(new LlmError('aborted', 'Aborted')); }, { once: true });
 });
 
-/** POST with a timeout and up to two retries on 429 / 5xx / network errors. */
+/** The longest the request waits for a per-minute budget to free before retrying. */
+export const MAX_RETRY_WAIT_MS = 12_000;
+
+/** POST with a timeout and up to three retries on 429 / 5xx / network errors. */
 async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal | undefined, fetchImpl: Fetch): Promise<Response> {
   let lastError: LlmError = new LlmError('unavailable', 'No attempt made');
   let payload = firstPayload;
   let toolRetry = false;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  let giveUp = false;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     if (signal?.aborted) throw new LlmError('aborted', 'Aborted');
     const timeout = new AbortController();
     const timer = setTimeout(() => timeout.abort(), config.timeoutMs);
@@ -219,11 +242,14 @@ async function post(config: LlmConfig, firstPayload: string, signal: AbortSignal
       }
       const retryable = kind === 'rate_limited' || kind === 'unavailable';
       if (!retryable) throw lastError;
-      const after = Number(res.headers.get('retry-after'));
-      await sleep(Number.isFinite(after) && after > 0 ? Math.min(after * 1000, 5_000) : 600 * (attempt + 1), signal);
+      // Wait as long as the server asked, when that is short enough to be worth it (a per-minute
+      // token budget usually frees in seconds); a long wait is reported at once instead.
+      const asked = retryAfterMs(detail, res.headers.get('retry-after'));
+      if (asked !== undefined && asked > MAX_RETRY_WAIT_MS) { giveUp = true; throw lastError; }
+      await sleep(asked !== undefined ? Math.max(asked + 250, 500) : 600 * (attempt + 1), signal);
     } catch (err) {
       if (err instanceof LlmError) {
-        if (err.kind === 'rejected' || err.kind === 'auth' || err.kind === 'not_found' || err.kind === 'aborted') throw err;
+        if (giveUp || err.kind === 'rejected' || err.kind === 'auth' || err.kind === 'not_found' || err.kind === 'aborted') throw err;
         lastError = err;
       } else if (signal?.aborted) {
         throw new LlmError('aborted', 'Aborted');

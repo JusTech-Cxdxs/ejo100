@@ -24,6 +24,7 @@ export type Highlight = {
 };
 
 export const HIGHLIGHTS: Highlight[] = [
+  { id: 'enyo-brief', tag: 'Enyo', title: 'A briefing in one line', text: 'Say "brief me", "what is happening" or "are we on profit": Enyo gathers your day, what waits on others and — for leaders — the business this month, the workshop now, stock, support and the website, then writes it up. A manager gets their branch; say a branch name to focus on it.', where: 'The Enyo button (bottom right)', href: '/dashboard', needs: [], try: 'Brief me on everything happening today' },
   { id: 'enyo', tag: 'Enyo', title: 'Enyo, the assistant on every page', text: 'Ask in your own words: what needs you today, where a job is, how to do something for your role. It answers only from what you are allowed to see, with links.', where: 'The Enyo button (bottom right), or Ctrl + J', href: '/dashboard', needs: [], try: 'What needs my attention today?' },
   { id: 'brief', tag: 'Enyo', title: 'Your daily brief', text: 'Approvals waiting, mail, reminders and what changed in your areas — counted, with links, and a short summary you can listen to.', where: 'Top of the Dashboard', href: '/dashboard', needs: [] },
   { id: 'voice', tag: 'Enyo', title: 'Voice notes to Enyo', text: 'Press the microphone and speak. Pause, carry on, edit the words as text, or send — nothing is sent until you choose.', where: 'The microphone in the Enyo chat', href: '/dashboard', needs: [] },

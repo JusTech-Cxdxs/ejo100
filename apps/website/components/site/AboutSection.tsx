@@ -10,7 +10,7 @@ export function AboutSection() {
   const { t } = useI18n();
 
   return (
-    <section className="mx-auto max-w-7xl px-6 py-28">
+    <section className="mx-auto max-w-[1480px] overflow-x-clip px-4 py-20 sm:px-6 sm:py-28 lg:px-10">
       <div className="grid items-center gap-16 md:grid-cols-2">
         <motion.div
           initial={{ opacity: 0, x: -24 }}

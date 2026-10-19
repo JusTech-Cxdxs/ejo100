@@ -10,6 +10,7 @@ import { SiteWordmark } from './SiteWordmark';
 import { ThemeToggle } from './ThemeToggle';
 import { LanguageSelector } from './LanguageSelector';
 import { SearchModal } from './SearchModal';
+import { PromoBar } from './site/PromoBar';
 
 /**
  * The site header. On a phone it is always a solid bar — wordmark, theme
@@ -18,6 +19,9 @@ import { SearchModal } from './SearchModal';
  * On a wide screen the home page starts transparent over the hero and turns
  * solid on scroll; every other page is solid from the start.
  */
+/** How many pages show on their own between 1280px and 1536px; the rest go under "More". */
+const PRIMARY = 5;
+
 export function Header() {
   const { t } = useI18n();
   const pathname = usePathname();
@@ -53,6 +57,9 @@ export function Header() {
 
   // Transparent only on a wide screen over the home hero; phones always get the solid bar.
   const glass = isHome && !scrolled && wide;
+  const pages = siteNav.filter((i) => i.href !== '/');
+  const linkCls = `relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-3 text-[13.5px] font-medium transition-colors 2xl:px-3.5 2xl:text-sm ${glass ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`;
+  const activeCls = glass ? 'text-white' : 'text-[var(--ejo-text)]';
 
   return (
     <>
@@ -61,22 +68,22 @@ export function Header() {
           className={`transition-[background-color,box-shadow] duration-300 ${glass ? 'bg-gradient-to-b from-black/55 to-transparent shadow-none' : 'bg-[var(--ejo-bg)]/95 shadow-[0_1px_0_var(--ejo-border)] backdrop-blur-md supports-[backdrop-filter]:bg-[var(--ejo-bg)]/85'}`}
           data-glass={glass ? 'true' : 'false'}
         >
-          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:h-[72px]">
+          <PromoBar dark={glass} />
+          {/* Full width: the wordmark at the left edge, the sign-ins at the right, the pages between — room to breathe on a wide screen. */}
+          <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:h-[76px] lg:px-8 2xl:px-12">
             <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label={siteConfig.organisationName}>
               <SiteWordmark tone={glass ? 'light' : 'default'} />
             </Link>
 
-            <nav className="hidden items-center gap-1 xl:flex" aria-label="Main">
-              {siteNav.map((item) => {
+            {/* The pages: the wordmark is Home, so Home itself is only in the menu; the first five show from 1280px,
+                the rest sit under "More" until 1536px, where everything fits on one line. */}
+            <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 xl:flex 2xl:gap-1" aria-label="Main">
+              {pages.map((item, index) => {
                 const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
-                const tone = glass ? 'text-white/85 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]';
+                const later = index >= PRIMARY;
                 return (
-                  <div key={item.href} className="group relative">
-                    <Link
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={`relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-medium transition-colors 2xl:px-3 2xl:text-[13.5px] ${tone} ${active ? (glass ? 'text-white' : 'text-[var(--ejo-text)]') : ''}`}
-                    >
+                  <div key={item.href} className={`group relative ${later ? 'hidden 2xl:block' : ''}`}>
+                    <Link href={item.href} aria-current={active ? 'page' : undefined} className={`${linkCls} ${active ? activeCls : ''}`}>
                       {t(item.key)}
                       {active ? <span aria-hidden className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full ${glass ? 'bg-white' : 'bg-[var(--ejo-primary)]'}`} /> : null}
                     </Link>
@@ -92,20 +99,38 @@ export function Header() {
                   </div>
                 );
               })}
+              {pages.length > PRIMARY ? (
+                <div className="group relative 2xl:hidden">
+                  <button type="button" className={`${linkCls} gap-1 ${pages.slice(PRIMARY).some((i) => pathname === i.href || pathname.startsWith(`${i.href}/`)) ? activeCls : ''}`} aria-haspopup="true">
+                    {t('nav.more')}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
+                  </button>
+                  <div className="invisible absolute right-0 top-full pt-2 opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                    <div className="w-60 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-2 shadow-xl">
+                      {pages.slice(PRIMARY).map((item) => (
+                        <Link key={item.href} href={item.href} className="block px-4 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-primary)]">{t(item.key)}</Link>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </nav>
 
-            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-2.5">
               <span className="hidden 2xl:inline-flex"><LanguageSelector dark={glass} /></span>
               <span className="hidden lg:inline-flex"><SearchModal dark={glass} /></span>
               <ThemeToggle dark={glass} />
+              <span aria-hidden className={`mx-1 hidden h-6 w-px lg:block ${glass ? 'bg-white/25' : 'bg-[var(--ejo-border)]'}`} />
               <Link
                 href="/customer-portal"
-                className={`hidden h-10 items-center whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors lg:inline-flex ${glass ? 'border-white/30 text-white hover:bg-white/10' : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}
+                className={`hidden h-10 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-[13px] font-semibold transition-all lg:inline-flex ${glass ? 'border-white/35 text-white hover:bg-white/10' : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:border-[var(--ejo-primary)] hover:text-[var(--ejo-primary)]'}`}
               >
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="8" r="4" /></svg>
                 {t('header.customerLogin')}
               </Link>
               {portalLogin ? (
-                <a href={portalLogin} className="hidden h-10 items-center whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-3.5 text-[13px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 lg:inline-flex">
+                <a href={portalLogin} className="hidden h-10 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 text-[13px] font-semibold text-white shadow-[0_6px_16px_-6px_rgba(34,152,63,0.6)] transition-all hover:-translate-y-px hover:shadow-[0_10px_20px_-8px_rgba(34,152,63,0.7)] lg:inline-flex">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>
                   {t('header.employeeLogin')}
                 </a>
               ) : null}

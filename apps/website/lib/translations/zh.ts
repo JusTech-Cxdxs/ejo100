@@ -6,6 +6,7 @@ const zh: Record<keyof typeof en, string> = {
   'nav.businesses': '业务板块',
   'nav.products': '产品',
   'nav.store': '商店',
+  'nav.more': '更多',
   'nav.investors': '投资者',
   'nav.sustainability': '可持续发展',
   'nav.careers': '招聘',

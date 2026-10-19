@@ -16,7 +16,7 @@ export function PageIntro({ title, lede, kicker, image, imageAlt, children, tone
     <section className={`relative overflow-hidden ${dark ? 'bg-[#0b2416] text-white' : 'bg-[var(--ejo-surface)] text-[var(--ejo-text)]'}`}>
       {image ? <MediaBox src={image} alt={imageAlt ?? ''} className="absolute inset-0" style={{ opacity: dark ? 0.35 : 0.18 }} /> : null}
       {dark ? <div aria-hidden className="ejo-ambient absolute inset-0" /> : null}
-      <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-28 sm:px-6 sm:pb-20 sm:pt-36 lg:pt-44">
+      <div className="relative mx-auto max-w-[1480px] px-4 pb-14 pt-28 sm:px-6 lg:px-10 sm:pb-20 sm:pt-36 lg:pt-44">
         <div className="ejo-intro max-w-3xl">
           {/* Always rendered (empty when there is no kicker), so the entrance animation's order holds. */}
           <p className={`mb-4 text-sm font-semibold ${dark ? 'text-[#7ee2a0]' : 'text-[var(--ejo-primary)]'} ${kicker ? '' : 'hidden'}`}>{kicker ?? ''}</p>
@@ -34,7 +34,7 @@ export function Section({ id, title, lead, children, tone = 'plain', className =
   const bg = tone === 'tint' ? 'bg-[var(--ejo-surface)]' : tone === 'dark' ? 'bg-[#0b2416] text-white' : '';
   return (
     <section id={id} className={`${bg} ${className}`}>
-      <div className={`mx-auto px-4 py-16 sm:px-6 sm:py-24 ${narrow ? 'max-w-3xl' : 'max-w-7xl'}`}>
+      <div className={`mx-auto px-4 py-16 sm:px-6 lg:px-10 sm:py-24 ${narrow ? 'max-w-3xl' : 'max-w-[1480px]'}`}>
         {title ? (
           <div className={`mb-10 sm:mb-14 ${aside ? 'grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] lg:items-end' : 'max-w-3xl'}`}>
             <div>
@@ -82,7 +82,7 @@ export function LinkRow({ href, title, text, external = false }: { href: string;
 
 export function Button({ href, children, variant = 'solid', external = false, className = '' }: { href: string; children: ReactNode; variant?: 'solid' | 'line' | 'light'; external?: boolean; className?: string }) {
   const base = 'inline-flex min-h-12 items-center justify-center rounded-full px-6 text-sm font-semibold transition-[transform,opacity] hover:-translate-y-px active:translate-y-0';
-  const look = variant === 'solid' ? 'bg-[var(--ejo-primary)] text-white hover:opacity-90' : variant === 'light' ? 'bg-white text-[#0b2416] hover:opacity-90' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]';
+  const look = variant === 'solid' ? 'bg-[var(--ejo-primary)] text-white shadow-[0_8px_20px_-10px_rgba(34,152,63,0.7)] hover:opacity-90 hover:shadow-[0_12px_24px_-10px_rgba(34,152,63,0.8)]' : variant === 'light' ? 'bg-white text-[#0b2416] hover:opacity-90' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]';
   const cls = `${base} ${look} ${className}`;
   return external ? <a href={href} target="_blank" rel="noopener noreferrer" className={cls}>{children}</a> : <Link href={href} className={cls}>{children}</Link>;
 }

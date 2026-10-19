@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readLlmConfig, type LlmConfig } from '../src/config';
-import { complete, isReasoningModel, LlmError, llmAdminMessage, stream } from '../src/llm';
+import { complete, isReasoningModel, LlmError, llmAdminMessage, retryAfterMs, stream } from '../src/llm';
 import { validateArgs, type Tool } from '../src/tools';
 import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asData, clip } from '../src/guardrails';
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
@@ -414,4 +414,53 @@ test('agent: other refusals are not retried', async () => {
   const r = await runAgent({ config, system: 'sys', messages: [{ role: 'user', content: 'hi' }], tools: [takings], ctx: { role: 'finance' }, emit: () => undefined, fetchImpl: impl, retrySmaller: { tools: [] } });
   assert.equal(r.error?.kind, 'rejected');
   assert.equal(seen.length, 1);
+});
+
+test('retryAfterMs(): the header, or the "try again in 1m2.5s" the server wrote', () => {
+  assert.equal(retryAfterMs(undefined, '3'), 3_000);
+  assert.equal(retryAfterMs('Rate limit reached … Please try again in 11.25s. Visit…'), 11_250);
+  assert.equal(retryAfterMs('try again in 1m2.5s'), 62_500);
+  assert.equal(retryAfterMs('Please try again in 750ms'), 750);
+  assert.equal(retryAfterMs('too many requests'), undefined);
+});
+
+test('llm: a 429 that asks for a short wait is retried after that wait; a long wait is reported at once', async () => {
+  const limited = (s: string) => new Response(JSON.stringify({ error: { message: `Rate limit reached on tokens per minute (TPM): Limit 8000. Please try again in ${s}.` } }), { status: 429 });
+  const fine = () => new Response(JSON.stringify({ model: 'm', choices: [{ message: { content: 'fine' }, finish_reason: 'stop' }] }), { status: 200 });
+  const a = scripted([() => limited('0.2s'), fine]);
+  const started = Date.now();
+  const r = await complete(config, { messages: [{ role: 'user', content: 'hi' }] }, a.impl);
+  assert.equal(r.content, 'fine');
+  assert.ok(Date.now() - started >= 400, 'waited as asked');
+  assert.equal(a.seen.length, 2);
+  const b = scripted([() => limited('1m30s'), fine]);
+  await assert.rejects(complete(config, { messages: [{ role: 'user', content: 'hi' }] }, b.impl), (e: unknown) => e instanceof LlmError && e.kind === 'rate_limited');
+  assert.equal(b.seen.length, 1, 'no point retrying a minute later');
+});
+
+test('agent: the per-minute budget running out after a tool call waits and finishes the answer', async () => {
+  const limited = () => new Response(JSON.stringify({ error: { message: 'Rate limit reached (TPM). Please try again in 0.3s.' } }), { status: 429 });
+  // The first request after the tool is refused four times (post() gives up), then the step is tried again and answers.
+  const { impl, seen } = scripted([() => callTool('takings_today', '{}'), limited, limited, limited, limited, () => say('Today you took ₦125,000.')]);
+  const events: EnyoEvent[] = [];
+  const r = await runAgent({ config, system: 'sys', messages: [{ role: 'user', content: 'Brief me' }], tools: [takings], ctx: { role: 'finance' }, emit: (e) => events.push(e), fetchImpl: impl, deadlineMs: 30_000 });
+  assert.equal(r.error, undefined);
+  assert.equal(r.answer, 'Today you took ₦125,000.');
+  assert.equal(seen.length, 6);
+  assert.ok(events.some((e) => e.type === 'status' && /Waiting a moment/.test(e.text)));
+});
+
+test('free web search: when the html site refuses the server, the lite site is tried', async () => {
+  const lite = "<table><tr><td><a rel='nofollow' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.kewalramchanrai.com%2Fabout&amp;rut=1' class='result-link'>Kewalram Chanrai Group — About</a></td></tr><tr><td class='result-snippet'>A diversified family business group founded in 1860 with its largest presence in Nigeria, Kewalram Chanrai Group operates across Africa and Asia.</td></tr></table>";
+  const urls: string[] = [];
+  const fake = (async (url: string) => {
+    urls.push(url);
+    if (url.startsWith('https://html.')) return { ok: false, status: 403, json: async () => ({}), text: async () => 'refused' };
+    return { ok: true, status: 200, json: async () => ({}), text: async () => lite };
+  }) as never;
+  const r = await webSearch('Kewalram Chanrai Group', { provider: { name: 'duckduckgo', label: 'DuckDuckGo', key: '' }, fetchImpl: fake });
+  assert.equal(r.pages.length, 1);
+  assert.equal(r.pages[0]!.url, 'https://www.kewalramchanrai.com/about');
+  assert.match(r.pages[0]!.text, /founded in 1860/);
+  assert.ok(urls[1]!.startsWith('https://lite.duckduckgo.com/lite/'));
 });

@@ -56,8 +56,8 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
   return (
     <div>
       {/* Filters */}
-      <div className="sticky top-16 z-30 -mx-4 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)]/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:top-[72px]">
-        <div className="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto">
+      <div className="sticky top-16 z-30 -mx-4 border-b border-[var(--ejo-border)] bg-[var(--ejo-bg)]/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6 lg:-mx-10 lg:px-10 lg:top-[76px]">
+        <div className="mx-auto flex max-w-[1480px] items-center gap-2 overflow-x-auto">
           {(['all', ...CATEGORIES.map((c) => c.key)] as const).map((k) => {
             const label = k === 'all' ? 'Everything' : CATEGORIES.find((c) => c.key === k)!.label;
             const n = k === 'all' ? PRODUCTS.length : PRODUCTS.filter((p) => p.category === k).length;
@@ -74,12 +74,12 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
       </div>
 
       {/* Grid */}
-      <ul className="mx-auto grid max-w-7xl gap-x-6 gap-y-10 py-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Products">
+      <ul className="mx-auto grid max-w-[1480px] gap-x-6 gap-y-10 py-10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4" aria-label="Products">
         {shown.map((p) => {
           const off = discountPct(p);
           return (
             <li key={p.id} className="group flex flex-col">
-              <button type="button" onClick={() => setOpen(p)} className="relative block overflow-hidden rounded-[var(--ejo-radius-lg)] text-left" aria-label={`${p.name}: details`}>
+              <button type="button" onClick={() => setOpen(p)} className="ejo-card relative block w-full overflow-hidden rounded-[var(--ejo-radius-lg)] border border-transparent text-left" aria-label={`${p.name}: details`}>
                 <VehicleArt kind={p.art} brand={p.brand} className="aspect-[16/9] w-full transition-transform duration-500 group-hover:scale-[1.03]" />
                 {off ? <span className="absolute left-3 top-3 rounded-full bg-[#ffd166] px-2.5 py-1 text-xs font-bold text-[#3b2a0a]">−{off}%</span> : null}
                 {p.badge ? <span className="absolute right-3 top-3 rounded-full bg-white/90 px-2.5 py-1 text-xs font-semibold text-[#0b2416]">{p.badge}</span> : null}

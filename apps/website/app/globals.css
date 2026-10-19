@@ -218,9 +218,26 @@ html, body { overscroll-behavior-x: none; }
 /* The heritage ribbon (About): a horizontal strip of years that scrolls on a phone and lays out in full on a wide screen. */
 .ejo-ribbon { scrollbar-width: thin; scroll-snap-type: x proximity; }
 /* Full-bleed strips whose content starts where the page's 80rem column starts. */
-.ejo-bleed-pad { padding-inline: max(1rem, calc((100vw - 80rem) / 2 + 1.5rem)); }
+.ejo-bleed-pad { padding-inline: max(1rem, calc((100vw - 92.5rem) / 2 + 2.5rem)); }
 .ejo-ribbon > * { scroll-snap-align: start; }
 @media (prefers-reduced-motion: reduce) {
   .ejo-intro > * { animation: none; }
   .ejo-ambient { animation: none; }
+}
+
+/* ── Cards, focus and reveal (v42): one hover, one focus ring, one way in ── */
+.ejo-card { transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 260ms ease, border-color 200ms ease; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 8px 24px -16px rgba(11, 36, 22, 0.25); }
+.ejo-card:hover { transform: translateY(-3px); box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04), 0 18px 40px -18px rgba(11, 36, 22, 0.38); }
+.dark .ejo-card { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px -16px rgba(0, 0, 0, 0.6); }
+.dark .ejo-card:hover { box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3), 0 18px 40px -18px rgba(0, 0, 0, 0.7); }
+/* Pressing or focusing anything on the site shows the green ring, never a browser blue. */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible { outline: 2px solid var(--ejo-primary); outline-offset: 3px; border-radius: inherit; }
+.ejo-card:focus-within, .ejo-card:active { border-color: var(--ejo-primary); }
+/* Sections rise in as they scroll into view (components/site/Reveal.tsx adds .is-in). */
+.ejo-reveal { opacity: 0; transform: translateY(18px); transition: opacity 640ms cubic-bezier(0.2, 0.7, 0.2, 1), transform 640ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+.ejo-reveal.is-in { opacity: 1; transform: none; }
+.ejo-reveal > [data-stagger] { transition-delay: calc(var(--i, 0) * 70ms); }
+@media (prefers-reduced-motion: reduce) {
+  .ejo-card, .ejo-card:hover { transform: none; transition: none; }
+  .ejo-reveal { opacity: 1; transform: none; transition: none; }
 }
