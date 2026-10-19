@@ -9,7 +9,12 @@ import { clientIp } from '@/lib/customer-audit';
 import { logCustomerError } from '@/lib/error-events';
 import { CONTACT_DAILY_LIMIT, TOPICS, checkContact } from './core';
 
-export type ContactState = { ok: true; number: string; token: string | null } | { ok: false; error: string; field?: string } | null;
+/** What the visitor typed, echoed back with an error so the form keeps it (React resets a form after its action). */
+export type ContactValues = { name: string; email: string; phone: string; company: string; message: string; topic: string };
+export type ContactState = { ok: true; number: string; token: string | null } | { ok: false; error: string; field?: string; values: ContactValues } | null;
+
+const str = (v: FormDataEntryValue | null) => (typeof v === 'string' ? v : '');
+const typed = (fd: FormData): ContactValues => ({ name: str(fd.get('name')), email: str(fd.get('email')), phone: str(fd.get('phone')), company: str(fd.get('company')), message: str(fd.get('message')), topic: str(fd.get('topic')) });
 
 /**
  * The contact form: one support request in the organisation's Support
@@ -20,16 +25,17 @@ export type ContactState = { ok: true; number: string; token: string | null } | 
  */
 export async function sendContactMessage(_prev: ContactState, fd: FormData): Promise<ContactState> {
   const checked = checkContact({ name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone'), topic: fd.get('topic'), company: fd.get('company'), message: fd.get('message'), website: fd.get('website') });
-  if (!checked.ok) return checked.message === 'Thank you.' ? { ok: true, number: 'received', token: null } : { ok: false, error: checked.message, field: checked.field };
+  const values = typed(fd);
+  if (!checked.ok) return checked.message === 'Thank you.' ? { ok: true, number: 'received', token: null } : { ok: false, error: checked.message, field: checked.field, values };
   const v = checked.value;
   let ip: string | null = null;
   try { ip = clientIp(await headers()); } catch { ip = null; }
   const org = await siteOrganisation().catch(() => null);
-  if (!org) return { ok: false, error: 'The contact form is not switched on yet. Please call or email us instead.' };
+  if (!org) return { ok: false, error: 'The contact form is not switched on yet. Please call or email us instead.', values };
   // At most five a day from one address (counted from the record, so it holds across servers and restarts).
   if (ip) {
     const sent = await prisma.auditLog.count({ where: { organisationId: org.id, action: 'support.ticket_opened', ipAddress: ip, createdAt: { gte: new Date(Date.now() - 86_400_000) } } }).catch(() => 0);
-    if (sent >= CONTACT_DAILY_LIMIT) return { ok: false, error: 'You have sent several messages today. Our team will answer those first — or call us if it is urgent.' };
+    if (sent >= CONTACT_DAILY_LIMIT) return { ok: false, error: 'You have sent several messages today. Our team will answer those first — or call us if it is urgent.', values };
   }
   const kind = TOPICS[v.topic]!;
   const subject = `${kind.label}${v.company ? ` — ${v.company}` : ''}`.slice(0, 140);
@@ -55,6 +61,6 @@ export async function sendContactMessage(_prev: ContactState, fd: FormData): Pro
     return { ok: true, number: ticket.number, token: ticket.token };
   } catch (err) {
     const ref = await logCustomerError('sendContactMessage', err);
-    return { ok: false, error: `We couldn’t send your message just now. Please try again, or call us and quote reference ${ref}.` };
+    return { ok: false, error: `We couldn’t send your message just now. Please try again, or call us and quote reference ${ref}.`, values };
   }
 }

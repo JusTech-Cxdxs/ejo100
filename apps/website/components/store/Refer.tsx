@@ -15,6 +15,7 @@ const label = 'mb-1.5 block text-sm font-medium';
 export function Refer() {
   const [mode, setMode] = useState<'refer' | 'partner'>('refer');
   const [state, action, pending] = useActionState<ContactState, FormData>(sendContactMessage, null);
+  const v = state && !state.ok ? state.values : undefined;
   return (
     <section id="refer" className="scroll-mt-24 border-t border-[var(--ejo-border)] bg-[#0b2416] text-white">
       <div className="relative overflow-hidden">
@@ -51,14 +52,14 @@ export function Refer() {
                 <h3 className="text-xl font-bold">{mode === 'refer' ? 'Refer a buyer' : 'Become a referral partner'}</h3>
                 <p className="text-sm text-[#475569]">{mode === 'refer' ? 'Your details, and who we should call. We never contact them without saying you sent us.' : 'Digital marketers, fleet consultants, dealers and influencers: tell us how you reach buyers and we will set you up with a code and a rate card.'}</p>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div><label htmlFor="r-name" className={label}>Your name</label><input id="r-name" name="name" required maxLength={100} className={input} autoComplete="name" /></div>
-                  <div><label htmlFor="r-phone" className={label}>Your phone</label><input id="r-phone" name="phone" type="tel" required maxLength={32} className={input} autoComplete="tel" inputMode="tel" /></div>
-                  <div className="sm:col-span-2"><label htmlFor="r-email" className={label}>Your email (optional)</label><input id="r-email" name="email" type="email" maxLength={160} className={input} autoComplete="email" /></div>
-                  {mode === 'partner' ? <div className="sm:col-span-2"><label htmlFor="r-company" className={label}>Business or channel (optional)</label><input id="r-company" name="company" maxLength={120} className={input} placeholder="Agency, dealership, fleet consultancy, social handle…" /></div> : null}
+                  <div><label htmlFor="r-name" className={label}>Your name</label><input id="r-name" name="name" defaultValue={v?.name} required maxLength={100} className={input} autoComplete="name" /></div>
+                  <div><label htmlFor="r-phone" className={label}>Your phone</label><input id="r-phone" name="phone" defaultValue={v?.phone} type="tel" required maxLength={32} className={input} autoComplete="tel" inputMode="tel" /></div>
+                  <div className="sm:col-span-2"><label htmlFor="r-email" className={label}>Your email (optional)</label><input id="r-email" name="email" defaultValue={v?.email} type="email" maxLength={160} className={input} autoComplete="email" /></div>
+                  {mode === 'partner' ? <div className="sm:col-span-2"><label htmlFor="r-company" className={label}>Business or channel (optional)</label><input id="r-company" name="company" defaultValue={v?.company} maxLength={120} className={input} placeholder="Agency, dealership, fleet consultancy, social handle…" /></div> : null}
                 </div>
                 <div>
                   <label htmlFor="r-message" className={label}>{mode === 'refer' ? 'Who should we call, and what are they looking for?' : 'How do you reach buyers, and roughly how many a month?'}</label>
-                  <textarea id="r-message" name="message" required minLength={12} maxLength={4000} rows={4} className={input} placeholder={mode === 'refer' ? 'Name, phone number, the vehicle or part they want, and when.' : 'Your audience, your channels, the areas you cover.'} />
+                  <textarea id="r-message" name="message" defaultValue={v?.message} required minLength={12} maxLength={4000} rows={4} className={input} placeholder={mode === 'refer' ? 'Name, phone number, the vehicle or part they want, and when.' : 'Your audience, your channels, the areas you cover.'} />
                 </div>
                 <button type="submit" disabled={pending} className="inline-flex min-h-12 w-full items-center justify-center rounded-full bg-[#22983f] px-6 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-60">{pending ? 'Sending…' : mode === 'refer' ? 'Send the referral' : 'Apply to sell for us'}</button>
               </form>
