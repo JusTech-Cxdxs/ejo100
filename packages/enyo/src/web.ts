@@ -134,6 +134,21 @@ export function parseDuckDuckGo(html: string): { title: string; url: string; tex
   return out;
 }
 
+/** The lite site: a table of result links followed by a snippet row. */
+export function parseDuckDuckGoLite(html: string): { title: string; url: string; text: string }[] {
+  const out: { title: string; url: string; text: string }[] = [];
+  const re = /<a[^>]+rel="nofollow"[^>]+href="([^"]+)"[^>]*class="result-link"[^>]*>([\s\S]*?)<\/a>[\s\S]*?<td[^>]*class="result-snippet"[^>]*>([\s\S]*?)<\/td>/gi;
+  for (const m of html.matchAll(re)) {
+    let href = m[1]!.replace(/&amp;/g, '&');
+    const uddg = href.match(/[?&]uddg=([^&]+)/);
+    if (uddg) { try { href = decodeURIComponent(uddg[1]!); } catch { continue; } }
+    if (href.startsWith('//')) href = `https:${href}`;
+    if (!/^https:\/\//i.test(href) || /duckduckgo\.com\/(y\.js|l\/)/i.test(href)) continue;
+    out.push({ title: m[2]!, url: href, text: m[3]! });
+  }
+  return out;
+}
+
 /** Where a result came from, for the answer: "linkedin.com", "kewalramchanrai.com". */
 export function siteOf(url: string): string {
   try {
@@ -168,9 +183,28 @@ export async function webSearch(rawQuery: string, opts: { provider?: SearchProvi
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), ms);
     try {
-      const res = await fetchImpl('https://html.duckduckgo.com/html/', { method: 'POST', headers: { 'user-agent': UA, accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: `q=${encodeURIComponent(query)}&kl=wt-wt`, signal: ctrl.signal });
-      if (!res.ok || !res.text) throw new Error(`HTTP ${res.status}`);
-      rows = parseDuckDuckGo(await res.text()).slice(0, limit * 2);
+      // The free engine refuses some servers (data-centre addresses): the html site first, then the lite site,
+      // GET then POST, so one refusal does not end the search.
+      const attempts: [string, { method: string; headers: Record<string, string>; body?: string }][] = [
+        ['https://html.duckduckgo.com/html/', { method: 'POST', headers: { 'user-agent': UA, accept: 'text/html', 'content-type': 'application/x-www-form-urlencoded' }, body: `q=${encodeURIComponent(query)}&kl=wt-wt` }],
+        [`https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(query)}&kl=wt-wt`, { method: 'GET', headers: { 'user-agent': UA, accept: 'text/html' } }],
+        [`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}&kl=wt-wt`, { method: 'GET', headers: { 'user-agent': UA, accept: 'text/html' } }],
+      ];
+      let lastErr: unknown = new Error('No attempt');
+      for (const [url, init] of attempts) {
+        try {
+          const res = await fetchImpl(url, { ...init, signal: ctrl.signal });
+          if (!res.ok || !res.text) throw new Error(`HTTP ${res.status}`);
+          const html = await res.text();
+          rows = (url.includes('lite.') ? parseDuckDuckGoLite(html) : parseDuckDuckGo(html)).slice(0, limit * 2);
+          if (rows.length) break;
+          lastErr = new Error('No results');
+        } catch (err) {
+          lastErr = err;
+          if (ctrl.signal.aborted) break;
+        }
+      }
+      if (!rows.length) throw lastErr;
     } finally {
       clearTimeout(timer);
     }

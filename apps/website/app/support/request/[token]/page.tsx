@@ -27,7 +27,7 @@ export default async function SupportRequestPage({ params, searchParams }: { par
   const org = t ? await prisma.organisation.findUnique({ where: { id: t.organisationId }, select: { name: true } }) : null;
   const rate = Number(sp.rate);
   return (
-    <main className="mx-auto max-w-2xl px-4 pb-16 pt-28 sm:px-6 sm:pt-32">
+    <main className="mx-auto max-w-2xl px-4 pb-16 pt-28 sm:px-6 lg:px-10 sm:pt-32">
       {t ? (
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-wider text-[var(--ejo-primary-dark)]">{org?.name ?? 'Customer support'} · {t.number}</p>

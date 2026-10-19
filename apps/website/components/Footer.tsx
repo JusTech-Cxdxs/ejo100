@@ -61,7 +61,7 @@ export function Footer() {
 
   return (
     <footer className="relative bg-[var(--ejo-secondary)] text-white">
-      <div className="mx-auto grid max-w-7xl grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 md:grid-cols-6 md:py-16">
+      <div className="mx-auto grid max-w-[1480px] grid-cols-2 gap-x-6 gap-y-10 px-4 py-14 sm:px-6 lg:px-10 md:grid-cols-6 md:py-16">
         {/* Column 1 — logo, name, description, badge row, social icons */}
         <div className="col-span-2">
           <SiteWordmark tone="light" size="footer" />
@@ -133,8 +133,8 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="border-t border-white/10 px-4 py-6 sm:px-6">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-4">
+      <div className="border-t border-white/10 px-4 py-6 sm:px-6 lg:px-10">
+        <div className="mx-auto flex max-w-[1480px] flex-wrap items-center justify-between gap-4">
           <p className="text-xs text-white/50">
             © {new Date().getFullYear()} {siteConfig.legalName}. {t('footer.rights')}
           </p>

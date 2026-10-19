@@ -6,6 +6,7 @@ const yo: Record<keyof typeof en, string> = {
   'nav.businesses': 'Àwọn Iṣòwò Wa',
   'nav.products': 'Àwọn Ọjà',
   'nav.store': 'Ilé ìtajà',
+  'nav.more': 'Síwájú sí i',
   'nav.investors': 'Àwọn Olùdókòwò',
   'nav.sustainability': 'Ìdàgbàsókè Alálòpẹ́ẹ́',
   'nav.careers': 'Àwọn Iṣẹ́',

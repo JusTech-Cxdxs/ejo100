@@ -27,7 +27,7 @@ export default function AboutPage() {
       </PageIntro>
 
       <section aria-labelledby="heritage" className="overflow-hidden border-b border-[var(--ejo-border)]">
-        <div className="mx-auto max-w-7xl px-4 pt-16 sm:px-6 sm:pt-24">
+        <div className="mx-auto max-w-[1480px] px-4 pt-16 sm:px-6 lg:px-10 sm:pt-24">
           <h2 id="heritage" className="text-3xl font-bold leading-tight tracking-[-0.015em] sm:text-4xl">A hundred and sixty-six years, in thirteen moments</h2>
           <p className="mt-4 max-w-2xl text-lg leading-relaxed text-[var(--ejo-text-muted)]">From Sindh to Lagos, from handkerchiefs to assembly lines. Scroll along the line.</p>
         </div>

@@ -25,14 +25,14 @@ export default async function StoryPage({ params }: { params: Promise<{ slug: st
   return (
     <main>
       <article>
-        <header className="mx-auto max-w-3xl px-4 pt-28 sm:px-6 sm:pt-36">
+        <header className="mx-auto max-w-3xl px-4 pt-28 sm:px-6 lg:px-10 sm:pt-36">
           <p className="ejo-intro text-sm font-semibold text-[var(--ejo-primary)]"><Link href="/news" className="hover:underline">News & media</Link> · {CATEGORY_LABEL[s.category]}{s.businessArea ? ` · ${s.businessArea}` : ''}</p>
           <h1 className="mt-4 text-[2.125rem] font-extrabold leading-[1.08] tracking-[-0.02em] sm:text-5xl">{s.title}</h1>
           <p className="mt-5 text-lg leading-relaxed text-[var(--ejo-text-muted)] sm:text-xl">{s.summary}</p>
           <p className="mt-6 text-sm text-[var(--ejo-text-muted)]"><time dateTime={s.publishedAt}>{storyDate(s.publishedAt)}</time> · {s.readMinutes} min read{s.authorName ? ` · ${s.authorName}` : ''}</p>
         </header>
-        <div className="mx-auto mt-10 max-w-5xl px-4 sm:px-6"><StoryCover s={s} className="aspect-[16/9] sm:aspect-[21/9]" /></div>
-        <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 sm:py-16">
+        <div className="mx-auto mt-10 max-w-5xl px-4 sm:px-6 lg:px-10"><StoryCover s={s} className="aspect-[16/9] sm:aspect-[21/9]" /></div>
+        <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6 lg:px-10 sm:py-16">
           <ArticleBody markdown={s.body} linkElement={(href, children, key) => href.startsWith('/') ? <Link key={key} href={href} className="font-medium text-[var(--ejo-primary)] underline decoration-[var(--ejo-primary)]/40 underline-offset-[3px] hover:decoration-[var(--ejo-primary)]">{children}</Link> : <a key={key} href={href} target="_blank" rel="noopener noreferrer" className="font-medium text-[var(--ejo-primary)] underline decoration-[var(--ejo-primary)]/40 underline-offset-[3px] hover:decoration-[var(--ejo-primary)]">{children}</a>} />
           <div className="mt-12 flex flex-wrap items-center gap-4 border-t border-[var(--ejo-border)] pt-6">
             <Link href="/news" className="font-semibold text-[var(--ejo-primary)] hover:underline">← All news</Link>

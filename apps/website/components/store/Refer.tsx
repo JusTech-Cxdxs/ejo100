@@ -20,7 +20,7 @@ export function Refer() {
     <section id="refer" className="scroll-mt-24 border-t border-[var(--ejo-border)] bg-[#0b2416] text-white">
       <div className="relative overflow-hidden">
         <div aria-hidden className="ejo-ambient absolute inset-0" />
-        <div className="relative mx-auto grid max-w-7xl gap-12 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div className="relative mx-auto grid max-w-[1480px] gap-12 px-4 py-16 sm:px-6 lg:px-10 sm:py-24 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
           <div>
             <p className="text-sm font-semibold text-[#7ee2a0]">Refer and earn</p>
             <h2 className="mt-2 text-3xl font-bold leading-tight tracking-[-0.015em] sm:text-4xl">Know someone who needs a vehicle? Send them our way.</h2>

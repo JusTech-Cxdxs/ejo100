@@ -169,4 +169,45 @@ test.describe('Enyo staff assistant (API)', () => {
     const refine = await page.request.post('/api/enyo/refine', { data: { text: 'hello' }, headers: { origin: 'https://evil.example' } });
     expect(refine.status()).toBe(403);
   });
+
+  test('"brief me": the figures are gathered as the person in one go, and written up even when the model is busy', async ({ page }) => {
+    // An executive: every section, including the business this month and the website.
+    await as(page, 'executive');
+    const r = await ask(page, "oh what's up, I need a briefing of everything that is happening, business analytics, are we on profit?");
+    expect(r.res.status()).toBe(200);
+    expect(r.events.some((e) => e.type === 'error')).toBe(false);
+    for (const name of ['daily_brief', 'my_pending', 'branch_briefing']) expect(tool(r.events, name)?.ok, name).toBe(true);
+    expect(tool(r.events, 'support_overview'), 'support ran too (empty is fine)').toBeTruthy();
+    // One model request, with the figures in it (the mock echoes the start of what it was asked).
+    expect(r.text).toContain('The figures, gathered just now');
+    expect(r.events.some((e) => e.type === 'done')).toBe(true);
+    const convo = conversationOf(r.events);
+    expect(await storedToolResult(convo, 'branch_briefing')).toContain('"ok":true');
+
+    // The model's per-minute budget is gone ([[busy]] → 429 "try again in 1m"): the briefing is still written, from the figures.
+    const busy = await ask(page, 'Brief me on everything happening today [[busy]]');
+    expect(busy.res.status()).toBe(200);
+    expect(busy.events.some((e) => e.type === 'error')).toBe(false);
+    expect(busy.text).toContain('Here is your briefing, Eze');
+    expect(busy.text).toMatch(/### Your day/);
+    expect(busy.text).toMatch(/### The business this month/);
+    expect(busy.text).toContain('my writing model was busy');
+    expect(busy.text).not.toMatch(/handling a lot of questions/);
+
+    // A technician gets their own day and nothing about money: the business section is simply not there.
+    await as(page, 'technician');
+    const tech = await ask(page, 'Brief me [[busy]]');
+    expect(tech.res.status()).toBe(200);
+    expect(tool(tech.events, 'branch_briefing')?.refused).toBe(true);
+    expect(tech.text).toMatch(/### Your day/);
+    expect(tech.text).not.toMatch(/### The business this month|Money:/);
+    expect(tech.text).not.toMatch(/not allowed|Not allowed/);
+
+    // A workshop manager: the briefing is for their branch (the money section says so).
+    await as(page, 'workshop-manager');
+    const m = await ask(page, 'Brief me on my branch [[busy]]');
+    expect(m.res.status()).toBe(200);
+    expect(tool(m.events, 'branch_briefing')?.ok).toBe(true);
+    expect(m.text).toMatch(/### The business this month/);
+  });
 });

@@ -19,8 +19,8 @@ export function BusinessUnitsSection() {
   const { t } = useI18n();
 
   return (
-    <section className="bg-[var(--ejo-surface)] px-6 py-28">
-      <div className="mx-auto max-w-7xl">
+    <section className="bg-[var(--ejo-surface)] px-4 py-20 sm:px-6 sm:py-28 lg:px-10">
+      <div className="mx-auto max-w-[1480px]">
         <div className="mb-12 flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="mb-3 text-xs font-semibold tracking-[0.2em] text-[var(--ejo-primary)]">{t('business.eyebrow')}</p>

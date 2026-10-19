@@ -15,7 +15,7 @@ export default async function StorePage({ searchParams }: { searchParams: Promis
     <main>
       <PageIntro kicker="Store" title={<>Vehicles, tyres and parts. <br className="hidden sm:block" />Launch prices, this season.</>} lede={`Every model ${siteConfig.organisationName} sells in Nigeria, with indicative launch prices for this season. Pick a model to read about it, then reserve with the sales team, who confirm the price and availability within a working day. Online checkout is on its way.`} tone="dark" image="/images/business/automotive.jpg" />
       <AdStrip />
-      <div className="px-4 sm:px-6"><Store initial={initial} /></div>
+      <div className="px-4 sm:px-6 lg:px-10"><Store initial={initial} /></div>
       <Refer />
     </main>
   );

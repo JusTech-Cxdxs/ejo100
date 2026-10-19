@@ -6,6 +6,7 @@ const hi: Record<keyof typeof en, string> = {
   'nav.businesses': 'हमारे व्यवसाय',
   'nav.products': 'उत्पाद',
   'nav.store': 'स्टोर',
+  'nav.more': 'और',
   'nav.investors': 'निवेशक',
   'nav.sustainability': 'सततता',
   'nav.careers': 'करियर',
