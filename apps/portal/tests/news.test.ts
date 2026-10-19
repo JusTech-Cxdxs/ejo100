@@ -33,7 +33,7 @@ test('a story needs a headline, a summary and a body; the address comes from the
   assert.equal(c.value.category, 'MILESTONE');
   assert.equal(c.value.isFeatured, true);
   assert.equal(c.value.slug, 'my-custom-address');
-  assert.equal(c.value.publishedAt?.toISOString(), '2026-09-15T08:00:00.000Z');
+  assert.equal(c.value.publishedAt?.toISOString(), '2026-09-14T23:00:00.000Z'); // the Lagos day starts at 23:00 UTC the evening before
   assert.equal(slugify('Afcott Grains & the Kano plant — 2026!'), 'afcott-grains-and-the-kano-plant-2026');
   assert.equal(readingMinutes('word '.repeat(450)), 2);
 });

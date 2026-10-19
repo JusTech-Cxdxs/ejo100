@@ -61,7 +61,7 @@ export function checkNews(input: NewsInput): { ok: true; value: NewsValue } | { 
   }
   let publishedAt: Date | null = null;
   if (typeof input.publishedAt === 'string' && input.publishedAt.trim()) {
-    const d = new Date(input.publishedAt.length <= 10 ? `${input.publishedAt}T09:00:00+01:00` : input.publishedAt);
+    const d = new Date(input.publishedAt.length <= 10 ? `${input.publishedAt}T00:00:00+01:00` : input.publishedAt);
     if (Number.isNaN(d.getTime())) return { ok: false, message: 'The date is not valid.' };
     publishedAt = d;
   } else if (input.publishedAt instanceof Date && !Number.isNaN(input.publishedAt.getTime())) {

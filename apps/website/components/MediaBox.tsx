@@ -24,7 +24,8 @@ export function MediaBox({ src, alt, className, style }: MediaBoxProps) {
       aria-label={alt}
       className={className}
       style={{
-        backgroundImage: `url('${src}'), ${FALLBACK_GRADIENT}`,
+        // The address is quoted into CSS: encode it, so a quote or semicolon in a path can never add a declaration.
+        backgroundImage: `url("${encodeURI(src).replace(/["\\]/g, '')}"), ${FALLBACK_GRADIENT}`,
         backgroundSize: 'cover, cover',
         backgroundPosition: 'center center, center center',
         backgroundRepeat: 'no-repeat, no-repeat',

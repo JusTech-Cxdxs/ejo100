@@ -27,8 +27,6 @@ The hub was inaugurated in April 2016 with three assembly zones: trucks; cars, p
 - **Faster delivery.** Vehicles assembled in Lagos reach customers without the weeks at sea and at the port.
 - **A local supply chain.** Tyres, batteries, lubricants and consumables sourced from the group’s own distribution businesses and Nigerian suppliers where quality allows.
 
-> “We did not come to Nigeria to sell cars from a catalogue. We came to build them here.”
-
 Every assembled vehicle carries the same warranty and after-sales support as an imported one, serviced at the group’s workshops in Lagos.`,
   },
   {

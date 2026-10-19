@@ -88,7 +88,7 @@ test('the contact form becomes a support request the support team finds by its n
   await expect(page.getByRole('alert')).toContainText(/email address or a phone number/);
   await page.getByLabel('Phone').fill('0803 000 1234');
   await page.getByRole('button', { name: 'Send message' }).click();
-  const status = page.getByRole('status');
+  const status = page.getByTestId('contact-sent');
   await expect(status).toContainText('Thank you', { timeout: 30_000 });
   const number = (await status.textContent())!.match(/SUP-\d{4}-\d+/)?.[0];
   expect(number, 'a reference number').toBeTruthy();

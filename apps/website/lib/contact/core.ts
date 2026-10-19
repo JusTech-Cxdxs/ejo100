@@ -25,7 +25,7 @@ export function checkContact(input: ContactInput): { ok: true; value: ContactVal
   const email = line(input.email, 160).toLowerCase();
   const phone = line(input.phone, 32);
   const company = line(input.company, 120);
-  const topic = TOPICS[String(input.topic)] ? (String(input.topic) as keyof typeof TOPICS) : null;
+  const topic = Object.hasOwn(TOPICS, String(input.topic)) ? (String(input.topic) as keyof typeof TOPICS) : null;
   const message = typeof input.message === 'string' ? input.message.replace(/\r\n?/g, '\n').replace(/\n{3,}/g, '\n\n').trim().slice(0, 4000) : '';
   if (name.length < 2) return { ok: false, message: 'Please tell us your name.', field: 'name' };
   if (!email && !phone) return { ok: false, message: 'Leave an email address or a phone number so we can reply.', field: 'email' };

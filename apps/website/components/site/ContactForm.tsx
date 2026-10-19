@@ -12,7 +12,7 @@ export function ContactForm({ topic = '' }: { topic?: string }) {
   const [state, action, pending] = useActionState<ContactState, FormData>(sendContactMessage, null);
   if (state?.ok) {
     return (
-      <div role="status" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/40 bg-[var(--ejo-primary)]/8 p-6">
+      <div role="status" data-testid="contact-sent" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/40 bg-[var(--ejo-primary)]/8 p-6">
         <h2 className="text-xl font-bold">Thank you — we have it.</h2>
         {state.number !== 'received' ? (
           <>
@@ -36,7 +36,7 @@ export function ContactForm({ topic = '' }: { topic?: string }) {
       <p className="-mt-2 text-xs text-[var(--ejo-text-muted)]">Leave an email address or a phone number — one is enough.</p>
       <div>
         <label htmlFor="c-topic" className={label}>What is it about?</label>
-        <select id="c-topic" name="topic" required defaultValue={TOPICS[topic] ? topic : ''} className={input} aria-invalid={err?.field === 'topic' || undefined}>
+        <select id="c-topic" name="topic" required defaultValue={Object.hasOwn(TOPICS, topic) ? topic : ''} className={input} aria-invalid={err?.field === 'topic' || undefined}>
           <option value="" disabled>Choose…</option>
           {Object.entries(TOPICS).map(([k, t]) => <option key={k} value={k}>{t.label}{t.hint ? ` — ${t.hint}` : ''}</option>)}
         </select>

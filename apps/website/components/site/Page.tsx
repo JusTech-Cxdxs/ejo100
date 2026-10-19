@@ -18,7 +18,8 @@ export function PageIntro({ title, lede, kicker, image, imageAlt, children, tone
       {dark ? <div aria-hidden className="ejo-ambient absolute inset-0" /> : null}
       <div className="relative mx-auto max-w-7xl px-4 pb-14 pt-28 sm:px-6 sm:pb-20 sm:pt-36 lg:pt-44">
         <div className="ejo-intro max-w-3xl">
-          {kicker ? <p className={`mb-4 text-sm font-semibold ${dark ? 'text-[#7ee2a0]' : 'text-[var(--ejo-primary)]'}`}>{kicker}</p> : null}
+          {/* Always rendered (empty when there is no kicker), so the entrance animation's order holds. */}
+          <p className={`mb-4 text-sm font-semibold ${dark ? 'text-[#7ee2a0]' : 'text-[var(--ejo-primary)]'} ${kicker ? '' : 'hidden'}`}>{kicker ?? ''}</p>
           <h1 className="text-[2.25rem] font-extrabold leading-[1.05] tracking-[-0.02em] sm:text-5xl lg:text-[3.75rem]">{title}</h1>
           <span aria-hidden className={`mt-6 block h-1 w-16 rounded-full ${dark ? 'bg-[#7ee2a0]' : 'bg-[var(--ejo-primary)]'}`} />
           {lede ? <p className={`mt-6 max-w-2xl text-lg leading-relaxed sm:text-xl ${dark ? 'text-white/80' : 'text-[var(--ejo-text-muted)]'}`}>{lede}</p> : null}

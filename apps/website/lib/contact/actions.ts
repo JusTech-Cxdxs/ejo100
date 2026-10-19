@@ -5,14 +5,11 @@ import { headers } from 'next/headers';
 import { prisma } from '@ejo/database';
 import { siteOrganisation } from '@/lib/enyo/settings';
 import { lagosYear, nextTicketNumber, retryOnNumberClash, ticketPrefix } from '@/lib/enyo/rules';
-import { ipHash } from '@/lib/enyo/conversation';
 import { clientIp } from '@/lib/customer-audit';
 import { logCustomerError } from '@/lib/error-events';
 import { CONTACT_DAILY_LIMIT, TOPICS, checkContact } from './core';
 
 export type ContactState = { ok: true; number: string; token: string | null } | { ok: false; error: string; field?: string } | null;
-
-const perDay = new Map<string, { day: string; n: number }>();
 
 /**
  * The contact form: one support request in the organisation's Support
@@ -27,12 +24,13 @@ export async function sendContactMessage(_prev: ContactState, fd: FormData): Pro
   const v = checked.value;
   let ip: string | null = null;
   try { ip = clientIp(await headers()); } catch { ip = null; }
-  const key = ipHash(ip) ?? 'unknown';
-  const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
-  const hit = perDay.get(key);
-  if (hit && hit.day === day && hit.n >= CONTACT_DAILY_LIMIT) return { ok: false, error: 'You have sent several messages today. Our team will answer those first — or call us if it is urgent.' };
   const org = await siteOrganisation().catch(() => null);
   if (!org) return { ok: false, error: 'The contact form is not switched on yet. Please call or email us instead.' };
+  // At most five a day from one address (counted from the record, so it holds across servers and restarts).
+  if (ip) {
+    const sent = await prisma.auditLog.count({ where: { organisationId: org.id, action: 'support.ticket_opened', ipAddress: ip, createdAt: { gte: new Date(Date.now() - 86_400_000) } } }).catch(() => 0);
+    if (sent >= CONTACT_DAILY_LIMIT) return { ok: false, error: 'You have sent several messages today. Our team will answer those first — or call us if it is urgent.' };
+  }
   const kind = TOPICS[v.topic]!;
   const subject = `${kind.label}${v.company ? ` — ${v.company}` : ''}`.slice(0, 140);
   try {
@@ -53,8 +51,6 @@ export async function sendContactMessage(_prev: ContactState, fd: FormData): Pro
         return t;
       });
     });
-    perDay.set(key, { day, n: hit && hit.day === day ? hit.n + 1 : 1 });
-    if (perDay.size > 5000) perDay.clear();
     await prisma.auditLog.create({ data: { organisationId: org.id, userId: null, action: 'support.ticket_opened', entityType: 'SupportTicket', entityId: ticket.id, metadata: { actor: 'visitor', number: ticket.number, channel: 'WEBSITE', topic: v.topic }, ipAddress: ip } }).catch(() => undefined);
     return { ok: true, number: ticket.number, token: ticket.token };
   } catch (err) {

@@ -1,5 +1,5 @@
 import { siteConfig } from './site-config';
-import { FIRST_STORIES } from './news/stories';
+import { FIRST_STORY_ENTRIES } from './news/index-entries';
 /**
  * Static, client-side search index for the site search. Add an entry when a
  * page, business unit, product, news item or careers listing is added.
@@ -43,7 +43,7 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Spare parts and tyres', category: 'Business', href: '/businesses/automotive/spare-parts' },
 
   // News: the first stories (the live list comes from News & media in the staff portal).
-  ...FIRST_STORIES.map((st) => ({ title: st.title, category: 'News' as const, href: `/news/${st.slug}` })),
+  ...FIRST_STORY_ENTRIES.map((st) => ({ title: st.title, category: 'News' as const, href: `/news/${st.slug}` })),
 
   // Careers
   { title: `Careers at ${siteConfig.organisationName}`, category: 'Careers', href: '/careers' },

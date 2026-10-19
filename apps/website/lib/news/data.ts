@@ -7,7 +7,7 @@ import { FIRST_STORIES, type Story } from './stories';
 /**
  * Published stories for this website's organisation, newest first. A
  * database without the news table yet (older than v41), or with nothing
- * published, falls back to the first stories so the site is never empty.
+ * falls back to the first stories; an organisation that has archived every story shows none.
  */
 export type StoryCard = Story & { readMinutes: number };
 
@@ -24,7 +24,7 @@ export const listStories = cache(async (): Promise<StoryCard[]> => {
       take: 200,
       select: { slug: true, title: true, summary: true, body: true, category: true, businessArea: true, publishedAt: true, isFeatured: true, coverImageUrl: true, coverAlt: true, authorName: true },
     });
-    if (!rows.length) return FIRST_STORIES.map(card);
+    // Nothing published (the team archived everything) shows nothing — the built-in stories are only for a site with no organisation or no news table yet.
     return rows.map((r) => card({ ...r, publishedAt: (r.publishedAt ?? new Date()).toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }) }));
   } catch {
     return FIRST_STORIES.map(card);

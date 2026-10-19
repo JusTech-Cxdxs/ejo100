@@ -75,8 +75,9 @@ export async function saveNews(id: string | null, input: NewsInput): Promise<str
     const row = await prisma.newsPost.create({ data: { ...data, organisationId, createdById: userId }, select: { id: true } });
     id = row.id;
   }
-  // Only one story is featured at a time.
-  if (v.isFeatured) await prisma.newsPost.updateMany({ where: { organisationId, isFeatured: true, NOT: { id } }, data: { isFeatured: false } });
+  // Only one PUBLISHED story is featured at a time; a featured draft takes over when it is published (setNewsStatus).
+  const saved = await prisma.newsPost.findFirst({ where: { id, organisationId }, select: { status: true } });
+  if (v.isFeatured && saved?.status === 'PUBLISHED') await prisma.newsPost.updateMany({ where: { organisationId, isFeatured: true, status: 'PUBLISHED', NOT: { id } }, data: { isFeatured: false } });
   await writeAuditLog({ userId, action: 'news.saved', entityType: 'NewsPost', entityId: id, metadata: { title: v.title, category: v.category, slug } });
   return id;
 }
@@ -85,11 +86,12 @@ export async function saveNews(id: string | null, input: NewsInput): Promise<str
 export async function setNewsStatus(id: string, status: NewsStatusKey): Promise<void> {
   const { organisationId, userId } = await newsOrg('news.status');
   await refuseDuringAssist('news.status');
-  const row = await prisma.newsPost.findFirst({ where: { id, organisationId }, select: { publishedAt: true, status: true, title: true } });
+  const row = await prisma.newsPost.findFirst({ where: { id, organisationId }, select: { publishedAt: true, status: true, title: true, isFeatured: true } });
   if (!row) throw new NewsError('That story no longer exists.');
   if (status === row.status) return;
   const data = status === 'PUBLISHED' && !row.publishedAt ? { status, publishedAt: new Date(), updatedById: userId } : { status, updatedById: userId };
   await prisma.newsPost.updateMany({ where: { id, organisationId }, data });
+  if (status === 'PUBLISHED' && row.isFeatured) await prisma.newsPost.updateMany({ where: { organisationId, isFeatured: true, status: 'PUBLISHED', NOT: { id } }, data: { isFeatured: false } });
   await writeAuditLog({ userId, action: status === 'PUBLISHED' ? 'news.published' : status === 'ARCHIVED' ? 'news.archived' : 'news.unpublished', entityType: 'NewsPost', entityId: id, metadata: { title: row.title } });
 }
 
