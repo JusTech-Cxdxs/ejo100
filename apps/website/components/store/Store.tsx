@@ -15,7 +15,6 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
   const [cat, setCat] = useState<Category | 'all'>(initial);
   const [open, setOpen] = useState<Product | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [cart, setCart] = useState(0);
   const timer = useRef<number | null>(null);
   const shown = useMemo(() => (cat === 'all' ? PRODUCTS : PRODUCTS.filter((p) => p.category === cat)), [cat]);
 
@@ -25,7 +24,6 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
     timer.current = window.setTimeout(() => setToast(null), 5500);
   };
   const addToCart = (p: Product) => {
-    setCart((n) => n + 1);
     notify(`${p.name} noted. Online checkout opens soon — until then the sales team confirms price and availability within a working day.`);
   };
 
@@ -52,8 +50,8 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
               </button>
             );
           })}
-          <span className="ml-auto hidden shrink-0 items-center gap-2 text-sm text-[var(--ejo-text-muted)] sm:inline-flex" aria-live="polite">
-            <CartIcon />{cart ? `${cart} in your cart` : 'Your cart is empty'}
+          <span className="ml-auto hidden shrink-0 items-center gap-2 text-sm text-[var(--ejo-text-muted)] sm:inline-flex">
+            <CartIcon />Online checkout: coming soon
           </span>
         </div>
       </div>
@@ -79,7 +77,7 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
                 </div>
                 {p.offerUntil ? <p className="mt-0.5 text-xs text-[var(--ejo-primary)]">{p.offerLabel ?? 'Launch price'} until {p.offerUntil}</p> : null}
                 <div className="mt-auto flex gap-2 pt-4">
-                  <button type="button" onClick={() => addToCart(p)} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white hover:opacity-90"><CartIcon />Add to cart</button>
+                  <button type="button" onClick={() => addToCart(p)} aria-label={`Add ${p.name} to cart`} className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white hover:opacity-90"><CartIcon />Add to cart</button>
                   <button type="button" onClick={() => setOpen(p)} className="inline-flex min-h-11 items-center justify-center rounded-full border border-[var(--ejo-border)] px-4 text-sm font-medium hover:bg-[var(--ejo-surface)]">Details</button>
                 </div>
               </div>
@@ -112,7 +110,7 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
                   {open.listPrice > open.price ? <p className="text-sm text-[var(--ejo-text-muted)]">List {naira(open.listPrice)} · you save {naira(open.listPrice - open.price)}</p> : null}
                   {open.offerUntil ? <p className="mt-1 text-xs text-[var(--ejo-primary)]">{open.offerLabel ?? 'Launch price'} until {open.offerUntil}</p> : null}
                   <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">{open.priceNote}</p>
-                  <button type="button" onClick={() => addToCart(open)} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] text-sm font-semibold text-white hover:opacity-90"><CartIcon />Add to cart</button>
+                  <button type="button" onClick={() => addToCart(open)} aria-label={`Add ${open.name} to cart`} className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-[var(--ejo-primary)] text-sm font-semibold text-white hover:opacity-90"><CartIcon />Add to cart</button>
                   <Link href={`/contact?topic=${open.category === 'parts' || open.category === 'tyres' ? 'parts' : 'sales'}`} className="mt-2 inline-flex min-h-11 w-full items-center justify-center rounded-full border border-[var(--ejo-border)] text-sm font-medium hover:bg-[var(--ejo-bg)]">{open.category === 'parts' || open.category === 'tyres' ? 'Ask the parts counter' : 'Book a test drive'}</Link>
                   <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">Know someone who wants one? <a href="#refer" onClick={() => setOpen(null)} className="font-semibold text-[var(--ejo-primary)] hover:underline">Refer them and earn.</a></p>
                 </div>
@@ -123,7 +121,7 @@ export function Store({ initial = 'all' }: { initial?: Category | 'all' }) {
       ) : null}
 
       {/* Toast */}
-      <div aria-live="polite" className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[130] flex justify-center sm:bottom-8">
+      <div className="pointer-events-none fixed inset-x-4 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-[130] flex justify-center sm:bottom-8">
         {toast ? (
           <div className="ejo-pop pointer-events-auto max-w-md rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-primary)]/40 bg-[var(--ejo-bg)] p-4 text-sm shadow-2xl" data-testid="store-toast">
             <p className="font-semibold">Online checkout is coming soon.</p>

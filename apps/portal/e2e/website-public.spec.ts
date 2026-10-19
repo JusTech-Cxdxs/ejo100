@@ -15,7 +15,7 @@ test.beforeAll(async ({ request }) => {
   else test.skip(!up, `the website is not running at ${WEB}`);
 });
 
-const PAGES = ['/', '/about', '/businesses', '/businesses/automotive', '/businesses/automotive/workshop', '/businesses/agriculture', '/products', '/services', '/investors', '/sustainability', '/careers', '/news', '/contact', '/privacy', '/terms'];
+const PAGES = ['/', '/about', '/businesses', '/businesses/automotive', '/businesses/automotive/workshop', '/businesses/agriculture', '/products', '/services', '/investors', '/sustainability', '/careers', '/news', '/store', '/contact', '/privacy', '/terms'];
 
 test('every public page has real content, no placeholder, and no sideways scroll on a phone', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
@@ -102,6 +102,46 @@ test('the contact form becomes a support request the support team finds by its n
   await row.click();
   await expect(page.getByText(`Visitor ${tag}`).first()).toBeVisible();
   await expect(page.getByText(/two SOUEAST S07 SUVs/).first()).toBeVisible();
+});
+
+test('the store: a model opens its details, "Add to cart" says checkout is coming and offers reserving, and a referral reaches the support team', async ({ page }) => {
+  const tag = uniq();
+  await page.goto(`${WEB}/store?c=suvs`, { waitUntil: 'domcontentloaded' });
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(/Vehicles, tyres and parts/);
+  // Slashed prices with a validity date on every card.
+  const list = page.getByRole('list', { name: 'Products' });
+  await expect(list.getByRole('listitem').first()).toContainText(/until \d+ \w+ 2026/);
+  await expect(list.getByRole('listitem').first().locator('s')).toBeVisible();
+  // The pop-up explains the vehicle.
+  await page.getByRole('button', { name: 'SOUEAST S07: details' }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog.getByRole('heading', { name: 'SOUEAST S07' })).toBeVisible();
+  await expect(dialog).toContainText(/Assembled in Lagos/);
+  await expect(dialog).toContainText(/Indicative price/);
+  // Add to cart does not add: it says checkout is coming and points to the sales team.
+  await dialog.getByRole('button', { name: 'Add SOUEAST S07 to cart' }).click();
+  const toast = page.getByTestId('store-toast');
+  await expect(toast).toContainText(/Online checkout is coming soon/);
+  await expect(toast.getByRole('link', { name: /Reserve with the sales team/ })).toBeVisible();
+  await expect(page.getByText(/in your cart/)).toHaveCount(0);
+  await dialog.getByRole('button', { name: 'Close' }).first().click();
+  // Refer and earn becomes a request for the sales team.
+  await page.getByRole('tab', { name: 'Refer a buyer' }).click();
+  await page.locator('#r-name').fill(`Referrer ${tag}`);
+  await page.locator('#r-phone').fill('0803 000 5678');
+  await page.locator('#r-message').fill(`Please call Chidi on 0803 111 2222, he wants a SOUEAST S07 for his company (${tag}).`);
+  await page.getByRole('button', { name: 'Send the referral' }).click();
+  const sent = page.getByTestId('refer-sent');
+  await expect(sent).toContainText('Thank you', { timeout: 30_000 });
+  const number = (await sent.textContent())!.match(/SUP-\d{4}-\d+/)?.[0];
+  expect(number, 'a reference number').toBeTruthy();
+  await as(page, 'customer-care');
+  await open(page, `/crm/support?q=${encodeURIComponent(number!)}`);
+  const row = page.locator('main').getByRole('link', { name: new RegExp(number!) }).first();
+  await expect(row).toBeVisible();
+  await row.click();
+  await expect(page.getByText(`Referrer ${tag}`).first()).toBeVisible();
+  await expect(page.getByText(new RegExp(tag)).first()).toBeVisible();
 });
 
 async function fillStory(page: Page, title: string) {
