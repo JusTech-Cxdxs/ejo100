@@ -48,7 +48,7 @@ export default function ProductsPage() {
         </div>
       </Section>
       <Section tone="dark" title="Looking for a price, a part or a dealer?" lead="Tell us what you need and the right company will answer — with a reference number you can follow.">
-        <div className="flex flex-wrap gap-3"><Button href="/contact" variant="light">Contact us</Button><Button href="/customer-portal" variant="line" className="border-white/30 text-white hover:bg-white/10">Customer portal</Button></div>
+        <div className="flex flex-wrap gap-3"><Button href="/store" variant="light">Open the store</Button><Button href="/contact" variant="line" className="border-white/30 text-white hover:bg-white/10">Contact us</Button><Button href="/customer-portal" variant="line" className="border-white/30 text-white hover:bg-white/10">Customer portal</Button></div>
       </Section>
     </main>
   );

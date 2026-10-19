@@ -29,6 +29,7 @@ const BADGES = [
 const QUICK_LINKS: [TranslationKey, string][] = [
   ['nav.about', '/about'],
   ['nav.businesses', '/businesses'],
+  ['nav.store', '/store'],
   ['nav.investors', '/investors'],
   ['nav.sustainability', '/sustainability'],
   ['nav.careers', '/careers'],

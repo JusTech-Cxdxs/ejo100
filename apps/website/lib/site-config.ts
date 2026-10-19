@@ -21,6 +21,7 @@ export const siteNav: {
       { label: 'Logistics', href: '/businesses/logistics' },
     ],
   },
+  { key: 'nav.store', href: '/store' },
   { key: 'nav.products', href: '/products' },
   { key: 'nav.investors', href: '/investors' },
   { key: 'nav.sustainability', href: '/sustainability' },

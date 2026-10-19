@@ -7,6 +7,7 @@ export const TOPICS: Record<string, { label: string; tags: string[]; priority: '
   service: { label: 'Service or repairs', tags: ['topic:vehicle'], priority: 'NORMAL', hint: 'Booking, an ongoing job, a technical question' },
   parts: { label: 'Parts and tyres', tags: ['topic:parts'], priority: 'NORMAL', hint: 'Availability, orders, fitting' },
   business: { label: 'Business or partnership', tags: ['topic:business'], priority: 'NORMAL', hint: 'Distribution, supply, investment' },
+  referral: { label: 'A referral', tags: ['topic:sales', 'referral'], priority: 'NORMAL', hint: 'Someone who wants to buy; refer-and-earn partners' },
   careers: { label: 'Careers', tags: ['topic:careers'], priority: 'NORMAL', hint: 'Openings, internships, applications' },
   media: { label: 'Press and media', tags: ['topic:media'], priority: 'NORMAL', hint: 'Interviews, statements, pictures' },
   complaint: { label: 'A complaint', tags: ['complaint'], priority: 'HIGH', hint: 'Something went wrong — tell us' },

@@ -15,6 +15,7 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Home', category: 'Page', href: '/' },
   { title: 'About', category: 'Page', href: '/about' },
   { title: 'Our Businesses', category: 'Page', href: '/businesses' },
+  { title: 'Store', category: 'Page', href: '/store' },
   { title: 'Products', category: 'Page', href: '/products' },
   { title: 'Investors', category: 'Page', href: '/investors' },
   { title: 'Sustainability', category: 'Page', href: '/sustainability' },

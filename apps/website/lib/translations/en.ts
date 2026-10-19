@@ -11,6 +11,7 @@ const en = {
   'nav.about': 'About',
   'nav.businesses': 'Our Businesses',
   'nav.products': 'Products',
+  'nav.store': 'Store',
   'nav.investors': 'Investors',
   'nav.sustainability': 'Sustainability',
   'nav.careers': 'Careers',
