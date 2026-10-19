@@ -1,5 +1,8 @@
-import { PagePlaceholder } from '@/components/PagePlaceholder';
+import { BusinessPage, businessMetadata } from '@/components/site/BusinessPage';
+
+export const metadata = businessMetadata('agriculture');
+export const revalidate = 300;
 
 export default function Page() {
-  return <PagePlaceholder title="Agriculture" description="Crop processing, ginning and agro-input distribution." />;
+  return <BusinessPage slug="agriculture" />;
 }

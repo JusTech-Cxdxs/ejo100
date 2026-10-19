@@ -58,6 +58,8 @@ const READ_FENCES = [
   'integrityReviewer(',
   // People the organisation publishes: where { id, organisationId: profileOrg() } (the administrator's own organisation).
   'profileOrg(',
+  // News & media: where { id, organisationId: newsOrg() } (the communications team's own organisation).
+  'newsOrg(',
 ];
 
 /** Reads that need no record fence, with the reason. */

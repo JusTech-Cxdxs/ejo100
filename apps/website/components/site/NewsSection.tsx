@@ -1,94 +1,22 @@
-'use client';
-
-import { siteConfig } from '@/lib/site-config';
 import Link from 'next/link';
-import { motion } from 'framer-motion';
-import { useI18n } from '@/lib/i18n';
+import { StoryList } from '@/components/site/StoryList';
+import { listStories } from '@/lib/news/data';
+import { siteConfig } from '@/lib/site-config';
 
-/**
- * Sample headlines until the News Manager (roadmap) supplies real articles.
- * They are page content, not translation keys; the section chrome is translated.
- */
-const ARTICLES = [
-  { date: 'May 15, 2026', title: `${siteConfig.organisationName} Expands Operations in West Africa`, href: '/news' },
-  { date: 'May 5, 2026', title: 'New Partnerships With Industry Leaders', href: '/news' },
-  { date: 'April 28, 2026', title: 'New Manufacturing Facility Officially Opened', href: '/news' },
-];
-
-export function NewsSection() {
-  const { t } = useI18n();
-  const featured = ARTICLES[0]!;
-  const rest = ARTICLES.slice(1);
-
+/** The home page's news: the featured story and the three latest, from News & media in the staff portal. */
+export async function NewsSection() {
+  const stories = (await listStories()).slice(0, 4);
+  if (!stories.length) return null;
   return (
-    <section className="mx-auto max-w-7xl px-6 py-28">
-      <div className="mb-12">
-        <p className="mb-3 text-xs font-semibold tracking-[0.2em] text-[var(--ejo-primary)]">{t('news.eyebrow')}</p>
-        <h2 className="text-3xl font-bold text-[var(--ejo-text)] md:text-4xl">{t('news.title')}</h2>
-      </div>
-
-      <div className="grid gap-8 lg:grid-cols-2">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-        >
-          <Link href={featured.href} className="group block overflow-hidden rounded-[var(--ejo-radius-lg)] shadow-md">
-            <div className="ejo-media-placeholder relative aspect-[16/10] transition-transform duration-500 group-hover:scale-105" />
-            <div className="border border-t-0 border-[var(--ejo-border)] p-6">
-              <p className="text-xs text-[var(--ejo-text-muted)]">{featured.date}</p>
-              <h3 className="mt-2 text-lg font-semibold text-[var(--ejo-text)] group-hover:text-[var(--ejo-primary)]">
-                {featured.title}
-              </h3>
-              <span className="mt-3 inline-block text-sm font-medium text-[var(--ejo-primary)]">{t('news.readMore')} →</span>
-            </div>
-          </Link>
-        </motion.div>
-
-        <div className="flex flex-col gap-4">
-          {rest.map((article, i) => (
-            <motion.div
-              key={article.title}
-              initial={{ opacity: 0, y: 16 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.5, delay: 0.1 + i * 0.1 }}
-            >
-              <Link
-                href={article.href}
-                className="group flex items-start justify-between gap-4 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] p-5 transition-colors hover:border-[var(--ejo-primary)]"
-              >
-                <div>
-                  <p className="text-xs text-[var(--ejo-text-muted)]">{article.date}</p>
-                  <h4 className="mt-1 font-medium text-[var(--ejo-text)] group-hover:text-[var(--ejo-primary)]">
-                    {article.title}
-                  </h4>
-                </div>
-                <span className="mt-1 shrink-0 text-[var(--ejo-primary)]">→</span>
-              </Link>
-            </motion.div>
-          ))}
-
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            className="mt-2 rounded-[var(--ejo-radius-lg)] bg-[var(--ejo-secondary)] p-6 text-white"
-          >
-            <p className="text-xs font-semibold tracking-widest text-[var(--ejo-accent)]">{t('news.sustainabilityEyebrow')}</p>
-            <h4 className="mt-2 text-lg font-semibold">{t('news.sustainabilityTitle')}</h4>
-            <p className="mt-2 text-sm text-white/70">{t('news.sustainabilityBody')}</p>
-            <Link
-              href="/sustainability"
-              className="mt-4 inline-block rounded-full bg-[var(--ejo-primary)] px-5 py-2 text-sm font-semibold"
-            >
-              {t('news.sustainabilityCta')} →
-            </Link>
-          </motion.div>
+    <section className="mx-auto max-w-7xl px-4 py-20 sm:px-6 sm:py-28" aria-labelledby="home-news">
+      <div className="mb-10 flex flex-wrap items-end justify-between gap-4 sm:mb-14">
+        <div>
+          <p className="text-sm font-semibold text-[var(--ejo-primary)]">News & media</p>
+          <h2 id="home-news" className="mt-2 text-3xl font-bold leading-tight tracking-[-0.015em] sm:text-4xl">What’s happening at {siteConfig.organisationName}</h2>
         </div>
+        <Link href="/news" className="font-semibold text-[var(--ejo-primary)] hover:underline">All news →</Link>
       </div>
+      <StoryList stories={stories} featuredFirst />
     </section>
   );
 }

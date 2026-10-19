@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { siteNav, siteConfig, getPortalLoginUrl } from '@/lib/site-config';
 import { useI18n } from '@/lib/i18n';
 import { SiteWordmark } from './SiteWordmark';
@@ -11,220 +11,187 @@ import { ThemeToggle } from './ThemeToggle';
 import { LanguageSelector } from './LanguageSelector';
 import { SearchModal } from './SearchModal';
 
+/**
+ * The site header. On a phone it is always a solid bar — wordmark, theme
+ * toggle and the menu button — so it reads on every page and photo; the
+ * menu is a full-height sheet with language, search and the two sign-ins.
+ * On a wide screen the home page starts transparent over the hero and turns
+ * solid on scroll; every other page is solid from the start.
+ */
 export function Header() {
   const { t } = useI18n();
   const pathname = usePathname();
+  const reduce = useReducedMotion();
   const isHome = pathname === '/';
   const [scrolled, setScrolled] = useState(false);
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [wide, setWide] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [openGroup, setOpenGroup] = useState<string | null>(null);
   const portalLogin = getPortalLoginUrl();
 
   useEffect(() => {
-    function onScroll() {
-      setScrolled(window.scrollY > 24);
-    }
+    const onScroll = () => setScrolled(window.scrollY > 16);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
+    const mq = window.matchMedia('(min-width: 1024px)');
+    const onWide = () => setWide(mq.matches);
+    onWide();
+    mq.addEventListener('change', onWide);
+    return () => { window.removeEventListener('scroll', onScroll); mq.removeEventListener('change', onWide); };
   }, []);
 
-  // The phone menu closes on navigation and on Esc, and the page behind it
-  // does not scroll while it is open.
-  useEffect(() => { setMobileOpen(false); }, [pathname]);
+  // The sheet closes on navigation and on Esc; the page behind it does not scroll.
+  useEffect(() => { setOpen(false); }, [pathname]);
   useEffect(() => {
-    if (!mobileOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setMobileOpen(false); };
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     document.addEventListener('keydown', onKey);
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = prev; };
-  }, [mobileOpen]);
+  }, [open]);
 
-  // Transparent-on-hero only makes sense on the homepage, over the hero
-  // image — every other page has a plain background, so it gets the solid
-  // header immediately (white text on white would otherwise be illegible).
-  const transparent = isHome && !scrolled;
+  // Transparent only on a wide screen over the home hero; phones always get the solid bar.
+  const glass = isHome && !scrolled && wide;
 
   return (
     <>
-      <header className="fixed inset-x-0 top-0 z-50">
-        {/* ---- Top bar row — always visible on desktop; background
-             switches between a translucent tint (over the hero) and the
-             solid brand green once the main row goes solid. ---- */}
+      <header className="fixed inset-x-0 top-0 z-50" data-testid="site-header">
         <div
-          className={`hidden transition-colors duration-300 lg:block ${
-            transparent ? 'bg-black/15' : 'bg-[var(--ejo-primary)]'
-          }`}
+          className={`transition-[background-color,box-shadow] duration-300 ${glass ? 'bg-gradient-to-b from-black/55 to-transparent shadow-none' : 'bg-[var(--ejo-bg)]/95 shadow-[0_1px_0_var(--ejo-border)] backdrop-blur-md supports-[backdrop-filter]:bg-[var(--ejo-bg)]/85'}`}
+          data-glass={glass ? 'true' : 'false'}
         >
-          <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-2 text-xs">
-            <p className="font-medium text-white/90">{t('header.tagline')}</p>
-            <div className="flex items-center gap-1">
-              <LanguageSelector dark />
-              <SearchModal dark />
-              <ThemeToggle dark />
-            </div>
-          </div>
-        </div>
-
-        {/* ---- Main header row ---- */}
-        <div
-          className="transition-all duration-300"
-          style={
-            transparent
-              ? { background: 'transparent' }
-              : { background: 'var(--ejo-bg)', borderBottom: '1px solid var(--ejo-border)', boxShadow: '0 4px 20px rgba(0,0,0,0.06)' }
-          }
-        >
-          <div className="mx-auto flex max-w-7xl flex-nowrap items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4">
+          <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-4 sm:px-6 lg:h-[72px]">
             <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label={siteConfig.organisationName}>
-              <SiteWordmark tone={transparent ? 'light' : 'default'} />
+              <SiteWordmark tone={glass ? 'light' : 'default'} />
             </Link>
 
-            <nav className="hidden shrink-0 items-center gap-4 whitespace-nowrap xl:ml-3 xl:flex 2xl:gap-6">
+            <nav className="hidden items-center gap-1 xl:flex" aria-label="Main">
               {siteNav.map((item) => {
-                const active = pathname === item.href;
+                const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
+                const tone = glass ? 'text-white/85 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]';
                 return (
-                  <div key={item.href} className="group relative shrink-0">
+                  <div key={item.href} className="group relative">
                     <Link
                       href={item.href}
-                      className={`relative whitespace-nowrap pb-1 text-sm font-medium transition-colors ${
-                        transparent ? 'text-white/90 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:text-[var(--ejo-primary)]'
-                      } ${active ? (transparent ? 'text-white' : 'text-[var(--ejo-primary)]') : ''}`}
+                      aria-current={active ? 'page' : undefined}
+                      className={`relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-2.5 text-[13px] font-medium transition-colors 2xl:px-3 2xl:text-[13.5px] ${tone} ${active ? (glass ? 'text-white' : 'text-[var(--ejo-text)]') : ''}`}
                     >
                       {t(item.key)}
-                      {active && (
-                        <span
-                          className="absolute inset-x-0 -bottom-0.5 h-0.5 rounded-full"
-                          style={{ background: transparent ? '#fff' : 'var(--ejo-primary)' }}
-                        />
-                      )}
+                      {active ? <span aria-hidden className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full ${glass ? 'bg-white' : 'bg-[var(--ejo-primary)]'}`} /> : null}
                     </Link>
-                    {item.children && (
-                      <div className="invisible absolute left-0 top-full pt-3 opacity-0 transition-all group-hover:visible group-hover:opacity-100">
-                        <div className="w-52 overflow-hidden rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-2 shadow-xl">
+                    {item.children ? (
+                      <div className="invisible absolute left-0 top-full pt-2 opacity-0 transition-opacity group-focus-within:visible group-focus-within:opacity-100 group-hover:visible group-hover:opacity-100">
+                        <div className="w-56 overflow-hidden rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] py-2 shadow-xl">
                           {item.children.map((child) => (
-                            <Link
-                              key={child.href}
-                              href={child.href}
-                              className="block px-4 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-primary)]"
-                            >
-                              {child.label}
-                            </Link>
+                            <Link key={child.href} href={child.href} className="block px-4 py-2 text-sm text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-primary)]">{child.label}</Link>
                           ))}
                         </div>
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 );
               })}
             </nav>
 
-            <div className="hidden shrink-0 items-center gap-3 whitespace-nowrap xl:flex">
+            <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <span className="hidden 2xl:inline-flex"><LanguageSelector dark={glass} /></span>
+              <span className="hidden lg:inline-flex"><SearchModal dark={glass} /></span>
+              <ThemeToggle dark={glass} />
               <Link
                 href="/customer-portal"
-                className={`shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm font-medium transition-colors ${
-                  transparent
-                    ? 'border-white/30 text-white hover:bg-white/10'
-                    : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'
-                }`}
+                className={`hidden h-10 items-center whitespace-nowrap rounded-full border px-3.5 text-[13px] font-medium transition-colors lg:inline-flex ${glass ? 'border-white/30 text-white hover:bg-white/10' : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}
               >
                 {t('header.customerLogin')}
               </Link>
               {portalLogin ? (
-                <a
-                  href={portalLogin}
-                  className="shrink-0 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition-transform hover:scale-[1.03] hover:opacity-90"
-                >
+                <a href={portalLogin} className="hidden h-10 items-center whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-3.5 text-[13px] font-semibold text-white shadow-sm transition-opacity hover:opacity-90 lg:inline-flex">
                   {t('header.employeeLogin')}
                 </a>
               ) : null}
+              <button
+                type="button"
+                className={`flex h-11 w-11 items-center justify-center rounded-full xl:hidden ${glass ? 'text-white' : 'text-[var(--ejo-text)]'}`}
+                onClick={() => setOpen(true)}
+                aria-label="Open menu"
+                aria-expanded={open}
+                aria-controls="site-menu"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16" /></svg>
+              </button>
             </div>
-
-            <button
-              type="button"
-              className={`-mr-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-full xl:hidden ${transparent ? 'text-white' : 'text-[var(--ejo-text)]'}`}
-              onClick={() => setMobileOpen(true)}
-              aria-label="Open menu"
-              aria-expanded={mobileOpen}
-            >
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
           </div>
         </div>
       </header>
 
-      {/* Mobile off-canvas menu */}
       <AnimatePresence>
-        {mobileOpen && (
+        {open ? (
           <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[110] bg-black/60 xl:hidden"
-              onClick={() => setMobileOpen(false)}
+            <motion.button
+              type="button"
+              aria-label="Close menu"
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] bg-black/50 xl:hidden"
+              onClick={() => setOpen(false)}
             />
             <motion.div
-              initial={{ x: '100%' }}
-              animate={{ x: 0 }}
-              exit={{ x: '100%' }}
-              transition={{ type: 'tween', duration: 0.3, ease: 'easeInOut' }}
+              id="site-menu"
+              initial={reduce ? { opacity: 0 } : { x: '100%' }}
+              animate={reduce ? { opacity: 1 } : { x: 0 }}
+              exit={reduce ? { opacity: 0 } : { x: '100%' }}
+              transition={{ type: 'tween', duration: 0.28, ease: [0.2, 0.7, 0.2, 1] }}
               role="dialog"
               aria-modal="true"
               aria-label="Menu"
-              className="fixed inset-y-0 right-0 z-[120] flex w-80 max-w-[88vw] flex-col bg-[var(--ejo-bg)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5 shadow-2xl xl:hidden"
+              className="fixed inset-y-0 right-0 z-[120] flex w-[min(24rem,92vw)] flex-col bg-[var(--ejo-bg)] pb-[max(1rem,env(safe-area-inset-bottom))] pt-[max(0.75rem,env(safe-area-inset-top))] shadow-2xl xl:hidden"
             >
-              <div className="mb-5 flex items-center justify-between gap-3">
-                <Link href="/" onClick={() => setMobileOpen(false)} className="min-w-0" aria-label={siteConfig.organisationName}>
-                  <SiteWordmark />
-                </Link>
-                <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close menu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)]">
+              <div className="flex h-14 items-center justify-between gap-3 px-4">
+                <Link href="/" onClick={() => setOpen(false)} className="min-w-0" aria-label={siteConfig.organisationName}><SiteWordmark /></Link>
+                <button type="button" onClick={() => setOpen(false)} aria-label="Close menu" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[var(--ejo-border)] text-[var(--ejo-text)]">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
                 </button>
               </div>
-
-              <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-[var(--ejo-border)] pb-4">
+              <div className="flex items-center gap-2 border-b border-[var(--ejo-border)] px-4 pb-3">
                 <LanguageSelector align="left" />
                 <SearchModal />
-                <ThemeToggle />
+                <span className="ml-auto"><ThemeToggle /></span>
               </div>
-
-              <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
-                {siteNav.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setMobileOpen(false)}
-                    className="rounded-[var(--ejo-radius-md)] px-3 py-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
-                  >
-                    {t(item.key)}
-                  </Link>
-                ))}
+              <nav className="flex-1 overflow-y-auto px-2 py-2" aria-label="Main">
+                {siteNav.map((item) => {
+                  const active = pathname === item.href;
+                  if (!item.children) {
+                    return (
+                      <Link key={item.href} href={item.href} onClick={() => setOpen(false)} aria-current={active ? 'page' : undefined} className={`flex min-h-12 items-center rounded-[var(--ejo-radius-md)] px-3 text-[15px] font-medium ${active ? 'bg-[var(--ejo-surface)] text-[var(--ejo-primary)]' : 'text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}>{t(item.key)}</Link>
+                    );
+                  }
+                  const expanded = openGroup === item.href;
+                  return (
+                    <div key={item.href}>
+                      <div className="flex items-stretch">
+                        <Link href={item.href} onClick={() => setOpen(false)} className={`flex min-h-12 flex-1 items-center rounded-[var(--ejo-radius-md)] px-3 text-[15px] font-medium ${active ? 'text-[var(--ejo-primary)]' : 'text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]'}`}>{t(item.key)}</Link>
+                        <button type="button" aria-label={expanded ? `Hide ${t(item.key)} pages` : `Show ${t(item.key)} pages`} aria-expanded={expanded} onClick={() => setOpenGroup(expanded ? null : item.href)} className="flex w-12 items-center justify-center rounded-[var(--ejo-radius-md)] text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)]">
+                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true"><path d="M6 9l6 6 6-6" /></svg>
+                        </button>
+                      </div>
+                      {expanded ? (
+                        <div className="mb-1 ml-3 border-l border-[var(--ejo-border)] pl-2">
+                          {item.children.map((c) => (
+                            <Link key={c.href} href={c.href} onClick={() => setOpen(false)} className="flex min-h-11 items-center rounded-[var(--ejo-radius-md)] px-3 text-sm text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]">{c.label}</Link>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })}
               </nav>
-              <div className="mt-4 space-y-3 border-t border-[var(--ejo-border)] pt-4">
-                <Link
-                  href="/customer-portal"
-                  onClick={() => setMobileOpen(false)}
-                  className="flex min-h-11 items-center justify-center rounded-full border border-[var(--ejo-border)] px-4 py-2.5 text-center text-sm font-medium text-[var(--ejo-text)]"
-                >
-                  {t('header.customerLogin')}
-                </Link>
-                {portalLogin ? (
-                  <a
-                    href={portalLogin}
-                    className="flex min-h-11 items-center justify-center rounded-full bg-[var(--ejo-primary)] px-4 py-2.5 text-center text-sm font-semibold text-white"
-                  >
-                    {t('header.employeeLogin')}
-                  </a>
-                ) : null}
+              <div className="space-y-2 border-t border-[var(--ejo-border)] px-4 pt-3">
+                <Link href="/customer-portal" onClick={() => setOpen(false)} className="flex min-h-11 items-center justify-center rounded-full border border-[var(--ejo-border)] px-4 text-sm font-medium text-[var(--ejo-text)]">{t('header.customerLogin')}</Link>
+                {portalLogin ? <a href={portalLogin} className="flex min-h-11 items-center justify-center rounded-full bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white">{t('header.employeeLogin')}</a> : null}
               </div>
             </motion.div>
           </>
-        )}
+        ) : null}
       </AnimatePresence>
     </>
   );
 }
-

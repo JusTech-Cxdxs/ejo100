@@ -1,4 +1,5 @@
 import { siteConfig } from './site-config';
+import { FIRST_STORIES } from './news/stories';
 /**
  * Static, client-side search index for the site search. Add an entry when a
  * page, business unit, product, news item or careers listing is added.
@@ -36,12 +37,13 @@ export const SEARCH_INDEX: SearchEntry[] = [
   { title: 'Logistics', category: 'Business', href: '/businesses/logistics' },
 
   // Products
-  { title: 'Product Catalogue', category: 'Product', href: '/products' },
+  { title: 'Products', category: 'Product', href: '/products' },
+  { title: 'Services', category: 'Page', href: '/services' },
+  { title: 'Vehicle sales', category: 'Business', href: '/businesses/automotive/vehicle-sales' },
+  { title: 'Spare parts and tyres', category: 'Business', href: '/businesses/automotive/spare-parts' },
 
-  // News
-  { title: `${siteConfig.organisationName} Expands Operations in West Africa`, category: 'News', href: '/news' },
-  { title: 'New Partnerships With Industry Leaders', category: 'News', href: '/news' },
-  { title: 'New Manufacturing Facility Officially Opened', category: 'News', href: '/news' },
+  // News: the first stories (the live list comes from News & media in the staff portal).
+  ...FIRST_STORIES.map((st) => ({ title: st.title, category: 'News' as const, href: `/news/${st.slug}` })),
 
   // Careers
   { title: `Careers at ${siteConfig.organisationName}`, category: 'Careers', href: '/careers' },

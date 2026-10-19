@@ -4102,3 +4102,50 @@ model SiteVisit {
   @@index([visitorHash, day])
   @@map("site_visits")
 }
+
+enum NewsCategory {
+  NEWS
+  MILESTONE
+  PRESS_RELEASE
+  EVENT
+  COMMUNITY
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+/// News & media (v41): what the communications team publishes on the public
+/// website — a story, a milestone (a new assembly line), a press release, an
+/// event or a community programme. Written and published in the staff portal
+/// (News & media); the website shows published posts of its organisation.
+/// The body is Markdown (headings, lists, links; no raw HTML is ever rendered).
+model NewsPost {
+  id             String       @id @default(cuid())
+  organisationId String
+  slug           String
+  title          String
+  summary        String
+  body           String
+  category       NewsCategory @default(NEWS)
+  status         NewsStatus   @default(DRAFT)
+  /// An https address of the cover picture (the organisation's own hosting); none → a themed cover.
+  coverImageUrl  String?
+  coverAlt       String?
+  /// Shown first on the website's home page and at the top of News.
+  isFeatured     Boolean      @default(false)
+  /// The business the story is about ("Automotive", "Agriculture"); free text, used for filtering.
+  businessArea   String?
+  publishedAt    DateTime?
+  authorName     String?
+  createdById    String?
+  updatedById    String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @default(now()) @updatedAt
+
+  @@unique([organisationId, slug])
+  @@index([organisationId, status, publishedAt])
+  @@map("news_posts")
+}

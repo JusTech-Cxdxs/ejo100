@@ -12,6 +12,7 @@ export const SCHEMA_MARKERS: { version: string; table: string; column: string; w
   { version: 'v39', table: 'support_queues', column: 'ackMessage', what: "Each team's own automatic-reply text" },
   { version: 'v39', table: 'support_queue_members', column: 'isLead', what: 'Team leads (told when nobody is free or a request is late)' },
   { version: 'v40', table: 'site_visits', column: 'visitorHash', what: 'Website visitor report (visitors, pages, time on page)' },
+  { version: 'v41', table: 'news_posts', column: 'slug', what: 'News & media published to the public website' },
 ];
 
 export type SchemaVerdict = { state: 'current' | 'behind' | 'unknown'; expected: string; at: string | null; missing: { version: string; what: string; column: string }[] };

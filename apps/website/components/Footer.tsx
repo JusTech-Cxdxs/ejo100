@@ -18,12 +18,12 @@ const SOCIALS = [
   { label: 'Instagram', icon: InstagramIcon, href: siteConfig.social.instagram },
 ].filter((s) => s.href);
 
-// Upload up to three files to public/images/footer-badges/ with these
-// exact names to populate the badge row — see README_CHANGES.md.
+// Upload up to three files to public/images/footer-badges/ with these exact
+// names; the trimmed copies in /trim (no transparent margins) are what is shown.
 const BADGES = [
-  { src: '/images/footer-badges/footer-badge-1.png', alt: 'Certification badge 1' },
-  { src: '/images/footer-badges/footer-badge-2.png', alt: 'Certification badge 2' },
-  { src: '/images/footer-badges/footer-badge-3.png', alt: 'Certification badge 3' },
+  { src: '/images/footer-badges/trim/footer-badge-1.png', alt: 'ISO certified' },
+  { src: '/images/footer-badges/trim/footer-badge-2.png', alt: 'Five-star rated' },
+  { src: '/images/footer-badges/trim/footer-badge-3.png', alt: 'Award of excellence' },
 ];
 
 const QUICK_LINKS: [TranslationKey, string][] = [
@@ -66,7 +66,9 @@ export function Footer() {
           <SiteWordmark tone="light" size="footer" />
           <p className="mt-3 max-w-xs text-sm text-white/60">{t('footer.companyDescription')}</p>
 
-          <div className="mt-5 flex flex-wrap items-center justify-start gap-3 sm:gap-4">
+          {/* Three badges in one row, small and never stretched: each box is a fixed
+              height, the picture keeps its proportions inside it. */}
+          <div className="mt-5 flex flex-nowrap items-center gap-3" aria-label="Certifications and awards">
             {BADGES.map((badge) => (
               <FooterBadge key={badge.src} src={badge.src} alt={badge.alt} />
             ))}
