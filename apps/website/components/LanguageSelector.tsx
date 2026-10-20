@@ -4,8 +4,11 @@ import { useEffect, useRef, useState } from 'react';
 import { LANGUAGES } from '@/lib/languages';
 import { useI18n } from '@/lib/i18n';
 
-/** align: which edge the list opens from ("left" inside the phone menu, so it stays on screen). */
-export function LanguageSelector({ dark = false, align = 'right' }: { dark?: boolean; align?: 'left' | 'right' }) {
+/**
+ * align: which edge the list opens from ("left" inside the phone menu, so it stays on screen).
+ * compact: the flag and the short code (EN, FR) until 1700px, the full name from there — so the header always has it without crowding.
+ */
+export function LanguageSelector({ dark = false, align = 'right', compact = false }: { dark?: boolean; align?: 'left' | 'right'; compact?: boolean }) {
   const { language, setLanguage } = useI18n();
   const [open, setOpen] = useState(false);
   const current = LANGUAGES.find((l) => l.code === language) ?? LANGUAGES[0];
@@ -35,9 +38,11 @@ export function LanguageSelector({ dark = false, align = 'right' }: { dark?: boo
         }`}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={`Language: ${current.label}`}
+        title={`Language: ${current.label}`}
       >
         <span>{current.flag}</span>
-        <span>{current.label}</span>
+        {compact ? <><span className="uppercase min-[1700px]:hidden">{current.code}</span><span className="hidden min-[1700px]:inline">{current.label}</span></> : <span>{current.label}</span>}
         <span aria-hidden="true">▾</span>
       </button>
 

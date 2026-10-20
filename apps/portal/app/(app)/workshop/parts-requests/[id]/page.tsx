@@ -79,8 +79,9 @@ export default async function PartRequestSlipDetailPage({
     eligibleStoreOfficers.staff.some((s) => s.id === viewerId);
   // Separation of duties (the server enforces it too): the person who asked
   // for the parts, or gave the first approval, does not approve them again.
-  const hodBlocked = viewerId === slip.requestedById;
-  const storeBlocked = viewerId === slip.requestedById || viewerId === slip.hodApprovedById;
+  // The master administrator may sign a second step (audited), so a new installation is never stuck.
+  const hodBlocked = !isMasterAdmin && viewerId === slip.requestedById;
+  const storeBlocked = !isMasterAdmin && (viewerId === slip.requestedById || viewerId === slip.hodApprovedById);
   const serializedLines = slip.lines.filter((l: (typeof slip.lines)[number]) => l.part.trackingType === 'SERIALIZED');
   // A slip comes from either a Job Card or a Vehicle Service estimate;
   // exactly one of the two is set.

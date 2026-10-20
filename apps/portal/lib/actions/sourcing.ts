@@ -212,6 +212,20 @@ async function notifyTechnicianAndSupervisorOfExternalProcurementStatus(
   }
 }
 
+/**
+ * Separation of duties, with one exception: the master administrator may sign
+ * a second step (as the Workshop already allows) — so a new installation,
+ * where nobody holds the Store, Finance or Manager roles yet, is never stuck.
+ * Every such second signature is written to the audit log, and the integrity
+ * watch still flags the same person asking and approving.
+ */
+async function signsAgainAsMaster(userId: string, entityType: string, entityId: string, step: string): Promise<boolean> {
+  const master = await prisma.userRole.findFirst({ where: { userId, role: { isSuperAdmin: true } }, select: { userId: true } });
+  if (!master) return false;
+  await writeAuditLog({ userId, action: 'separation_of_duties.waived', entityType, entityId, metadata: { step, by: 'master administrator' } });
+  return true;
+}
+
 class SourcingActionError extends Error {}
 
 /** Sourcing starts once the deposit has started work (IN_PROGRESS). Later
@@ -909,7 +923,7 @@ export async function approvePartRequestSlipByHod(slipId: string, notes?: string
   }
   const user = await requireEligibleManager(slip.branchId, 'store.prs.approve_hod');
   // Separation of duties: nobody approves their own request.
-  if (user.id === slip.requestedById) await refuse('store.prs.approve_hod', 'approvePartRequestSlipByHod', 'You raised this parts request, so another manager must approve it.');
+  if (user.id === slip.requestedById && !(await signsAgainAsMaster(user.id, 'PartRequestSlip', slipId, 'manager approval'))) await refuse('store.prs.approve_hod', 'approvePartRequestSlipByHod', 'You raised this parts request, so another manager must approve it.');
   // Nothing more is approved for a job that is cancelled or finished.
   await assertJobStillOpen(prisma, slip);
   const claimed = await prisma.partRequestSlip.updateMany({
@@ -1060,7 +1074,7 @@ export async function approvePartRequestSlipByStore(slipId: string, notes?: stri
   }
   const user = await requireStoreStaff(slip.branchId, 'store.prs.release');
   // Separation of duties: the person who asked for the parts, or gave the first approval, does not also approve them out of the Store.
-  if (user.id === slip.requestedById || user.id === slip.hodApprovedById) await refuse('store.prs.release', 'approvePartRequestSlipByStore', 'You already took part in this request (asked for it or approved it), so another member of the Store must approve it.');
+  if ((user.id === slip.requestedById || user.id === slip.hodApprovedById) && !(await signsAgainAsMaster(user.id, 'PartRequestSlip', slipId, 'store release'))) await refuse('store.prs.release', 'approvePartRequestSlipByStore', 'You already took part in this request (asked for it or approved it), so another member of the Store must approve it.');
 
   for (const line of slip.lines) {
     const stock = await prisma.partStock.findUnique({ where: { partId: line.partId } });
@@ -1661,7 +1675,7 @@ export async function sendExternalProcurementToManager(requestId: string): Promi
   }
   const user = await requireEligibleFinance(request.branchId, 'procurement.epr.review');
   // Separation of duties: nobody reviews their own request for cash.
-  if (user.id === request.requestedById) await refuse('procurement.epr.review', 'sendExternalProcurementToManager', 'You raised this request, so another Finance colleague must review it.');
+  if (user.id === request.requestedById && !(await signsAgainAsMaster(user.id, 'ExternalProcurementRequest', requestId, 'finance review'))) await refuse('procurement.epr.review', 'sendExternalProcurementToManager', 'You raised this request, so another Finance colleague must review it.');
   const claimed = await prisma.externalProcurementRequest.updateMany({
     where: { id: requestId, status: 'PENDING_FINANCE_REVIEW' },
     data: { status: 'PENDING_MANAGER_APPROVAL', financeReviewedById: user.id, financeReviewedAt: new Date() },
@@ -1757,7 +1771,7 @@ export async function approveExternalProcurementRequest(requestId: string, notes
   }
   const user = await requireEligibleManager(request.branchId, 'procurement.epr.approve');
   // Separation of duties: the person who asked for the cash, or reviewed it, does not also approve it.
-  if (user.id === request.requestedById || user.id === request.financeReviewedById) await refuse('procurement.epr.approve', 'approveExternalProcurementRequest', 'You already took part in this request (raised or reviewed it), so another manager must approve it.');
+  if ((user.id === request.requestedById || user.id === request.financeReviewedById) && !(await signsAgainAsMaster(user.id, 'ExternalProcurementRequest', requestId, 'manager approval'))) await refuse('procurement.epr.approve', 'approveExternalProcurementRequest', 'You already took part in this request (raised or reviewed it), so another manager must approve it.');
   // Nothing is approved or paid out for a Job Card that is cancelled or finished.
   await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   // Fixed at approval, so nothing later can change what the Manager approved.
@@ -1849,7 +1863,7 @@ export async function disburseExternalProcurementRequest(
   const user = await requireEligibleFinance(request.branchId, 'procurement.epr.disburse');
   // Separation of duties: the person who asked for the cash, or approved it, never pays it out.
   // (Finance may review and later pay out the same request: the manager's approval sits between; the integrity watch flags it.)
-  if (user.id === request.requestedById || user.id === request.managerApprovedById) await refuse('procurement.epr.disburse', 'disburseExternalProcurementRequest', 'You already took part in this request (raised or approved it), so another Finance colleague must pay it out.');
+  if ((user.id === request.requestedById || user.id === request.managerApprovedById) && !(await signsAgainAsMaster(user.id, 'ExternalProcurementRequest', requestId, 'pay out'))) await refuse('procurement.epr.disburse', 'disburseExternalProcurementRequest', 'You already took part in this request (raised or approved it), so another Finance colleague must pay it out.');
   // Nothing is approved or paid out for a Job Card that is cancelled or finished.
   await assertJobStillOpen(prisma, { jobCardId: request.jobCardId });
   const disbursedAmount = request.approvedTotal;
