@@ -107,11 +107,12 @@ export default async function DashboardPage() {
   const firstName = person?.fullName?.trim().split(/\s+/)[0];
   const today = new Intl.DateTimeFormat('en-GB', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Africa/Lagos' }).format(new Date());
 
+  const canCrm = await allows('crm.view');
   const stats: { label: string; value: number; href: string; icon: IconName }[] = [
     { label: 'Active Job Cards', value: counts.activeJobCards, href: '/workshop/custody', icon: 'clipboard' },
     { label: 'Job Cards in custody', value: counts.inWorkshop, href: '/workshop/custody', icon: 'garage' },
     { label: 'Vehicle Services in custody', value: counts.servicesInWorkshop, href: '/workshop/vehicle-service-custody', icon: 'droplet' },
-    { label: 'Total Customers', value: counts.totalCustomers, href: '/workshop/customers', icon: 'users' },
+    { label: 'Total Customers', value: counts.totalCustomers, href: canCrm ? '/crm' : '/workshop/customers', icon: 'users' },
     { label: 'Vehicles registered', value: counts.totalVehicles, href: '/workshop/vehicles', icon: 'car' },
   ];
 

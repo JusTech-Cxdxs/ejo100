@@ -94,7 +94,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const lower = plan.q.toLowerCase();
   const pages: SearchHit[] = [
     ...navigationFor(principal).filter((x) => x.status === 'LIVE' && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
-    ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!x.needs || any(x.needs))).map(({ label, href }) => ({ label, sub: 'Page', href })),
+    // Someone who can open Customers (CRM) goes straight there, not through the old workshop address.
+    ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!x.needs || any(x.needs))).map(({ label, href }) => ({ label, sub: 'Page', href: href === '/workshop/customers' && allowed('crm.view') ? '/crm' : href })),
   ].filter((x, i, all) => all.findIndex((y) => y.href === x.href) === i).slice(0, 6);
 
   // Reach, per module: the same filters the lists and record pages use. null = may not open this type.

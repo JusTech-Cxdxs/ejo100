@@ -1,4 +1,5 @@
 import { OrgTrail } from '@/components/OrgTrail';
+import { allows } from '@/lib/authz/server';
 import { PageHeader, NavCard, type IconName } from '@/components/ui';
 
 const sections: { name: string; href: string; desc: string; icon: IconName }[] = [
@@ -15,7 +16,10 @@ const sections: { name: string; href: string; desc: string; icon: IconName }[] =
 ];
 
 /** Workshop landing page: links to each workshop area. */
-export default function WorkshopPage() {
+export default async function WorkshopPage() {
+  // Customers live in the Customers (CRM) hub for anyone who can open it; link there directly.
+  const canCrm = await allows('crm.view');
+  const cards = sections.map((s) => (s.href === '/workshop/customers' && canCrm ? { ...s, href: '/crm' } : s));
   return (
     <div className="w-full p-4 sm:p-8">
       <PageHeader
@@ -28,7 +32,7 @@ export default function WorkshopPage() {
       />
 
       <div className="ejo-stagger grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {sections.map((s) => (
+        {cards.map((s) => (
           <NavCard key={s.href} href={s.href} icon={s.icon} title={s.name} description={s.desc} />
         ))}
       </div>

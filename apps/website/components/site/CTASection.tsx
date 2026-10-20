@@ -10,7 +10,7 @@ export function CTASection() {
 
   return (
     <section className="relative overflow-hidden bg-[#0b2416] px-6 py-24 text-white">
-      <MediaBox src="/images/placeholders/cta-bg.jpg" alt="" className="absolute inset-0 opacity-30" />
+      <MediaBox src="/images/home/home-slider-img-3.jpg" alt="" className="absolute inset-0 opacity-30" />
       <div aria-hidden className="ejo-ambient absolute inset-0" />
       <motion.div
         initial={{ opacity: 0, y: 20 }}
