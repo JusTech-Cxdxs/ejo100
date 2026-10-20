@@ -4,7 +4,7 @@ import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { emailColleaguesLater } from '@/lib/workflow-notify';
 
-import { allows, authorize, authorizeOnJobCard, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, getPrincipal, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
 import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
@@ -1830,15 +1830,20 @@ const WORKSHOP_HANDS = ['technician', 'workshop-supervisor'] as const;
 
 export async function listTechnicianCandidates() {
   await requireUser();
-  return prisma.user.findMany({
+  const select = { id: true, fullName: true, roles: { select: { role: { select: { name: true } } } } } as const;
+  const hands = await prisma.user.findMany({
     // Technicians and supervisors (a supervisor can do anything a technician can).
     where: { isActive: true, ...(await orgWhere()), roles: { some: { role: { slug: { in: [...WORKSHOP_HANDS] } } } } },
     orderBy: { fullName: 'asc' },
-    select: {
-      id: true,
-      fullName: true,
-      roles: { select: { role: { select: { name: true } } } },
-    },
+    select,
+  });
+  if (hands.length) return hands;
+  // Nobody holds the technician or supervisor role yet: the master administrator can take the job (lib/master-fallback.ts).
+  const org = (await getPrincipal()).organisationId;
+  return prisma.user.findMany({
+    where: { isActive: true, roles: { some: { role: { isSuperAdmin: true } } }, ...(org ? { OR: [{ organisationId: org }, { organisationId: null }] } : {}) },
+    orderBy: { fullName: 'asc' },
+    select,
   });
 }
 

@@ -1,4 +1,5 @@
 'use server';
+import { orMasterAdmins } from '@/lib/master-fallback';
 import { portalBaseUrl } from '@/lib/portal-url';
 
 import { prisma } from '@ejo/database';
@@ -119,7 +120,9 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       try {
         const [actor, watchers] = await Promise.all([
           prisma.user.findUnique({ where: { id: user.id }, select: { fullName: true } }),
-          prisma.user.findMany({ where: { isActive: true, branchId, roles: { some: { role: { slug: { in: ['workshop-manager', 'finance-officer'] } } } } }, select: { fullName: true, email: true } }),
+          prisma.user.findMany({ where: { isActive: true, branchId, roles: { some: { role: { slug: { in: ['workshop-manager', 'finance-officer'] } } } } }, select: { fullName: true, email: true } })
+            // Nobody holds those roles at the branch yet: the master administrator is told (lib/master-fallback.ts).
+            .then(async (w) => orMasterAdmins(w, (await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } }))?.businessUnit.organisationId ?? null)),
         ]);
         const portal = portalBaseUrl();
         for (const w of watchers) {

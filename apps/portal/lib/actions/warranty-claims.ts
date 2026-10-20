@@ -1,4 +1,5 @@
 'use server';
+import { masterAdminsFor } from '@/lib/master-fallback';
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
@@ -9,7 +10,7 @@ import { prisma } from '@ejo/database';
 import { requireUser, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopOrgContext } from '@/lib/workshop-core';
 import { getWarrantyRoles, type WarrantyRoles } from './warranty';
-import { authorize, orgWhere, refuseDuringAssist } from '@/lib/authz/server';
+import { authorize, getPrincipal, orgWhere, refuseDuringAssist } from '@/lib/authz/server';
 import { sendEmail } from '@/lib/email';
 import { renderWarrantyStaffNoticeEmail } from '@/lib/email-templates/warranty-staff-notice';
 import { claimReadiness } from '@/lib/warranty-claim-readiness';
@@ -43,7 +44,8 @@ async function hodsAndManagers(): Promise<{ id: string; fullName: string; email:
     listEligibleManagersForBranch(branchId),
     prisma.user.findMany({ where: { branchId, isActive: true, roles: { some: { role: { slug: 'warranty-hod' } } } }, select: { id: true, fullName: true, email: true } }),
   ]);
-  const all = [...hods, ...managers.supervisors];
+  // No Warranty HOD yet: the master administrator decides that step, so they are told (lib/master-fallback.ts).
+  const all = [...(hods.length ? hods : await masterAdminsFor((await getPrincipal()).organisationId)), ...managers.supervisors];
   return all.filter((u, i) => all.findIndex((x) => x.id === u.id) === i);
 }
 

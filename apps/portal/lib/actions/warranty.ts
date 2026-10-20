@@ -1,4 +1,5 @@
 'use server';
+import { masterAdminsFor } from '@/lib/master-fallback';
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
@@ -88,7 +89,8 @@ async function requireWarrantyApprover(): Promise<{ id: string; roles: WarrantyR
 async function warrantyApproverRecipients(): Promise<{ id: string; fullName: string; email: string }[]> {
   const branchId = await getWorkshopBranchId();
   const [managers, hods] = await Promise.all([listEligibleManagersForBranch(branchId), usersWithRole(branchId, 'warranty-hod')]);
-  const all = [...hods, ...managers.supervisors];
+  // No Warranty HOD yet: the HOD step is the master administrator's, so they are told (lib/master-fallback.ts).
+  const all = [...(hods.length ? hods : await masterAdminsFor((await getPrincipal()).organisationId)), ...managers.supervisors];
   return all.filter((u, i) => all.findIndex((x) => x.id === u.id) === i);
 }
 
