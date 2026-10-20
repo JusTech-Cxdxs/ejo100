@@ -170,6 +170,35 @@ test.describe('Enyo staff assistant (API)', () => {
     expect(refine.status()).toBe(403);
   });
 
+  test('"hi" is answered at once without the model; "what needs my attention" is a briefing; a busy model never leaves a bare error', async ({ page }) => {
+    await as(page, 'executive');
+    const hi = await ask(page, 'Hey Enyo');
+    expect(hi.res.status()).toBe(200);
+    expect(hi.text).toMatch(/^Good (morning|afternoon|evening), Eze! I'm/);
+    expect(hi.text).toContain('Are we on profit this month');
+    expect(hi.text).not.toContain('You said');
+    const attention = await ask(page, 'What needs my attention today? [[busy]]');
+    expect(attention.events.some((e) => e.type === 'error')).toBe(false);
+    expect(attention.text).toContain('Here is your briefing, Eze');
+    expect(tool(attention.events, 'daily_brief')?.ok).toBe(true);
+    // A question only the model can answer, with every model busy: where to look, and "brief me" always works.
+    const busy = await ask(page, 'Explain the warranty claim process for a gearbox [[busy]]');
+    expect(busy.events.some((e) => e.type === 'error')).toBe(false);
+    expect(busy.text).toContain('brief me');
+    expect(busy.text).toContain('[Business analytics](/analytics)');
+    expect(busy.text).not.toMatch(/handling a lot of questions/);
+  });
+
+  test('staff read the website through Enyo: store prices, offers, refer and earn', async ({ page }) => {
+    await as(page, 'receptionist');
+    const r = await ask(page, '[[tool:website_content {"show":"all","query":"S07"}]]');
+    expect(tool(r.events, 'website_content')?.ok).toBe(true);
+    expect(r.text).toContain('SOUEAST S07');
+    expect(r.text).toContain('₦45,900,000');
+    expect(r.text).toContain('Keystone Bank');
+    expect(r.text).toContain('₦150,000');
+  });
+
   test('"brief me": the figures are gathered as the person in one go, and written up even when the model is busy', async ({ page }) => {
     // An executive: every section, including the business this month and the website.
     await as(page, 'executive');

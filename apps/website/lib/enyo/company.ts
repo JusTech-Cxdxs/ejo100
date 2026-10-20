@@ -76,7 +76,7 @@ export async function loadCompanyInfo(organisationId: string): Promise<CompanyIn
     customerPortal: '/customer-portal',
     notes: [
       ...(setting?.hours ? ['Closed on public holidays.'] : ['Opening hours are not listed. Suggest calling the branch to confirm before visiting.']),
-      'Prices are not published. Estimates are prepared after the vehicle is inspected.',
+      'Vehicles, tyres and parts have indicative prices in the store (search_website); workshop repairs are estimated after the vehicle is inspected.',
       people.length
         ? 'For "who is …" questions about someone in "people", answer from their entry (title, area, about) and mention their public profile link. Never give out anyone\'s personal phone number, email or address.'
         : 'No leadership list is published here. For "who is …" about a named person, try the web look-up with the name and the organisation, and say if nothing clearly matches.',

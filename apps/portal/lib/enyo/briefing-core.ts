@@ -19,7 +19,7 @@ export type BriefingPack = {
   generatedAt: string;
 };
 
-const ASK = /^\s*brief(ing)?\b|\b(brief|briefing) (me|us|on)\b|\ba (daily |morning |quick |full )?briefing\b|\bcatch me up\b|\bupdate me\b|\bbring me up to (date|speed)\b|\bwhat('s| is| has been) (happening|going on)(\s+(today|here|now|everywhere|(in|at|across) (the|our|my) (business|branch|workshop|company|group|plant|showroom)))?\s*[?!.]*\s*$|\beverything (that is |that's )?(happening|going on)\b|\bhow (are|is) (we|the business|business|things|everything) (doing|going)\b|\bare we (on|in|making) (a )?profit\b|\b(business|general) analytics\b|\boverview of (the business|everything|the day|today)\b|\bstate of (the business|things|play)\b|\bdaily (brief|summary|update)\b|\bmorning (brief|summary|update)\b/i;
+const ASK = /^\s*brief(ing)?\b|\b(brief|briefing) (me|us|on)\b|\ba (daily |morning |quick |full )?briefing\b|\bcatch me up\b|\bupdate me\b|\bbring me up to (date|speed)\b|\bwhat('s| is| has been) (happening|going on)(\s+(today|here|now|everywhere|(in|at|across) (the|our|my) (business|branch|workshop|company|group|plant|showroom)))?\s*[?!.]*\s*$|\beverything (that is |that's )?(happening|going on)\b|\bhow (are|is) (we|the business|business|things|everything) (doing|going)\b|\bare we (on|in|making) (a )?profit\b|\b(business|general) analytics\b|\boverview of (the business|everything|the day|today)\b|\bstate of (the business|things|play)\b|\bdaily (brief|summary|update)\b|\bmorning (brief|summary|update)\b|\b(what|anything|which|work|things?|tasks?|jobs?)\b[^?]{0,40}\bneeds? (my |our )?(attention|action|approval|me|doing)\b|\bwhat('s| is| are)? (waiting|pending|outstanding|left|on my (plate|desk|list))\b|\bmy (to.?do|tasks|work|day|pending|approvals|queue)( list| today| for today)?\s*[?!.]*\s*$|\b(show|give|tell)( me)? (the |our |my )?(analytics|figures|numbers|kpis?|dashboard|performance|summary)\b|\b(business|sales|revenue|profit|branch|workshop) (performance|summary|overview|update|report)\b|\bhow much (did|have) we (make|made|take|taken|sell|sold)\b|\bwhat do i (need|have) to do\b/i;
 /** A question about one record, one thing or one request is not a briefing, even if it says "update" or "brief". */
 const SPECIFIC = /\b(JC|SV|EPR|PRS|GRN|RF|WR|WC|VIS|EP|VX|RT|INC|DLV|CTR|APT|BC|SUP)-\d|\bjob ?card\b|\bbay \d|\bmy [a-z ]{0,20}request\b|\bhow do i\b|\bhow to\b|\bremind me\b|\bdraft\b|\bwrite (a|an|the)\b|\bemail\b|\bmail\b|\bkeep it brief\b|\bin brief\b|\bbrief (description|explanation|summary of)\b|\bbriefed\b|\bwhat('s| is) (happening|going on) with\b/i;
 
@@ -226,4 +226,31 @@ export function briefingSystemPrompt(o: { assistantName: string; organisationNam
     'Money is in naira (₦). Use short headings and bullet points; a table only for branches side by side. Links exactly as given (paths starting with /). Be direct and warm, never padded. No preamble such as "Here is your briefing".',
     ...(o.branch ? [`The person asked about the ${o.branch} branch: lead with that branch.`] : []),
   ].join('\n');
+}
+
+// ── Greetings, at no cost ───────────────────────────────────────────────────
+
+const GREETING = /^\s*(hi+|hello+|hey+|hiya|howdy|good\s+(morning|afternoon|evening|day)|greetings|yo|what'?s up|how are you( doing)?|how far)([\s,!.]+(there|enyo|everyone|all|again))*[\s,!.?]*$/i;
+
+/** "Hi", "hey Enyo", "good evening" — nothing else in the message. */
+export function isGreetingOnly(message: string): boolean {
+  return GREETING.test(message);
+}
+
+/** The greeting, by Lagos time, with what this person can ask (leaders are offered the business figures). */
+export function staffGreeting(o: { firstName: string; assistantName: string; leader: boolean; now?: Date }): string {
+  const h = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Africa/Lagos', hour: 'numeric', hour12: false }).format(o.now ?? new Date()));
+  const part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+  const tries = o.leader
+    ? ['"Brief me" — your day, the business this month, the workshop now and what to do first', '"Are we on profit this month?"', '"What needs my attention?"', '"Brief me on <branch>"']
+    : ['"Brief me" — what waits for you today and what you are waiting on', '"What needs my attention?"', '"How do I …?" for any step in your work', 'A job card or vehicle number, for its status'];
+  return `Good ${part}, ${o.firstName}! I'm ${o.assistantName}. Ask me anything about your work here, for example:\n${tries.map((t) => `- ${t}`).join('\n')}`;
+}
+
+/** When every model is busy and nothing could be said: where to look, never "try again in a minute" alone. */
+export function staffBusyText(o: { leader: boolean }): string {
+  const pages = o.leader
+    ? '[Headquarters](/headquarters) · [Business analytics](/analytics) · [Approvals](/approvals) · [Dashboard](/dashboard)'
+    : '[Dashboard](/dashboard) · [Approvals](/approvals) · [My work](/dashboard#my-work)';
+  return `My thinking engine is busy for a moment, so I could not work that one out just now. Say **"brief me"** for everything that needs you — that always works — or look here: ${pages}. Ask me again in a minute for the rest.`;
 }

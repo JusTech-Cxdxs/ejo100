@@ -2,7 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { OTHER_PORTAL_CUSTOMER, PORTAL_CUSTOMER } from './people';
 import { as, latestMail, open, uniq } from './helpers';
 import { WEB, customerSignedIn, portal, websiteUp } from './customer';
-import { freshVehicle } from './db';
+import { db, freshVehicle } from './db';
 import { jobNumber, openJobCard } from './workflows';
 
 /**
@@ -140,6 +140,59 @@ test.describe('a website visitor', () => {
     await expect(answer).toContainText('Here is what I found');
     await expect(answer).toContainText('Kewalram');
     await expect(answer.getByTestId('enyo-error')).toHaveCount(0);
+  });
+
+  test('greetings, "who is" one of our people, how to reach us and the offers are answered from the records at once', async ({ page }) => {
+    // One of the people the organisation publishes (Organisation → People we publish).
+    const org = await db().organisation.findFirstOrThrow({ where: { slug: process.env.WEBSITE_ORGANISATION_SLUG || 'kewalram-nigeria' }, select: { id: true } });
+    // A real-looking name (letters only), unique to this run.
+    const tag = uniq().replace(/[^A-Z]/g, '').toLowerCase().replace(/^./, (c) => c.toUpperCase()) || 'Okafor';
+    const name = `Sudeep Mittal${tag}`;
+    await db().publicProfile.create({ data: { organisationId: org.id, name, title: 'Head of Automobiles, Nigeria', area: 'Automobiles', bio: 'Leads the automobile business in Nigeria.', isPublic: true, sortOrder: 1 } });
+    await page.goto(`${WEB}/`);
+    const hi = await ask(page, 'Hey Enyo');
+    await expect(hi).toContainText(/Good (morning|afternoon|evening)! I'm/);
+    await expect(hi).not.toContainText('You said');
+    const who = await ask(page, `Hi who's ${name}`);
+    await expect(who).toContainText(`${name} — Head of Automobiles, Nigeria`);
+    await expect(who).not.toContainText('You said');
+    const offers = await ask(page, 'Any financing offers?');
+    await expect(offers).toContainText('Keystone Bank');
+    const reach = await ask(page, 'How can I reach you?');
+    await expect(reach).toContainText('Contact us');
+    for (const a of [hi, who, offers, reach]) await expect(a.getByTestId('enyo-error')).toHaveCount(0);
+    await db().publicProfile.deleteMany({ where: { organisationId: org.id, name } });
+  });
+
+  test('the store, prices and offers come from the website — never "prices are not published"', async ({ page }) => {
+    await page.goto(`${WEB}/`);
+    const list = await ask(page, 'What vehicle do you have for sell and price');
+    await expect(list).toContainText('SOUEAST S07');
+    await expect(list).toContainText('₦45,900,000');
+    await expect(list).toContainText('Isuzu NPR');
+    await expect(list).toContainText('Refer and earn');
+    await expect(list).not.toContainText(/not publish/i);
+    const one = await ask(page, 'How much is the S07?');
+    await expect(one).toContainText('₦45,900,000');
+    await expect(one).toContainText('reserve with the sales team');
+    // Through the model, the website search tool answers from the store.
+    const viaTool = await ask(page, '[[tool:search_website {"query":"Isuzu NPR truck price"}]]');
+    await expect(viaTool).toContainText('₦54,000,000');
+    const news = await ask(page, '[[tool:search_website {"query":"refer earn","area":"referral"}]]');
+    await expect(news).toContainText('₦150,000');
+    for (const a of [list, one, viaTool, news]) await expect(a.getByTestId('enyo-error')).toHaveCount(0);
+  });
+
+  test('when the model is out of budget, the visitor still gets an answer — never "try again in a minute"', async ({ page }) => {
+    await page.goto(`${WEB}/`);
+    const busy = await ask(page, 'Which SUV is best for a family of six? [[busy]]');
+    await expect(busy.getByTestId('enyo-error')).toHaveCount(0);
+    await expect(busy).toContainText('the team can help straight away');
+    await expect(busy).toContainText('Contact us');
+    await expect(busy).not.toContainText(/handling a lot of questions|try again in a minute/);
+    // The next question is answered normally (the failed turn does not confuse it).
+    const next = await ask(page, '[[say:Happy to help with SUVs.]]');
+    await expect(next).toContainText('Happy to help with SUVs.');
   });
 
   test('leaves a phone number for a call back: a WEBSITE ticket the front desk can open', async ({ page }) => {

@@ -14,6 +14,7 @@ import { loadCompanyInfo } from './company';
 import { openHandover } from './handover';
 import { findOwnJob, nextStepFor, NOT_FOUND_MESSAGE, plural } from './rules';
 import type { WebCtx, WebTool } from './types';
+import { searchWebsiteTool } from './site-knowledge';
 
 const SIGNED_OUT = { ok: false as const, refused: true, message: 'The customer is not signed in. Ask them to sign in to the customer portal.' };
 
@@ -286,4 +287,4 @@ const requestHandover: WebTool = {
   },
 };
 
-export const customerTools: WebTool[] = [myVehicles, myJobs, jobStatus, myEstimate, myPayments, myWarranties, howToPay, companyInfo, requestHandover];
+export const customerTools: WebTool[] = [myVehicles, myJobs, jobStatus, myEstimate, myPayments, myWarranties, howToPay, searchWebsiteTool, companyInfo, requestHandover];

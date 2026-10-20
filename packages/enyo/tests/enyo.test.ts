@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readLlmConfig, type LlmConfig } from '../src/config';
-import { complete, isReasoningModel, LlmError, llmAdminMessage, retryAfterMs, stream } from '../src/llm';
+import { fallbacksFor, readLlmConfig, type LlmConfig } from '../src/config';
+import { complete, isReasoningModel, LlmError, llmAdminMessage, resetModelBudgets, retryAfterMs, stream } from '../src/llm';
 import { validateArgs, type Tool } from '../src/tools';
 import { ungroundedFigures, moneyFigures, redactForLog, looksLikeInjection, asData, clip } from '../src/guardrails';
 import { encodeEvent, readEvents, type EnyoEvent } from '../src/protocol';
@@ -463,4 +463,32 @@ test('free web search: when the html site refuses the server, the lite site is t
   assert.equal(r.pages[0]!.url, 'https://www.kewalramchanrai.com/about');
   assert.match(r.pages[0]!.text, /founded in 1860/);
   assert.ok(urls[1]!.startsWith('https://lite.duckduckgo.com/lite/'));
+});
+
+test('model chain: a model out of budget hands over to the next at once, and is skipped while it is busy', async () => {
+  resetModelBudgets();
+  const groq: LlmConfig = { ...config, baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', fastModel: 'openai/gpt-oss-20b' };
+  const busy = () => new Response(JSON.stringify({ error: { message: 'Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM). Please try again in 40s.' } }), { status: 429 });
+  const fine = (text: string) => () => new Response(JSON.stringify({ model: 'x', choices: [{ message: { content: text }, finish_reason: 'stop' }] }), { status: 200 });
+  const a = scripted([busy, fine('from the second model')]);
+  const started = Date.now();
+  const r = await complete(groq, { messages: [{ role: 'user', content: 'hi' }] }, a.impl);
+  assert.equal(r.content, 'from the second model');
+  assert.ok(Date.now() - started < 1_500, 'no waiting when another model is free');
+  assert.equal(a.seen[0]!.body.model, 'openai/gpt-oss-120b');
+  assert.equal(a.seen[1]!.body.model, 'llama-3.3-70b-versatile');
+  assert.equal('reasoning_effort' in a.seen[1]!.body, false, 'no reasoning settings for a model that has none');
+  // The busy model is left alone for its wait: the next question goes straight to the free one.
+  const b = scripted([fine('straight away')]);
+  await complete(groq, { messages: [{ role: 'user', content: 'hi again' }] }, b.impl);
+  assert.equal(b.seen[0]!.body.model, 'llama-3.3-70b-versatile');
+  resetModelBudgets();
+});
+
+test('model chain: from the settings, "off", or none for a provider that is not Groq', () => {
+  assert.deepEqual(readLlmConfig({ ENYO_LLM_BASE_URL: 'https://api.groq.com/openai/v1', ENYO_LLM_MODEL: 'openai/gpt-oss-120b', ENYO_LLM_API_KEY: 'k', ENYO_LLM_FALLBACK_MODELS: ' llama-3.3-70b-versatile , bad model! ,openai/gpt-oss-20b' })!.fallbackModels, ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b']);
+  assert.deepEqual(readLlmConfig({ ENYO_LLM_BASE_URL: 'https://api.groq.com/openai/v1', ENYO_LLM_MODEL: 'm', ENYO_LLM_API_KEY: 'k', ENYO_LLM_FALLBACK_MODELS: 'off' })!.fallbackModels, []);
+  const g = readLlmConfig({ ENYO_LLM_BASE_URL: 'https://api.groq.com/openai/v1', ENYO_LLM_MODEL: 'openai/gpt-oss-120b', ENYO_LLM_API_KEY: 'k' })!;
+  assert.deepEqual(fallbacksFor(g, 'openai/gpt-oss-120b'), ['llama-3.3-70b-versatile', 'openai/gpt-oss-20b', 'llama-3.1-8b-instant']);
+  assert.deepEqual(fallbacksFor(config, 'm'), []);
 });
