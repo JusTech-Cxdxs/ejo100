@@ -16,7 +16,6 @@ import { prisma } from '@ejo/database';
 
 /** Tables whose rows go with the account (they cascade). */
 const PERSONAL_TABLES = new Set(['sessions', 'accounts', 'user_roles', 'employee_profiles', 'notification_reads', 'notification_preferences']);
-const SAFE = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/;
 
 /** Work tables that point at a person without a foreign key. */
 const PLAIN_WORK: { model: string; field: string; label: string }[] = [
@@ -44,19 +43,23 @@ const delegate = (model: string): Delegate | null => {
 export async function workOnRecord(userId: string): Promise<string[]> {
   const found: string[] = [];
   const checks: Promise<void>[] = [];
-  // Every foreign key to users, from the database's own catalogue.
-  const keys = await prisma.$queryRaw<{ table_name: string; column_name: string }[]>`
-    SELECT kcu.table_name::text AS table_name, kcu.column_name::text AS column_name
-    FROM information_schema.referential_constraints rc
-    JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = rc.constraint_name AND kcu.constraint_schema = rc.constraint_schema
-    JOIN information_schema.key_column_usage ref ON ref.constraint_name = rc.unique_constraint_name AND ref.constraint_schema = rc.unique_constraint_schema
-    WHERE ref.table_name = 'users' AND kcu.table_schema = current_schema()`;
-  for (const k of keys) {
-    if (PERSONAL_TABLES.has(k.table_name) || !SAFE.test(k.table_name) || !SAFE.test(k.column_name)) continue;
-    checks.push(
-      prisma.$queryRawUnsafe<{ n: bigint }[]>(`SELECT count(*) AS n FROM "${k.table_name}" WHERE "${k.column_name}" = $1`, userId)
-        .then((r) => { const n = Number(r[0]?.n ?? 0); if (n) found.push(`${n} ${label(k.table_name, k.column_name)}`); }),
-    );
+  // Every foreign key to users, from the database's own catalogue, each counted for this person in ONE
+  // parameterised query: Postgres quotes the table and column names itself (format %I) and the id is a
+  // bound parameter, so no SQL is ever built as text here.
+  const rows = await prisma.$queryRaw<{ table_name: string; column_name: string; n: number }[]>`
+    SELECT k.table_name, k.column_name,
+      (xpath('/row/n/text()', query_to_xml(format('SELECT count(*) AS n FROM %I WHERE %I = %L', k.table_name, k.column_name, ${userId}::text), false, true, '')))[1]::text::int AS n
+    FROM (
+      SELECT kcu.table_name::text AS table_name, kcu.column_name::text AS column_name
+      FROM information_schema.referential_constraints rc
+      JOIN information_schema.key_column_usage kcu ON kcu.constraint_name = rc.constraint_name AND kcu.constraint_schema = rc.constraint_schema
+      JOIN information_schema.key_column_usage ref ON ref.constraint_name = rc.unique_constraint_name AND ref.constraint_schema = rc.unique_constraint_schema
+      WHERE ref.table_name = 'users' AND kcu.table_schema = current_schema()
+    ) k`;
+  for (const r of rows) {
+    if (PERSONAL_TABLES.has(r.table_name)) continue;
+    const n = Number(r.n ?? 0);
+    if (n) found.push(`${n} ${label(r.table_name, r.column_name)}`);
   }
   for (const w of PLAIN_WORK) {
     const d = delegate(w.model);
