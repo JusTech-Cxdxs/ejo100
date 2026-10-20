@@ -26,7 +26,7 @@ export function PromoBar({ dark = false }: { dark?: boolean }) {
   const close = () => { setShown(false); try { sessionStorage.setItem('ejo-promo-closed', '1'); } catch { /* storage unavailable */ } };
   return (
     <div data-testid="promo-bar" className={`relative z-[1] ${dark ? 'bg-black/35 text-white backdrop-blur-sm' : 'bg-[#0b2416] text-white'}`}>
-      <div className="flex h-9 items-center gap-3 px-4 sm:px-6 lg:px-8 2xl:px-12">
+      <div className="flex h-9 items-center gap-3 px-4 sm:px-6 lg:px-5 2xl:px-7">
         <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-[#7ee2a0]/15 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-[0.12em] text-[#7ee2a0] sm:inline-flex">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z" /><circle cx="7.5" cy="7.5" r="1" /></svg>
           Offer

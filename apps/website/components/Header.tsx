@@ -19,7 +19,7 @@ import { PromoBar } from './site/PromoBar';
  * On a wide screen the home page starts transparent over the hero and turns
  * solid on scroll; every other page is solid from the start.
  */
-/** How many pages show on their own between 1280px and 1536px; the rest go under "More". */
+/** How many pages show on their own between 1280px and 1700px; the rest go under "More" (all nine fit side by side only from 1700px). */
 const PRIMARY = 5;
 
 export function Header() {
@@ -58,7 +58,7 @@ export function Header() {
   // Transparent only on a wide screen over the home hero; phones always get the solid bar.
   const glass = isHome && !scrolled && wide;
   const pages = siteNav.filter((i) => i.href !== '/');
-  const linkCls = `relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-3 text-[13.5px] font-medium transition-colors 2xl:px-3.5 2xl:text-sm ${glass ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`;
+  const linkCls = `relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-2.5 text-[13.5px] font-medium transition-colors 2xl:px-3 2xl:text-sm ${glass ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`;
   const activeCls = glass ? 'text-white' : 'text-[var(--ejo-text)]';
 
   return (
@@ -70,19 +70,19 @@ export function Header() {
         >
           <PromoBar dark={glass} />
           {/* Full width: the wordmark at the left edge, the sign-ins at the right, the pages between — room to breathe on a wide screen. */}
-          <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:h-[76px] lg:px-8 2xl:px-12">
+          <div className="flex h-16 w-full items-center gap-3 px-4 sm:px-6 lg:h-[76px] lg:px-5 2xl:px-7">
             <Link href="/" className="flex min-w-0 shrink-0 items-center" aria-label={siteConfig.organisationName}>
               <SiteWordmark tone={glass ? 'light' : 'default'} />
             </Link>
 
             {/* The pages: the wordmark is Home, so Home itself is only in the menu; the first five show from 1280px,
                 the rest sit under "More" until 1536px, where everything fits on one line. */}
-            <nav className="hidden min-w-0 flex-1 items-center justify-center gap-0.5 xl:flex 2xl:gap-1" aria-label="Main">
+            <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 px-4 xl:flex 2xl:gap-1.5" aria-label="Main">
               {pages.map((item, index) => {
                 const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
                 const later = index >= PRIMARY;
                 return (
-                  <div key={item.href} className={`group relative ${later ? 'hidden 2xl:block' : ''}`}>
+                  <div key={item.href} className={`group relative ${later ? 'hidden min-[1700px]:block' : ''}`}>
                     <Link href={item.href} aria-current={active ? 'page' : undefined} className={`${linkCls} ${active ? activeCls : ''}`}>
                       {t(item.key)}
                       {active ? <span aria-hidden className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full ${glass ? 'bg-white' : 'bg-[var(--ejo-primary)]'}`} /> : null}
@@ -100,7 +100,7 @@ export function Header() {
                 );
               })}
               {pages.length > PRIMARY ? (
-                <div className="group relative 2xl:hidden">
+                <div className="group relative min-[1700px]:hidden">
                   <button type="button" className={`${linkCls} gap-1 ${pages.slice(PRIMARY).some((i) => pathname === i.href || pathname.startsWith(`${i.href}/`)) ? activeCls : ''}`} aria-haspopup="true">
                     {t('nav.more')}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
@@ -116,8 +116,8 @@ export function Header() {
               ) : null}
             </nav>
 
-            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2 lg:gap-2.5">
-              <span className="hidden 2xl:inline-flex"><LanguageSelector dark={glass} /></span>
+            <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+              <span className="hidden min-[1700px]:inline-flex"><LanguageSelector dark={glass} /></span>
               <span className="hidden lg:inline-flex"><SearchModal dark={glass} /></span>
               <ThemeToggle dark={glass} />
               <span aria-hidden className={`mx-1 hidden h-6 w-px lg:block ${glass ? 'bg-white/25' : 'bg-[var(--ejo-border)]'}`} />
@@ -125,12 +125,12 @@ export function Header() {
                 href="/customer-portal"
                 className={`hidden h-10 items-center gap-2 whitespace-nowrap rounded-full border px-4 text-[13px] font-semibold transition-all lg:inline-flex ${glass ? 'border-white/35 text-white hover:bg-white/10' : 'border-[var(--ejo-border)] text-[var(--ejo-text)] hover:border-[var(--ejo-primary)] hover:text-[var(--ejo-primary)]'}`}
               >
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="8" r="4" /></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M20 21a8 8 0 0 0-16 0" /><circle cx="12" cy="8" r="4" /></svg>
                 {t('header.customerLogin')}
               </Link>
               {portalLogin ? (
                 <a href={portalLogin} className="hidden h-10 items-center gap-2 whitespace-nowrap rounded-full bg-[var(--ejo-primary)] px-4 text-[13px] font-semibold text-white shadow-[0_6px_16px_-6px_rgba(34,152,63,0.6)] transition-all hover:-translate-y-px hover:shadow-[0_10px_20px_-8px_rgba(34,152,63,0.7)] lg:inline-flex">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2" /><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 12h18" /></svg>
                   {t('header.employeeLogin')}
                 </a>
               ) : null}

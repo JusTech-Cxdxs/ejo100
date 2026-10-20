@@ -92,7 +92,7 @@ export function EnyoBriefCard({ userKey }: { userKey: string }) {
       <div aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--ejo-primary)]/10 blur-3xl" />
       {/* The header row: always visible, opens and closes the card. */}
       <div className="relative flex flex-wrap items-center gap-3 px-4 py-3 sm:px-5">
-        <button type="button" onClick={toggleOpen} aria-expanded={open} aria-controls="enyo-brief-body" className="flex min-h-11 min-w-0 flex-1 items-center gap-3 text-left">
+        <button type="button" onClick={toggleOpen} aria-expanded={open} aria-controls="enyo-brief-body" className="flex min-h-11 min-w-0 flex-[1_1_16rem] items-center gap-3 text-left">
           <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[var(--ejo-primary)] text-white shadow-sm"><EIcon name="wand" size={18} /></span>
           <span className="min-w-0">
             <span id="enyo-brief" className="block text-sm font-semibold text-[var(--ejo-text)]">Your brief from Enyo</span>
@@ -103,9 +103,10 @@ export function EnyoBriefCard({ userKey }: { userKey: string }) {
           {brief && overdue ? <span className="ml-auto shrink-0 rounded-full bg-[var(--ejo-error)]/12 px-2.5 py-1 text-xs font-semibold text-[var(--ejo-error)]">{overdue} overdue</span> : null}
           <span className={`shrink-0 text-[var(--ejo-text-muted)] transition-transform ${open ? 'rotate-180' : ''} ${brief && overdue ? '' : 'ml-auto'}`} aria-hidden="true"><Icon name="chevron-down" size={18} /></span>
         </button>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Never squeezes the title: below ~32rem of room the choice and the button take their own full-width line. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <label htmlFor="brief-scope" className="sr-only">What to brief</label>
-          <select id="brief-scope" value={scope} onChange={(e) => setScope(e.target.value as BriefScope)} className={control}>
+          <select id="brief-scope" value={scope} onChange={(e) => setScope(e.target.value as BriefScope)} className={`${control} min-w-0 flex-1 sm:flex-none`}>
             {BRIEF_SCOPES.map((s) => <option key={s} value={s}>{BRIEF_SCOPE_LABEL[s]}</option>)}
           </select>
           {scope === 'custom' ? (
@@ -116,7 +117,7 @@ export function EnyoBriefCard({ userKey }: { userKey: string }) {
               <input id="brief-to" type="date" value={to} onChange={(e) => setTo(e.target.value)} className={control} />
             </>
           ) : null}
-          <button type="button" onClick={go} disabled={busy || (scope === 'custom' && (!from || !to))} className="min-h-10 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110 disabled:opacity-60">
+          <button type="button" onClick={go} disabled={busy || (scope === 'custom' && (!from || !to))} className="min-h-10 shrink-0 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 text-sm font-semibold text-white shadow-sm hover:brightness-110 disabled:opacity-60">
             {busy ? 'Briefing…' : brief ? 'Refresh' : 'Brief me'}
           </button>
         </div>
