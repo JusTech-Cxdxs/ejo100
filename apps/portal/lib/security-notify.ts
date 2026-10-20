@@ -1,4 +1,5 @@
 import { cleanForLog } from '@/lib/errors';
+import { orMasterAdmins } from '@/lib/master-fallback';
 import { portalBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
@@ -23,7 +24,9 @@ export async function notifyGateOfRelease(kind: 'JOB_CARD' | 'VEHICLE_SERVICE', 
             .then((v) => v && { number: v.serviceNumber, handBack: v.status === 'CANCELLED', collector: v.collectedByName, vehicle: v.vehicle, customer: v.customer.fullName, branch: v.branch });
     if (!rec) return;
     // The gate of THIS record's organisation only.
-    const gate = await prisma.user.findMany({ where: { isActive: true, organisationId: rec.branch.businessUnit.organisationId, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer'] } } } } }, select: { fullName: true, email: true } });
+    const officers = await prisma.user.findMany({ where: { isActive: true, organisationId: rec.branch.businessUnit.organisationId, roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer'] } } } } }, select: { fullName: true, email: true } });
+    // Nobody at the gate yet: the master administrator is told (lib/master-fallback.ts).
+    const gate = await orMasterAdmins(officers, rec.branch.businessUnit.organisationId);
     if (gate.length === 0) return;
     const car = [rec.vehicle.make, rec.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
     const portal = portalBaseUrl();

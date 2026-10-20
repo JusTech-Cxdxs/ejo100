@@ -1,4 +1,5 @@
 'use server';
+import { orMasterAdmins } from '@/lib/master-fallback';
 import { actorLabel } from '@/lib/assist/rules';
 import { logFailure } from '@/lib/log';
 
@@ -153,7 +154,9 @@ async function bookExclusively<T>(ownerIds: string[], roomIds: (string | null)[]
 }
 
 async function gateStaff(): Promise<Recipient[]> {
-  return prisma.user.findMany({ where: { isActive: true, ...(await actingOrgWhere()), roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer', 'receptionist'] } } } } }, select: { fullName: true, email: true } });
+  const staff = await prisma.user.findMany({ where: { isActive: true, ...(await actingOrgWhere()), roles: { some: { role: { slug: { in: ['security-officer', 'chief-security-officer', 'receptionist'] } } } } }, select: { fullName: true, email: true } });
+  // Nobody at the gate yet: the master administrator hears about the visitors (lib/master-fallback.ts).
+  return orMasterAdmins(staff, (await getPrincipal()).organisationId);
 }
 
 /** Tell Security (and Reception) about an appointment's visitors. */

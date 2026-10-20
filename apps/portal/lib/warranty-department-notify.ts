@@ -1,4 +1,5 @@
 import { portalBaseUrl } from '@/lib/portal-url';
+import { orMasterAdmins } from '@/lib/master-fallback';
 import { logFailure } from '@/lib/log';
 import { prisma } from '@ejo/database';
 import { sendEmail } from '@/lib/email';
@@ -24,7 +25,7 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
     if (!part) return;
     // Only the warranty staff of the organisation that owns this part.
     const owner = await prisma.branch.findUnique({ where: { id: part.branchId }, select: { name: true, businessUnit: { select: { organisationId: true, organisation: { select: { name: true } } } } } });
-    const [previous, actor, recipients] = await Promise.all([
+    const [previous, actor, staff] = await Promise.all([
       opts.previousPolicyId ? prisma.warrantyPolicy.findUnique({ where: { id: opts.previousPolicyId }, select: { code: true, name: true } }) : Promise.resolve(null),
       prisma.user.findUnique({ where: { id: opts.actorId }, select: { fullName: true } }),
       prisma.user.findMany({
@@ -32,6 +33,8 @@ export async function notifyWarrantyDepartmentOfPartWarranty(opts: { partId: str
         select: { fullName: true, email: true },
       }),
     ]);
+    // No warranty staff yet: the master administrator is told (lib/master-fallback.ts).
+    const recipients = await orMasterAdmins(staff, owner?.businessUnit.organisationId ?? null);
     if (recipients.length === 0) return;
     const org = owner?.businessUnit.organisation ?? null;
     const branch = owner ? { name: owner.name } : null;

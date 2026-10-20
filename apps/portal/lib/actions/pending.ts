@@ -1,5 +1,6 @@
 'use server';
 
+import { masterAdminsFor } from '@/lib/master-fallback';
 import { prisma } from '@ejo/database';
 import { getPrincipal } from '@/lib/authz/server';
 import { SENIOR_REQUESTER_SLUGS, nameWithRole } from '@/lib/authz/catalogue';
@@ -73,7 +74,9 @@ export async function getMyPending(): Promise<PendingItem[]> {
       const execs = p.organisationId ? await prisma.user.findMany({ where: { organisationId: p.organisationId, isActive: true, id: { not: mine }, roles: { some: { role: { slug: 'executive' } } } }, take: 2, select: { fullName: true } }) : [];
       // As security.ts seniorApprovers: executives, else administrators.
       const admins = execs.length || !p.organisationId ? [] : await prisma.user.findMany({ where: { organisationId: p.organisationId, isActive: true, id: { not: mine }, roles: { some: { role: { slug: 'administrator' } } } }, take: 2, select: { fullName: true } });
-      above = execs.length ? execs.map((e) => `${e.fullName} (Executive)`).join(' or ') : admins.length ? admins.map((e) => `${e.fullName} (Administrator)`).join(' or ') : 'the Executive';
+      // Nobody above yet: the master administrator stands in (lib/master-fallback.ts) — named, so the person knows who has it.
+      const masters = execs.length || admins.length ? [] : (await masterAdminsFor(p.organisationId)).filter((x) => x.id !== mine).slice(0, 2);
+      above = execs.length ? execs.map((e) => `${e.fullName} (Executive)`).join(' or ') : admins.length ? admins.map((e) => `${e.fullName} (Administrator)`).join(' or ') : masters.length ? masters.map((e) => `${e.fullName} (Master administrator)`).join(' or ') : 'the Executive';
     }
     return above;
   };

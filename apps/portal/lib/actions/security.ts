@@ -1,4 +1,5 @@
 'use server';
+import { masterAdminsFor, orMasterAdmins } from '@/lib/master-fallback';
 import { cleanForLog } from '@/lib/errors';
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl } from '@/lib/portal-url';
@@ -115,10 +116,11 @@ async function usersWithSlugs(slugList: string[], where: Record<string, unknown>
   });
 }
 async function masterAdmins(): Promise<Person[]> {
-  return prisma.user.findMany({ where: { isActive: true, roles: { some: { role: { isSuperAdmin: true } } } }, select: { id: true, fullName: true, email: true } });
+  return masterAdminsFor((await getPrincipal()).organisationId);
 }
+/** The gate: Security officers — or, while nobody holds those roles, the master administrator (lib/master-fallback.ts). */
 async function gateStaff(): Promise<Person[]> {
-  return usersWithSlugs(['chief-security-officer', 'security-officer']);
+  return orMasterAdmins(await usersWithSlugs(['chief-security-officer', 'security-officer']), (await getPrincipal()).organisationId);
 }
 
 /** Security records are visible within the viewer's reach (their branch,
@@ -321,7 +323,7 @@ async function emailGateAboutBooking(kind: 'new' | 'changed' | 'cancelled', visi
   if (!v) return;
   const who = `${[v.visitorName, ...v.memberNames].join(', ')}${v.company ? ` (${v.company})` : ''}`;
   const when = v.expectedAt ? new Date(v.expectedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', hourCycle: 'h12', minute: '2-digit' }) : '';
-  const staff = await usersWithSlugs(['security-officer', 'chief-security-officer', 'receptionist']);
+  const staff = await orMasterAdmins(await usersWithSlugs(['security-officer', 'chief-security-officer', 'receptionist']), (await getPrincipal()).organisationId);
   await sendLogged('Visit', visitId, staff, kind === 'cancelled' ? `Visit cancelled — ${who}` : `${kind === 'new' ? 'Visitor booked' : 'Visit rescheduled'} — ${who}, ${when}`, kind === 'cancelled' ? 'A booked visit was cancelled — do not expect them' : kind === 'new' ? 'Expect a visitor' : 'A booked visit has moved', [who, ...(v.partySize > 1 ? [`${v.partySize} people`] : []), `Visiting: ${v.host.fullName}`, `Purpose: ${v.purpose}`, kind === 'cancelled' ? `Reason: ${reason ?? ''}` : `Expected: ${when}`, v.visitNumber], kind === 'cancelled' ? '/security/visitors' : `/security/visitors/${visitId}`, actorId);
 }
 
