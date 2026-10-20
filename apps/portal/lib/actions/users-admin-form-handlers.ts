@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { friendlyError } from '@/lib/errors';
-import { assignRole, removeRole, createStaffMember, setStaffActive, resendWelcomeEmail, assignMissingEmployeeIds } from './users-admin';
+import { assignRole, removeRole, createStaffMember, setStaffActive, resendWelcomeEmail, assignMissingEmployeeIds, deleteStaffPermanently } from './users-admin';
 
 function back(formData: FormData, error: string, status = 'saved') {
   const q = String(formData.get('q') ?? '');
@@ -80,4 +80,14 @@ export async function addStaffMemberAction(_prev: AddStaffState, formData: FormD
     return { error: friendlyError(err, 'Could not add the person.', 'users-admin-form-handlers'), values };
   }
   redirect(`/users?q=${encodeURIComponent(values.email.toLowerCase())}&status=${sent ? 'added' : 'added_no_email'}&id=${encodeURIComponent(employeeId)}`);
+}
+
+export async function deleteStaffFormAction(formData: FormData): Promise<void> {
+  let error = '';
+  try {
+    await deleteStaffPermanently(String(formData.get('userId') ?? ''), String(formData.get('confirmEmail') ?? ''));
+  } catch (err) {
+    error = friendlyError(err, 'Could not delete the account.', 'users-admin-form-handlers');
+  }
+  back(formData, error, 'deleted');
 }

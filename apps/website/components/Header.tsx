@@ -19,8 +19,8 @@ import { PromoBar } from './site/PromoBar';
  * On a wide screen the home page starts transparent over the hero and turns
  * solid on scroll; every other page is solid from the start.
  */
-/** How many pages show on their own between 1280px and 1700px; the rest go under "More" (all nine fit side by side only from 1700px). */
-const PRIMARY = 5;
+/** How many pages show on their own between 1280px and 1760px (Home first); the rest go under "More" — all ten fit side by side from 1760px. */
+const PRIMARY = 6;
 
 export function Header() {
   const { t } = useI18n();
@@ -57,7 +57,8 @@ export function Header() {
 
   // Transparent only on a wide screen over the home hero; phones always get the solid bar.
   const glass = isHome && !scrolled && wide;
-  const pages = siteNav.filter((i) => i.href !== '/');
+  // Home is a page like the others: visitors on an inner page always have a way back, not only the logo.
+  const pages = siteNav;
   const linkCls = `relative inline-flex h-10 items-center whitespace-nowrap rounded-full px-2.5 text-[13.5px] font-medium transition-colors 2xl:px-3 2xl:text-sm ${glass ? 'text-white/85 hover:bg-white/10 hover:text-white' : 'text-[var(--ejo-text-muted)] hover:bg-[var(--ejo-surface)] hover:text-[var(--ejo-text)]'}`;
   const activeCls = glass ? 'text-white' : 'text-[var(--ejo-text)]';
 
@@ -75,14 +76,13 @@ export function Header() {
               <SiteWordmark tone={glass ? 'light' : 'default'} />
             </Link>
 
-            {/* The pages: the wordmark is Home, so Home itself is only in the menu; the first five show from 1280px,
-                the rest sit under "More" until 1536px, where everything fits on one line. */}
+            {/* The pages: Home and the next five show from 1280px; the rest sit under "More" until there is room for all on one line. */}
             <nav className="hidden min-w-0 flex-1 items-center justify-center gap-1 px-4 xl:flex 2xl:gap-1.5" aria-label="Main">
               {pages.map((item, index) => {
                 const active = pathname === item.href || (item.href !== '/' && pathname.startsWith(`${item.href}/`));
                 const later = index >= PRIMARY;
                 return (
-                  <div key={item.href} className={`group relative ${later ? 'hidden min-[1700px]:block' : ''}`}>
+                  <div key={item.href} className={`group relative ${later ? 'hidden min-[1760px]:block' : ''}`}>
                     <Link href={item.href} aria-current={active ? 'page' : undefined} className={`${linkCls} ${active ? activeCls : ''}`}>
                       {t(item.key)}
                       {active ? <span aria-hidden className={`absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full ${glass ? 'bg-white' : 'bg-[var(--ejo-primary)]'}`} /> : null}
@@ -100,7 +100,7 @@ export function Header() {
                 );
               })}
               {pages.length > PRIMARY ? (
-                <div className="group relative min-[1700px]:hidden">
+                <div className="group relative min-[1760px]:hidden">
                   <button type="button" className={`${linkCls} gap-1 ${pages.slice(PRIMARY).some((i) => pathname === i.href || pathname.startsWith(`${i.href}/`)) ? activeCls : ''}`} aria-haspopup="true">
                     {t('nav.more')}
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>

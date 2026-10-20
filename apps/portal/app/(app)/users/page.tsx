@@ -1,6 +1,6 @@
 import { guardPage } from '@/lib/authz/server';
 import { listUsersForAdmin, staffPlacementOptions } from '@/lib/actions/users-admin';
-import { assignRoleFormAction, removeRoleFormAction, setStaffActiveFormAction, resendWelcomeFormAction, assignMissingEmployeeIdsFormAction } from '@/lib/actions/users-admin-form-handlers';
+import { assignRoleFormAction, removeRoleFormAction, setStaffActiveFormAction, resendWelcomeFormAction, assignMissingEmployeeIdsFormAction, deleteStaffFormAction } from '@/lib/actions/users-admin-form-handlers';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FilterSelect } from '@/components/FilterSelect';
@@ -56,6 +56,7 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
     : status === 'saved' ? { kind: 'success', title: 'Saved', text: 'The person has been emailed their updated access.' }
     : status === 'added' ? { kind: 'success', title: `Staff member added${id ? ` — employee ID ${id}` : ''}`, text: 'Their welcome email is on its way: employee ID, role, branch, what they can do, the rules, and a link to set their own password (valid 72 hours).' }
     : status === 'added_no_email' ? { kind: 'warning', title: `Staff member added${id ? ` — employee ID ${id}` : ''}, but the welcome email was not sent`, text: 'The mail server refused it — see Settings → Email delivery for the reason. Use “Send the welcome email again” on their card once mail is working.' }
+    : status === 'deleted' ? { kind: 'success', title: 'Account deleted', text: 'It is gone for good, and its email can be used for a new staff member. The deletion is on the audit log.' }
     : status === 'welcome_sent' ? { kind: 'success', title: 'Welcome email sent again', text: 'With a new set-password link — any earlier link no longer works.' }
     : status === 'welcome_failed' ? { kind: 'warning', title: 'The welcome email could not be sent', text: 'The mail server refused it — see Settings → Email delivery for the reason.' }
     : idsGiven !== null ? { kind: 'success', title: idsGiven === 0 ? 'Everyone already has an employee ID' : `${idsGiven} employee ${idsGiven === 1 ? 'ID' : 'IDs'} issued` }
@@ -183,6 +184,16 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
                       <input name="reason" required={u.isActive} minLength={u.isActive ? 3 : 0} maxLength={200} aria-label={u.isActive ? 'Reason for switching off' : 'Note'} placeholder={u.isActive ? 'Reason (e.g. left the company)' : 'Note (optional)'} className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]" />
                       <SubmitButton label={u.isActive ? 'Switch off and sign out' : 'Switch on'} pendingLabel="…" className={`rounded-[var(--ejo-radius-md)] border px-2 py-1 text-xs font-medium ${u.isActive ? 'border-[var(--ejo-error)]/40 text-[var(--ejo-error)]' : 'border-[var(--ejo-success)]/40 text-[var(--ejo-success)]'}`} />
                     </form>
+                    {isPlatformTeam && !u.isActive && !u.roles.some((r) => r.isPlatform) ? (
+                      <form action={deleteStaffFormAction} className="mt-1 space-y-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 p-2">
+                        <input type="hidden" name="userId" value={u.id} /><input type="hidden" name="q" value={q ?? ''} />
+                        <p className="text-[11px] text-[var(--ejo-text-muted)]">Delete for good (a test account, or one made by mistake) so the email can be used again. Only when they have no work on record. Type their email to confirm.</p>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <input name="confirmEmail" type="email" required autoComplete="off" aria-label={`Type ${u.email} to confirm deleting ${u.fullName}`} placeholder={u.email} className="min-w-0 flex-1 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs" />
+                          <SubmitButton label="Delete permanently" pendingLabel="Deleting…" className="rounded-[var(--ejo-radius-md)] bg-[var(--ejo-error)] px-2 py-1 text-xs font-semibold text-white" />
+                        </div>
+                      </form>
+                    ) : null}
                   </div>
                 </details>
               ) : null}
