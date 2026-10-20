@@ -7,7 +7,8 @@ import { nextEmployeeId, sendStaffAccessEmail } from '@/lib/staff-onboarding';
 import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { authorize, getPrincipal } from '@/lib/authz/server';
+import { deleteAccountAndPersonal, workOnRecord } from '@/lib/staff-delete';
+import { authorize, getPrincipal, inMyOrganisation } from '@/lib/authz/server';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { hashPassword } from 'better-auth/crypto';
 import { randomBytes } from 'node:crypto';
@@ -353,4 +354,32 @@ async function tellReactivated(userId: string): Promise<void> {
   } catch (err) {
     logFailure('Could not tell a person their account is switched on again', userId, err);
   }
+}
+
+/**
+ * Delete a staff account for good — a test account, or one created by
+ * mistake — so its email can be used again. Only a master administrator,
+ * only an account already switched off, only when its email is typed to
+ * confirm, and only when the person has no work on record (lib/staff-delete.ts):
+ * anyone with history stays switched off, so records keep their names.
+ * Never yourself, never a master administrator, never the platform owner.
+ */
+export async function deleteStaffPermanently(userId: string, confirmEmail: string): Promise<{ email: string }> {
+  const { p, organisationId } = await actorOrg();
+  if (!p.isSuperAdmin) throw new Error('Only the master administrator can delete an account.');
+  if (userId === p.userId) throw new Error('You cannot delete your own account.');
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, fullName: true, email: true, isActive: true, organisationId: true, roles: { select: { role: { select: { isSuperAdmin: true, name: true } } } }, employeeId: true } });
+  // Only people of the master administrator's own organisation (a platform master administrator with none may delete any).
+  if (!user || !(await inMyOrganisation(user.organisationId)) || (organisationId && user.organisationId !== organisationId)) throw new Error('That person no longer exists — refresh the page.');
+  if (user.roles.some((r) => r.role.isSuperAdmin)) throw new Error('A master administrator cannot be deleted.');
+  const owner = process.env.PLATFORM_OWNER_EMAIL?.trim().toLowerCase();
+  if (owner && user.email.toLowerCase() === owner) throw new Error("The platform owner's account cannot be deleted.");
+  if (user.isActive) throw new Error('Switch the account off first, then delete it.');
+  if (confirmEmail.trim().toLowerCase() !== user.email.toLowerCase()) throw new Error(`Type the account's email exactly (${user.email}) to confirm.`);
+  const work = await workOnRecord(userId);
+  if (work.length) throw new Error(`${user.fullName} has work on record (${work.slice(0, 4).join('; ')}${work.length > 4 ? '; …' : ''}), so the account stays switched off: deleting it would take their name off that history.`);
+  await deleteAccountAndPersonal(userId);
+  await writeAuditLog({ userId: p.userId, action: 'user.deleted', entityType: 'User', entityId: userId, metadata: { name: user.fullName, email: user.email, employeeId: user.employeeId ?? null, organisationId: user.organisationId, roles: user.roles.map((r) => r.role.name) } });
+  revalidatePath('/users');
+  return { email: user.email };
 }
