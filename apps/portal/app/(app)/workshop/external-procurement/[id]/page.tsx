@@ -65,9 +65,10 @@ export default async function ExternalProcurementDetailPage({
   const isEligibleFinance = isMasterAdmin || eligibleFinance.supervisors.some((m: { id: string }) => m.id === viewerId);
   // Separation of duties (the server enforces it too): nobody reviews,
   // approves or pays out a request they raised or already approved.
-  const reviewBlocked = viewerId === request.requestedById;
-  const approveBlocked = viewerId === request.requestedById || viewerId === request.financeReviewedById;
-  const payBlocked = viewerId === request.requestedById || viewerId === request.managerApprovedById;
+  // The master administrator may sign a second step (audited), so a new installation is never stuck.
+  const reviewBlocked = !isMasterAdmin && viewerId === request.requestedById;
+  const approveBlocked = !isMasterAdmin && (viewerId === request.requestedById || viewerId === request.financeReviewedById);
+  const payBlocked = !isMasterAdmin && (viewerId === request.requestedById || viewerId === request.managerApprovedById);
   // Finance's changes to supplementary lines go on the timeline, so a
   // removed line still has a record.
   const supplementaryLineEvents = auditTrail.filter((e: (typeof auditTrail)[number]) => e.action.startsWith('external_procurement.supplementary_line_'));

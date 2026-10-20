@@ -117,7 +117,7 @@ export function Header() {
             </nav>
 
             <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
-              <span className="hidden min-[1700px]:inline-flex"><LanguageSelector dark={glass} /></span>
+              <span className="hidden xl:inline-flex"><LanguageSelector dark={glass} compact /></span>
               <span className="hidden lg:inline-flex"><SearchModal dark={glass} /></span>
               <ThemeToggle dark={glass} />
               <span aria-hidden className={`mx-1 hidden h-6 w-px lg:block ${glass ? 'bg-white/25' : 'bg-[var(--ejo-border)]'}`} />
