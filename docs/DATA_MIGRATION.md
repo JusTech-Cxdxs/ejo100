@@ -209,11 +209,60 @@ the SAP stock and valuation report (MB52 / MC.9 / the material valuation).
 ## 9. Size, speed and the database
 
 The staging area lives in the organisation's own Postgres database (no new
-services). A row of a typical customers file takes roughly 0.5–1 KB staged.
-For the largest loads (the 800,000-line parts master in A2) the organisation's
-database plan must allow for the staged rows plus the records themselves; the
-free development tier (500 MB) does not. The A4 performance run will record
-measured timings and sizes here.
+services). Every figure below was **measured**, not estimated.
+
+### The 800,000-material speed run (A2)
+
+A full SAP material master — 800,000 materials, 69 MB of CSV with the SAP
+field names (MATNR, MAKTX, MATKL, MEINS, XCHPF, EAN11, VKP, MINBE, EISBE,
+MEINH, UMREZ) — taken through the real screens in a browser: upload, column
+matching, check, a second person's approval, load, then a catalogue search.
+Run with `e2e/perf-parts.spec.ts` (`PERF_FILE=…`; not part of CI) on
+31 October 2026, against Postgres 16 on a 2-processor, 8 GB machine with the
+browser on the same machine.
+
+| Step | Time | Rate |
+| --- | --- | --- |
+| Upload (read in the browser, sent in blocks) | 1 min 56 s | ≈ 6,900 rows a second |
+| Check (nothing live changes) | 1 min 6 s | ≈ 12,000 rows a second |
+| Load, after approval | 5 min 48 s | ≈ 2,300 rows a second |
+| **Total, file to catalogue** | **≈ 9 minutes** | |
+| Parts Catalog search ("Brake pad") among 800,000 parts | 3 s, page included | paged, 50 a page |
+
+All 800,000 materials were created: none rejected, none duplicated, and
+`created = rows − rejected − duplicates` was asserted at the end. The
+**Opening stock** and **Suppliers** files use the same engine; their size is
+far smaller (one line per part held, one per vendor).
+
+**Database space** after the run: the 800,000 parts take **475 MB** (with
+their indexes); the staged rows of that import take **513 MB**. Plan for
+about **1.3 KB per material** in total while the import is kept. The free
+development tier of Supabase (500 MB) is therefore too small for a full
+material master; the demo keeps **50,000** parts (`docs/demo/03_SAP_parts_50k.csv`),
+which fits comfortably. On the organisation's paid plan this is routine.
+
+### What keeps it fast at any size
+
+- **Steady, few requests.** Each check, load or undo request works in blocks
+  for about 2.5 seconds, then answers with its progress: about 25 requests a
+  minute whatever the server's speed — well inside the portal's flood limit
+  of 120 submissions a minute per person (`middleware.ts`). Uploads send at
+  most one block every 0.6 s. (The first speed run found this limit: a check
+  quicker than two requests a second was being refused. A test now pins the
+  pacing to the limit.)
+- **A row cursor.** Each block reads on from the last row number through the
+  (import, row number) index, so block 800 is as quick as block 1.
+- **Interruptions are harmless.** A request that fails or does not answer
+  within two minutes is tried again (five times, about a minute in all, with
+  "reconnecting…" on the bar), then the page offers *Carry on*. Every step is
+  repeatable: a row is never checked or loaded twice. Closing the page and
+  opening it again carries on where it was.
+- **Lookups by index only.** Matching against existing parts, customers and
+  vehicles uses the indexed number as written and in capitals — never a scan
+  that changes every row's case.
+- **The Store's screens are paged.** Parts Catalog (50 a page, searched on
+  the server), the goods-receipt part picker (25 matches as you type) and the
+  low-stock list (bounded) do not grow with the catalogue.
 
 ## 10. For the database administrator
 
