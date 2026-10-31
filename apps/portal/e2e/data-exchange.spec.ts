@@ -17,6 +17,8 @@ const T = tag.replace(/[^a-z0-9]/g, '').slice(-6).toUpperCase();
 // SAP-style customer numbers, unique to this run (from the clock), never reused by a later run.
 const STAMP = String(Date.now()).slice(-8);
 const kunnr = (n: number) => `9${STAMP}${n}`;
+// Phones unique to this run too (a phone already on file makes a row a possible duplicate, held back by design).
+const phone = (n: number) => `080${n} ${STAMP.slice(1, 4)} ${STAMP.slice(4, 8)}`;
 const ADA = `Ada Importa ${T}`;
 const MUSA = `Musa Noemail ${T}`;
 
@@ -24,11 +26,11 @@ const MUSA = `Musa Noemail ${T}`;
 function customersCsv(): string {
   const rows = [
     ['KUNNR', 'NAME1', 'NAME2', 'TELF1', 'SMTP_ADDR', 'STRAS', 'ORT01'],
-    [`000${kunnr(1)}`, ADA, '', '0803 555 0101', `ada.${tag}@e2e.test`, 'Plot 3, Cheesebrough Road', 'Isolo'],
-    [kunnr(2), MUSA, '', '0803 555 0102', '', 'Oshodi Road', 'Lagos'],
-    [kunnr(3), '', '', '0803 555 0103', '', '', ''],
+    [`000${kunnr(1)}`, ADA, '', phone(1), `ada.${tag}@e2e.test`, 'Plot 3, Cheesebrough Road', 'Isolo'],
+    [kunnr(2), MUSA, '', phone(2), '', 'Oshodi Road', 'Lagos'],
+    [kunnr(3), '', '', phone(3), '', '', ''],
     [kunnr(1), `${ADA} again`, '', '', '', '', ''],
-    [kunnr(4), `Fleet Co ${T}`, 'Logistics Ltd', '0803 555 0104', `fleet.${tag}@e2e.test`, 'Apapa Wharf', 'Lagos'],
+    [kunnr(4), `Fleet Co ${T}`, 'Logistics Ltd', phone(4), `fleet.${tag}@e2e.test`, 'Apapa Wharf', 'Lagos'],
   ];
   return rows.map((r) => r.map((c) => (/[,"]/.test(c) ? `"${c.replace(/"/g, '""')}"` : c)).join(',')).join('\r\n');
 }
@@ -118,7 +120,7 @@ test('the front desk cannot open Data Exchange; the manager approves, it loads, 
   expect(ada?.importJobId).toBeTruthy();
   // A customer with no email is a full record — and never given a made-up address.
   const musa = await db().customer.findFirst({ where: { fullName: MUSA }, select: { email: true, phone: true } });
-  expect(musa).toEqual({ email: null, phone: '0803 555 0102' });
+  expect(musa).toEqual({ email: null, phone: phone(2) });
   // The organisation keeps its company details.
   const fleet = await db().customer.findFirst({ where: { externalId: kunnr(4) }, select: { fullName: true, customerType: true } });
   expect(fleet?.fullName).toBe(`Fleet Co ${T} Logistics Ltd`);
@@ -153,7 +155,7 @@ test('vehicles from an Excel workbook link to their customers; an unknown custom
   expect(s07?.vehicleType).toBe('PASSENGER');
 });
 
-test('undo removes exactly what each import added (vehicles first, then customers)', async ({ page }) => {
+test('undo moves exactly what each import added to the Recycle bin (vehicles first, then customers)', async ({ page }) => {
   await as(page, 'workshop-manager');
   page.on('dialog', (d) => void d.accept());
   // The vehicles first (their own import), then the customers they belonged to.
@@ -165,6 +167,19 @@ test('undo removes exactly what each import added (vehicles first, then customer
   await page.getByRole('button', { name: 'Undo this import' }).click();
   await expect(page.getByRole('heading', { name: 'Undone' })).toBeVisible({ timeout: 60_000 });
   expect(await db().customer.count({ where: { externalId: { in: [kunnr(1), kunnr(2), kunnr(4)] } } })).toBe(0);
+  // Nothing is lost: each record is its own Recycle bin item, with the import named as the reason.
+  const number = (await page.getByRole('heading', { level: 1 }).first().textContent())!.split(' ')[0]!;
+  const items = await db().recycleBinItem.findMany({ where: { reason: `Undo of import ${number}`, restoredAt: null }, select: { reference: true } });
+  expect(items.map((i) => i.reference).sort()).toEqual([ADA, `Fleet Co ${T} Logistics Ltd`, MUSA].sort());
+  // …and the administrator restores one from the bin, with its SAP number back.
+  await as(page, 'administrator');
+  await page.goto('/recycle-bin');
+  const row = page.getByTestId('bin-row').filter({ hasText: MUSA }).first();
+  await expect(row).toContainText(`Undo of import ${number}`);
+  // (the confirmation is accepted by the dialog handler set at the start of this test)
+  await row.getByRole('button', { name: 'Restore' }).click();
+  await page.waitForURL(/\/recycle-bin\?restored=/);
+  expect(await db().customer.findFirst({ where: { fullName: MUSA }, select: { externalId: true, email: true } })).toEqual({ externalId: kunnr(2), email: null });
 });
 
 test('templates download as Excel (with instructions) and CSV', async ({ page }) => {

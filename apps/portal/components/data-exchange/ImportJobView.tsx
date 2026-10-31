@@ -244,8 +244,8 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
           <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">{nf(job.fileRows)} rows in the file = {nf(job.createdRows)} added + {nf(job.updatedRows)} filled in + {nf(job.skippedRows)} not added + {nf(job.rejectedRows + job.duplicateRows)} rejected{job.fileRows - (job.createdRows + job.updatedRows + job.skippedRows + job.rejectedRows + job.duplicateRows) !== 0 && job.status === 'COMPLETED' ? ' (check the totals)' : '.'}</p>
           {job.status === 'COMPLETED' && job.me.canApprove ? (
             <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-              <p className="text-sm text-[var(--ejo-text-muted)]">Undo removes the {def.plural} this import added and empties only the fields it filled in. It is refused while any work has been recorded on them since.</p>
-              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(`Undo ${job.number}? This removes the ${nf(job.createdRows)} ${def.plural} it added.`)) void runUndo(); }}><Icon name="restore" size={14} /> Undo this import</button>
+              <p className="text-sm text-[var(--ejo-text-muted)]">Undo moves the {def.plural} this import added to the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> — each can be restored from there — and empties only the fields it filled in. It is refused while any work has been recorded on them since.</p>
+              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(`Undo ${job.number}? The ${nf(job.createdRows)} ${def.plural} it added move to the Recycle bin, where they can be restored.`)) void runUndo(); }}><Icon name="restore" size={14} /> Undo this import</button>
               {blockers.length ? (
                 <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3 text-sm">
                   <p className="font-medium text-[var(--ejo-text)]">It cannot be undone: work has been recorded on these since.</p>
@@ -257,6 +257,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
         </SectionCard>
       ) : null}
 
+      {job.status === 'UNDONE' ? <p className="text-sm text-[var(--ejo-text-muted)]">The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p> : null}
       {job.status === 'CANCELLED' ? <p className="text-sm text-[var(--ejo-text-muted)]">This import was cancelled. Nothing from it was loaded.</p> : null}
       <p className="sr-only"><StatusChip label={st.label} tone={st.tone} /></p>
     </div>

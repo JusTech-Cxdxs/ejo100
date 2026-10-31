@@ -26,7 +26,7 @@ Every import goes through the same six steps, in the portal at
 | 3. Check | Every row is checked with the **same rules as the front desk's own forms**, and matched against what is already in EJO. Result: ready, ready with a note, rejected, duplicate in the file, already in EJO. Rejected rows download as a file with a *Problem* column, to fix in Excel and upload again. | No |
 | 4. Approve | A **second person** approves. The person who prepared the import cannot approve it (the platform administrator may, while nobody else holds the role; this is recorded). | No |
 | 5. Load | Rows load in batches of 1,000. Each batch is all-or-nothing; the import is locked so two screens can never load it twice; it can be paused and resumed; a failed batch pauses the import with nothing saved from it. | Yes |
-| 6. Report and undo | The report adds up: rows in the file = added + filled in + not added + rejected. The full row-by-row outcome downloads as a file. **Undo** removes exactly what the import added, and empties only the fields it filled in — refused while any work has been recorded on those records since. | Undo reverses it |
+| 6. Report and undo | The report adds up: rows in the file = added + filled in + not added + rejected. The full row-by-row outcome downloads as a file. **Undo** moves exactly what the import added to the **Recycle bin** — each record its own item, restorable for the bin's retention period (30 days by default) — and empties only the fields it filled in. It is refused while any work has been recorded on those records since. | Undo reverses it (recoverably) |
 
 Every step is in the audit trail (*Data exchange …* entries) with who, when
 and the counts. The staged copy of the file is kept with its import; it is

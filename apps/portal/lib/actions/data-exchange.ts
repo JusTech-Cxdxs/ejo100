@@ -29,6 +29,7 @@ import { requireUser } from '@/lib/actions/workshop';
 import { lagosYear } from '@/lib/utils/format-date';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { ENTITIES, autoMap, cleanMapping, isEntityKey, mappingProblems, profileFromMapping, type EntityKey, type Mapping } from '@/lib/data-exchange/fields';
+import { moveManyToBinInTx } from '@/lib/recycle-bin/server';
 import { checkCustomerRow, checkVehicleRow, phoneKey, type CustomerValues, type Issue, type VehicleValues } from '@/lib/data-exchange/check';
 
 export type ImportStatus = 'UPLOADING' | 'UPLOADED' | 'VALIDATING' | 'VALIDATED' | 'AWAITING_APPROVAL' | 'APPROVED' | 'LOADING' | 'PAUSED' | 'COMPLETED' | 'UNDOING' | 'UNDONE' | 'CANCELLED' | 'FAILED';
@@ -39,7 +40,7 @@ class DataExchangeError extends Error {}
 const MAX_BLOCK_ROWS = 5000;
 const CHECK_BATCH = 2000;
 const LOAD_BATCH = 1000;
-const UNDO_BATCH = 2000;
+const UNDO_BATCH = 500;
 const MAX_COLUMNS = 400;
 const MAX_CELL = 2000;
 const MAX_FILE_ROWS = 1_100_000;
@@ -750,11 +751,11 @@ export async function importUndoBlockers(jobId: string): Promise<{ label: string
 async function undoBlockers(jobId: string, entity: EntityKey): Promise<{ label: string; href: string; why: string }[]> {
   if (entity === 'customers') {
     const busy = await prisma.customer.findMany({
-      where: { importJobId: jobId, OR: [{ jobCards: { some: {} } }, { vehicleServices: { some: {} } }, { warranties: { some: {} } }, { warrantyClaims: { some: {} } }, { accounts: { some: {} } }, { notes: { some: {} } }, { vehicles: { some: { OR: [{ importJobId: null }, { importJobId: { not: jobId } }] } } }] },
+      where: { importJobId: jobId, OR: [{ jobCards: { some: {} } }, { vehicleServices: { some: {} } }, { warranties: { some: {} } }, { warrantyClaims: { some: {} } }, { accounts: { some: {} } }, { sessions: { some: {} } }, { lastLoginAt: { not: null } }, { vehicles: { some: { OR: [{ importJobId: null }, { importJobId: { not: jobId } }] } } }] },
       take: 20,
-      select: { id: true, fullName: true, _count: { select: { jobCards: true, vehicleServices: true, warranties: true, accounts: true, notes: true } } },
+      select: { id: true, fullName: true, lastLoginAt: true, _count: { select: { jobCards: true, vehicleServices: true, warranties: true, accounts: true, sessions: true } } },
     });
-    return busy.map((c) => ({ label: c.fullName, href: `/crm/customers/${c.id}`, why: [c._count.jobCards && 'job cards', c._count.vehicleServices && 'vehicle services', c._count.warranties && 'warranties', c._count.accounts && 'has signed in to the portal', c._count.notes && 'notes'].filter(Boolean).join(', ') || 'vehicles registered since' }));
+    return busy.map((c) => ({ label: c.fullName, href: `/crm/customers/${c.id}`, why: [c._count.jobCards && 'job cards', c._count.vehicleServices && 'vehicle services', c._count.warranties && 'warranties', (c._count.accounts || c._count.sessions || c.lastLoginAt) && 'has set up or used the customer portal'].filter(Boolean).join(', ') || 'vehicles registered since' }));
   }
   const busy = await prisma.customerVehicle.findMany({
     where: { importJobId: jobId, OR: [{ jobCards: { some: {} } }, { vehicleServices: { some: {} } }, { warranties: { some: {} } }, { warrantyClaims: { some: {} } }, { gateExits: { some: {} } }, { roadTestPermits: { some: {} } }, { reminderLogs: { some: {} } }] },
@@ -765,11 +766,12 @@ async function undoBlockers(jobId: string, entity: EntityKey): Promise<{ label: 
 }
 
 /**
- * Undoes a finished import, a batch at a time (call until done): removes the
- * records it created and empties the fields it filled in (only where they
- * still hold the imported value). Refused while anything has been built on
- * them. The staged copy of the file stays, so the same rows can be loaded
- * again later.
+ * Undoes a finished import, a batch at a time (call until done): moves the
+ * records it created to the Recycle bin — each its own item, restorable for
+ * the bin's retention period — and empties the fields it filled in (only
+ * where they still hold the imported value). Refused while anything has been
+ * built on them; one that gets work recorded while the undo runs is kept and
+ * reported. The staged copy of the file stays too.
  */
 export async function undoImportBatch(jobId: string): Promise<{ done: boolean; left: number; blockers: { label: string; href: string; why: string }[] }> {
   await refuseDuringAssist('undoImportBatch');
@@ -790,12 +792,18 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
     const rows = await tx.importRow.findMany({ where: { jobId: job.id, status: { in: ['CREATED', 'UPDATED'] } }, orderBy: { rowNumber: 'asc' }, take: UNDO_BATCH, select: { id: true, status: true, resultId: true, filled: true, cells: true } });
     if (!rows.length) return;
-    const created = rows.filter((r) => r.status === 'CREATED' && r.resultId).map((r) => r.resultId!);
-    if (entity === 'customers') {
-      // Only what this import made, and only while nothing hangs off it (checked again under the lock).
-      if (created.length) await tx.customer.deleteMany({ where: { id: { in: created }, importJobId: job.id, jobCards: { none: {} }, vehicleServices: { none: {} }, warranties: { none: {} }, warrantyClaims: { none: {} }, accounts: { none: {} }, notes: { none: {} } } });
-    } else if (created.length) {
-      await tx.customerVehicle.deleteMany({ where: { id: { in: created }, importJobId: job.id, jobCards: { none: {} }, vehicleServices: { none: {} }, warranties: { none: {} }, warrantyClaims: { none: {} }, gateExits: { none: {} }, roadTestPermits: { none: {} }, reminderLogs: { none: {} } } });
+    // Only what this import made (importJobId), each moved to the Recycle bin as its own restorable item, with the
+    // bin's own rules checked again under the lock: one that has had work recorded meanwhile is kept and reported.
+    const createdRows = rows.filter((r) => r.status === 'CREATED' && r.resultId);
+    const mine = createdRows.length
+      ? new Set((entity === 'customers'
+        ? await tx.customer.findMany({ where: { id: { in: createdRows.map((r) => r.resultId!) }, importJobId: job.id }, select: { id: true } })
+        : await tx.customerVehicle.findMany({ where: { id: { in: createdRows.map((r) => r.resultId!) }, importJobId: job.id }, select: { id: true } })).map((x) => x.id))
+      : new Set<string>();
+    const moved = new Set(await moveManyToBinInTx(tx, entity === 'customers' ? 'Customer' : 'CustomerVehicle', [...mine], `Undo of import ${job.number}`, userId));
+    const kept = createdRows.filter((r) => !moved.has(r.resultId!));
+    if (kept.length) {
+      await tx.importRow.updateMany({ where: { id: { in: kept.map((r) => r.id) } }, data: { status: 'KEPT' } });
     }
     const mapping = (job.mapping as Mapping | null) ?? {};
     for (const r of rows.filter((x) => x.status === 'UPDATED' && x.resultId && x.filled.length)) {
@@ -820,12 +828,16 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         if (Object.keys(data).length) await tx.customerVehicle.update({ where: { id: r.resultId! }, data });
       }
     }
-    await tx.importRow.updateMany({ where: { id: { in: rows.map((r) => r.id) } }, data: { status: 'UNDONE' } });
+    const keptIds = new Set(kept.map((r) => r.id));
+    await tx.importRow.updateMany({ where: { id: { in: rows.filter((r) => !keptIds.has(r.id)).map((r) => r.id) } }, data: { status: 'UNDONE' } });
   }, TX);
   const left = await prisma.importRow.count({ where: { jobId: job.id, status: { in: ['CREATED', 'UPDATED'] } } });
   if (left > 0) return { done: false, left, blockers: [] };
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'UNDOING' }, data: { status: 'UNDONE', undoneAt: new Date(), undoneById: userId } });
-  if (res.count) await writeAuditLog({ userId, action: 'data_exchange.undone', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, entity: ENTITIES[entity].label } });
+  if (res.count) {
+    const [binned, kept] = await Promise.all([prisma.importRow.count({ where: { jobId: job.id, status: 'UNDONE', resultId: { not: null }, filled: { isEmpty: true } } }), prisma.importRow.count({ where: { jobId: job.id, status: 'KEPT' } })]);
+    await writeAuditLog({ userId, action: 'data_exchange.undone', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, entity: ENTITIES[entity].label, movedToRecycleBin: binned, keptBecauseOfNewWork: kept } });
+  }
   return { done: true, left: 0, blockers: [] };
 }
 

@@ -314,6 +314,89 @@ export async function moveToBin(entity: BinEntity, id: string, reason: string, a
   }, { timeout: 20_000 });
 }
 
+// ── Many at once (an undone import) ───────────────────────────────────
+
+const group = <T extends Record<string, unknown>>(rows: T[], key: keyof T) => {
+  const m = new Map<string, T[]>();
+  for (const r of rows) { const k = String(r[key]); const list = m.get(k); if (list) list.push(r); else m.set(k, [r]); }
+  return m;
+};
+
+/**
+ * Moves many customers or vehicles to the bin inside the caller's
+ * transaction — the batch form of moveToBin, used when an import is undone.
+ * Each record becomes its own bin item with the same snapshot a single
+ * delete would take, so each can be restored on its own. The records are
+ * locked and only those with nothing of consequence on them are moved (the
+ * same rules as a single delete); the ids moved are returned, the others are
+ * left untouched for the caller to report.
+ */
+export async function moveManyToBinInTx(tx: Tx, entity: 'Customer' | 'CustomerVehicle', ids: string[], reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+  if (!ids.length) return [];
+  await lockExisting(tx, LOCK[entity], ids).catch(() => undefined);
+  const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  if (entity === 'CustomerVehicle') {
+    const vehicles = await tx.customerVehicle.findMany({
+      where: { id: { in: ids }, jobCards: { none: {} }, vehicleServices: { none: {} }, warranties: { none: {} }, warrantyClaims: { none: {} }, gateExits: { none: {} }, roadTestPermits: { none: {} } },
+      include: { customer: { select: { fullName: true, organisationId: true } } },
+    });
+    if (!vehicles.length) return [];
+    const logs = group(await tx.serviceReminderLog.findMany({ where: { vehicleId: { in: vehicles.map((v) => v.id) } }, orderBy: { sentAt: 'asc' } }), 'vehicleId');
+    await tx.recycleBinItem.createMany({
+      data: vehicles.map(({ customer, ...v }) => {
+        const snapshot = orderedSnapshot('CustomerVehicle', [...plain([v], 'customerVehicle'), ...plain(logs.get(v.id) ?? [], 'serviceReminderLog')]);
+        return {
+          organisationId: customer.organisationId, branchId: null, entityType: 'CustomerVehicle', entityId: v.id,
+          reference: v.plateNumber || v.chassisNumber || [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle',
+          label: binLabel([vehicleText(v), v.chassisNumber, customer.fullName]), reason,
+          snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter,
+        };
+      }),
+    });
+    await tx.customerVehicle.deleteMany({ where: { id: { in: vehicles.map((v) => v.id) } } });
+    return vehicles.map((v) => v.id);
+  }
+  const customers = await tx.customer.findMany({
+    where: {
+      id: { in: ids }, lastLoginAt: null, sessions: { none: {} }, jobCards: { none: {} }, vehicleServices: { none: {} }, warranties: { none: {} }, warrantyClaims: { none: {} },
+      vehicles: { none: { OR: [{ jobCards: { some: {} } }, { vehicleServices: { some: {} } }, { warranties: { some: {} } }, { warrantyClaims: { some: {} } }, { gateExits: { some: {} } }, { roadTestPermits: { some: {} } }] } },
+    },
+  });
+  if (!customers.length) return [];
+  const cids = customers.map((c) => c.id);
+  const [companies, addresses, contacts, notes, reads, vehicles] = await Promise.all([
+    tx.customerCompany.findMany({ where: { customerId: { in: cids } } }),
+    tx.customerAddress.findMany({ where: { customerId: { in: cids } }, orderBy: { createdAt: 'asc' } }),
+    tx.customerContact.findMany({ where: { customerId: { in: cids } }, orderBy: { createdAt: 'asc' } }),
+    tx.customerNote.findMany({ where: { customerId: { in: cids } }, orderBy: { createdAt: 'asc' } }),
+    tx.customerNotificationRead.findMany({ where: { customerId: { in: cids } } }),
+    tx.customerVehicle.findMany({ where: { customerId: { in: cids } }, orderBy: { createdAt: 'asc' } }),
+  ]);
+  const logs = vehicles.length ? await tx.serviceReminderLog.findMany({ where: { vehicleId: { in: vehicles.map((v) => v.id) } }, orderBy: { sentAt: 'asc' } }) : [];
+  const ownerOf = new Map(vehicles.map((v) => [v.id, v.customerId]));
+  const by = {
+    company: group(companies, 'customerId'), address: group(addresses, 'customerId'), contact: group(contacts, 'customerId'),
+    note: group(notes, 'customerId'), read: group(reads, 'customerId'), vehicle: group(vehicles, 'customerId'),
+    log: group(logs.map((l) => ({ ...l, owner: ownerOf.get(l.vehicleId) ?? '' })), 'owner'),
+  };
+  await tx.recycleBinItem.createMany({
+    data: customers.map((c) => {
+      const snapshot = orderedSnapshot('Customer', [
+        ...plain([c], 'customer'), ...plain(by.company.get(c.id) ?? [], 'customerCompany'), ...plain(by.address.get(c.id) ?? [], 'customerAddress'),
+        ...plain(by.contact.get(c.id) ?? [], 'customerContact'), ...plain(by.note.get(c.id) ?? [], 'customerNote'), ...plain(by.read.get(c.id) ?? [], 'customerNotificationRead'),
+        ...plain(by.vehicle.get(c.id) ?? [], 'customerVehicle'), ...plain((by.log.get(c.id) ?? []).map(({ owner: _o, ...l }) => l), 'serviceReminderLog'),
+      ]);
+      return {
+        organisationId: c.organisationId, branchId: null, entityType: 'Customer', entityId: c.id, reference: c.fullName, label: binLabel([c.fullName, c.email]), reason,
+        snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter,
+      };
+    }),
+  });
+  await tx.customerVerification.deleteMany({ where: { value: { in: cids } } });
+  await tx.customer.deleteMany({ where: { id: { in: cids } } });
+  return cids;
+}
+
 // ── Restore ───────────────────────────────────────────────────────────
 
 type Creator = { createMany: (args: { data: Record<string, unknown>[] }) => Promise<unknown> };
