@@ -19,6 +19,7 @@ test('a full SAP material master: upload, check, approve, load', async ({ page }
   const mark = (k: string, from: number) => { t[k] = Math.round((Date.now() - from) / 100) / 10; };
   await as(page, 'it-administrator');
   await page.goto('/data-exchange/new?entity=parts');
+  await expect(page.locator('#import-branch')).toHaveCount(1);
   await page.locator('#import-branch').selectOption(branchId);
   let s = Date.now();
   await page.locator('#import-file').setInputFiles(process.env.PERF_FILE!);

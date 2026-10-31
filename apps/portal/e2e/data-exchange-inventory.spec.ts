@@ -23,7 +23,8 @@ async function storeBranchId(): Promise<string> {
 
 async function upload(page: Page, entity: string, name: string, body: string, opts: { branchId?: string } = {}): Promise<string> {
   await page.goto(`/data-exchange/new?entity=${entity}`);
-  if (opts.branchId) await page.locator('#import-branch').selectOption(opts.branchId);
+  // The page settles first (while it is still arriving the picker can briefly appear twice).
+  if (opts.branchId) { await expect(page.locator('#import-branch')).toHaveCount(1); await page.locator('#import-branch').selectOption(opts.branchId); }
   await page.locator('#import-file').setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from(body) });
   await page.waitForURL(/\/data-exchange\/imports\/[^/?]+$/, { timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'Match the columns' })).toBeVisible();
