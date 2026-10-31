@@ -554,7 +554,12 @@ model Customer {
   // Primary address: one short line printed on the Job Card (max 80 characters,
   // enforced in the app). Extra addresses go in CustomerAddress.
   address       String?
-  email         String       @unique
+  // Optional (v-A0): customers brought in from SAP or old spreadsheets often
+  // have no email, or share a fleet address. Unique when present (Postgres
+  // allows many NULLs under a unique index). Only a customer with a real,
+  // verified email can use the customer portal; the others are full CRM
+  // records reached by phone. Never filled with a made-up address.
+  email         String?      @unique
   emailVerified Boolean      @default(false)
   image         String?
   phone         String?
@@ -569,6 +574,13 @@ model Customer {
 
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
+
+  // The number this customer has in another system (v-A0): externalSource is
+  // where it came from (SAP, LEGACY_EXCEL), externalId the number there (the
+  // SAP business partner / KUNNR). Unique per organisation and source, so an
+  // import matched on it never creates the same customer twice.
+  externalSource String?
+  externalId     String?
 
   // Nullable: customers who sign themselves up have no staff creator.
   createdById   String?
@@ -589,6 +601,7 @@ model Customer {
   vehicleServices VehicleService[]
 
   @@index([organisationId])
+  @@unique([organisationId, externalSource, externalId])
   @@map("customers")
   warranties      Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -630,6 +643,13 @@ model CustomerVehicle {
   serviceIntervalKm   Int?
   serviceIntervalDays Int?
 
+  // The vehicle's number in another system (v-A0), e.g. SAP equipment number.
+  // Vehicles have no organisation column of their own (they belong through the
+  // customer), so this is indexed, and the importer checks it within the
+  // customer's organisation. The VIN and plate stay the real unique keys.
+  externalSource String?
+  externalId     String?
+
   createdById String? // staff member who registered this vehicle
   createdBy   User?   @relation("VehicleCreatedBy", fields: [createdById], references: [id])
   createdAt    DateTime @default(now())
@@ -639,6 +659,7 @@ model CustomerVehicle {
   reminderLogs ServiceReminderLog[]
 
   @@index([customerId])
+  @@index([externalSource, externalId])
   @@map("customer_vehicles")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -1687,6 +1708,10 @@ model Part {
   // Warranty issued with this part on release to a customer (null = none).
   // Set on the Part page.
   warrantyPolicyId String?
+  // The part's number in another system (v-A0): externalSource SAP and
+  // externalId the material number (MATNR). Unique per branch and source.
+  externalSource String?
+  externalId     String?
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1711,6 +1736,7 @@ model Part {
   pricingAlerts     PricingAlert[]
 
   @@unique([branchId, partNumber])
+  @@unique([branchId, externalSource, externalId])
   @@map("parts")
 }
 

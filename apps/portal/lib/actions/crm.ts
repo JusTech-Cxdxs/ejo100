@@ -144,7 +144,7 @@ export async function getCrmHub(params: CrmHubParams = {}) {
   ]);
 
   const byId = new Map(stats.map((s) => [s.id, s]));
-  type Row = CrmRow & { email: string; altPhone: string | null; lastSignIn: Date | null; netYear: number };
+  type Row = CrmRow & { email: string | null; altPhone: string | null; lastSignIn: Date | null; netYear: number };
   const all: Row[] = customers.map((c: (typeof customers)[number]) => {
     const s = byId.get(c.id);
     const lastSession = s?.lastSession ? new Date(s.lastSession) : null;
@@ -188,7 +188,7 @@ export async function getCrmHub(params: CrmHubParams = {}) {
 }
 
 /** Customer picker for broadcasts and the CRM (search as you type). */
-export async function searchCrmCustomers(query: string): Promise<{ id: string; fullName: string; email: string; phone: string | null }[]> {
+export async function searchCrmCustomers(query: string): Promise<{ id: string; fullName: string; email: string | null; phone: string | null }[]> {
   if (!(await allows('notifications.broadcast.send'))) await authorize('crm.view', undefined, 'searchCrmCustomers');
   const q = query.trim().slice(0, 100);
   if (!q) return [];
@@ -410,7 +410,9 @@ export async function updateCustomer(input: UpdateCustomerInput): Promise<{ chan
   const next = {
     fullName: cleanName(input.fullName, customerType === 'ORGANIZATION' ? 'Organisation name' : 'Customer name'),
     customerType,
-    email: cleanEmail(input.email),
+    // A customer imported without an email may stay without one (or get one now); an email already on
+    // file can be changed but never removed, since the customer signs in to the portal with it.
+    email: !before.email && !(input.email ?? '').trim() ? null : cleanEmail(input.email),
     phone: cleanPhone(input.phone, { required: true, label: 'Phone number' }),
     altPhone: cleanPhone(input.altPhone, { required: false, label: 'Second phone number' }),
     address: cleanPrimaryAddress(input.address),
@@ -418,7 +420,7 @@ export async function updateCustomer(input: UpdateCustomerInput): Promise<{ chan
     ...(typeof input.notifyByEmail === 'boolean' ? { notifyByEmail: input.notifyByEmail } : {}),
   };
   if (next.altPhone && next.phone && next.altPhone.replace(/\D/g, '') === next.phone.replace(/\D/g, '')) throw new CrmError('The second phone number is the same as the primary one.');
-  if (next.email !== before.email) {
+  if (next.email && next.email !== before.email) {
     const taken = await prisma.customer.findUnique({ where: { email: next.email }, select: { id: true, organisationId: true } });
     if (taken && taken.id !== before.id) {
       throw new CrmError(taken.organisationId === before.organisationId ? 'Another customer already uses that email address — open their page instead.' : 'That email address is already registered on the platform — use a different email for this customer.');

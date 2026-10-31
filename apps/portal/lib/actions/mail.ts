@@ -338,7 +338,8 @@ export async function searchMailRecipients(query: string): Promise<Recipient[]> 
       orderBy: { fullName: 'asc' },
       take: 8 - out.length,
     });
-    out.push(...customers.filter((c) => c.email && !c.email.endsWith('.invalid')).map((c) => ({ name: c.fullName, email: c.email, detail: 'Customer', kind: 'customer' as const })));
+    // A customer with no email on file (imported from SAP or a spreadsheet) cannot be written to, so is not offered.
+    out.push(...customers.flatMap((c) => (c.email && !c.email.endsWith('.invalid') ? [{ name: c.fullName, email: c.email, detail: 'Customer', kind: 'customer' as const }] : [])));
   }
   return out;
 }

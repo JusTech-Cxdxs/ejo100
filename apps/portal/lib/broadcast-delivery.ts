@@ -12,7 +12,8 @@ const CUSTOMER_BATCH = 5;
  * logged (Settings → Email delivery); a failure never stops the others. */
 async function emailCustomers(b: { id: string; title: string; message: string; category: string; organisationId: string; audience: string; audienceIds: string[]; organisation: { name: string } }): Promise<{ sent: number; failed: number }> {
   const customers = await prisma.customer.findMany({
-    where: { organisationId: b.organisationId, isActive: true, notifyByEmail: true, ...(b.audience === 'CUSTOMERS_SELECTED' ? { id: { in: b.audienceIds } } : {}) },
+    // Only customers with an email on file: one imported without an address is not a failed send.
+    where: { organisationId: b.organisationId, isActive: true, notifyByEmail: true, email: { not: null }, ...(b.audience === 'CUSTOMERS_SELECTED' ? { id: { in: b.audienceIds } } : {}) },
     select: { id: true, fullName: true, email: true },
   });
   const meta = BROADCAST_CATEGORY[b.category] ?? BROADCAST_CATEGORY.ANNOUNCEMENT!;

@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { prisma } from '@ejo/database';
 import { hashPassword } from 'better-auth/crypto';
 import { sendEmail } from '@/lib/email';
+import { NO_CUSTOMER_EMAIL, hasEmail } from '@/lib/customer-email';
 import { redact } from '@/lib/errors';
 import { writeAuditLog, getWorkshopBranchId } from '@/lib/workshop-core';
 import { renderCustomerWelcomeEmail } from '@/lib/email-templates/customer-welcome';
@@ -78,6 +79,9 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
   const customer = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, fullName: true, email: true, isActive: true, organisationId: true } }).catch(() => null);
   if (!customer) return { sent: false, reason: 'This customer no longer exists.' };
   if (!customer.isActive) return { sent: false, reason: 'Their portal access is switched off — switch it on first.' };
+  // Portal access needs a real address of the customer's own: none on file means no link is made at all.
+  if (!hasEmail(customer.email)) return { sent: false, reason: NO_CUSTOMER_EMAIL };
+  const email = customer.email;
   const verb = kind === 'welcome' ? 'welcome' : 'set_password_link';
   let error: string | null = null;
   let subject = kind === 'welcome' ? 'Welcome email' : 'Set-password link';
@@ -90,7 +94,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
     const rendered = renderCustomerWelcomeEmail({
       kind,
       customerName: customer.fullName,
-      email: customer.email,
+      email,
       setPasswordUrl,
       setPasswordHours: CUSTOMER_SET_PASSWORD_HOURS,
       signInUrl: `${website}/customer-portal`,
@@ -100,7 +104,7 @@ export async function sendCustomerAccessEmail(customerId: string, kind: 'welcome
       branchContact: branch ? { address: branch.address, phones: branch.hotlines, email: branch.email } : undefined,
     });
     subject = rendered.subject;
-    await sendEmail(customer.email, rendered.subject, rendered.html, undefined, { observer: false });
+    await sendEmail(email, rendered.subject, rendered.html, undefined, { observer: false });
   } catch (err) {
     error = redact(err instanceof Error ? err.message : String(err)).slice(0, 300);
     logFailure('Customer access email failed', customer.id, kind, error);
