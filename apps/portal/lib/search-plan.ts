@@ -30,6 +30,8 @@ export const REFERENCE_TYPES = [
   { prefix: 'BC', model: 'Broadcast', group: 'Broadcasts', path: (id: string) => `/notifications/broadcasts/${id}` },
   // Support tickets: customers and website visitors handed over by Enyo (numbered by the website).
   { prefix: 'SUP', model: 'SupportTicket', group: 'Support tickets', path: (id: string) => `/crm/support/${id}` },
+  // Data Exchange: an import of records from SAP or a spreadsheet.
+  { prefix: 'IMP', model: 'ImportJob', group: 'Imports', path: (id: string) => `/data-exchange/imports/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

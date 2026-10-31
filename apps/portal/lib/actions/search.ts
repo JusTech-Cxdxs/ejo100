@@ -38,6 +38,7 @@ const MORE_PAGES: (SearchHit & { needs?: PermissionKey[] })[] = [
   { label: 'Calendar', href: '/schedule/calendar', needs: ['schedule.view'] },
   { label: 'Appointments (APT)', href: '/schedule/appointments', needs: ['schedule.view'] },
   { label: 'Notification Center', href: '/notifications' },
+  { label: 'Data Exchange — imports (IMP)', href: '/data-exchange', needs: ['dataexchange.import.run', 'dataexchange.import.approve'] },
   { label: 'Broadcasts (BC)', href: '/notifications/broadcasts', needs: ['notifications.broadcast.send'] },
   { label: 'Support centre (SUP)', href: '/crm/support', needs: ['support.tickets.manage'] },
 ];
@@ -160,7 +161,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -197,6 +198,9 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
       (w) => prisma.broadcast.findMany({ where: W<Prisma.BroadcastWhereInput>(w), take, orderBy: newest, select: { id: true, broadcastNumber: true, title: true } })),
     find(supportReach, { numbers: [['SUP', 'number']], text: ['contactName', 'subject'], phones: ['contactPhone'] },
       (w) => prisma.supportTicket.findMany({ where: W<Prisma.SupportTicketWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, contactName: true, status: true } })),
+    // Imports (Data Exchange): the people who prepare or approve them, in their own organisation.
+    find((allowed('dataexchange.import.run') || allowed('dataexchange.import.approve')) && sameOrg, { numbers: [['IMP', 'number']], text: ['fileName'] },
+      (w) => prisma.importJob.findMany({ where: W<Prisma.ImportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, fileName: true, status: true } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
@@ -251,6 +255,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('APT', 'Appointments', appts.map((r) => ({ label: r.appointmentNumber, sub: r.title, href: referenceUrl('APT', r.id) }))),
     ref('BC', 'Broadcasts', broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: referenceUrl('BC', r.id) }))),
     ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
+    ref('IMP', 'Imports', imports.map((r) => ({ label: r.number, sub: dot(r.fileName, words(r.status)), href: referenceUrl('IMP', r.id) }))),
     { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.customer?.fullName), href: `/workshop/vehicles/${r.id}/edit` })) },
     // The customer's 360° page (CRM), or the Workshop customer list for people without the CRM.
     { group: 'Customers', hits: customers.map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },

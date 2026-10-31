@@ -193,6 +193,11 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   SupportQueue: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'While the organisation uses it; switched off rather than deleted while tickets point at it', ai: 'AUTHORISED_USER' },
   SupportQueueMember: { tenancy: 'VIA_PARENT', owner: 'queueId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'Until the person is taken off the queue', ai: 'NEVER' },
   SupportMailbox: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['SECRET'], lifecycle: 'EDITABLE', retention: 'Until an administrator removes it; the encrypted password goes with it', ai: 'NEVER' },
+  // Data Exchange (v-A1): imports from SAP and spreadsheets. The staged rows are the file as uploaded (often personal data):
+  // never given to AI, removed with their import, and gone when an import is cancelled.
+  ImportJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the contract (the record of what was brought in)', ai: 'AGGREGATE_ONLY' },
+  ImportRow: { tenancy: 'VIA_PARENT', owner: 'jobId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'With its import; deleted at once if the import is cancelled', ai: 'NEVER' },
+  ImportMappingProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },
   MailStyleSample: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: '90 days, at most 200 per person; removed when they withdraw consent or disconnect their mailbox', ai: 'AUTHORISED_USER' },
   IntegrityAlert: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL', 'FINANCIAL', 'AUDIT'], lifecycle: 'STATE_MACHINE', retention: '7 years (internal-control evidence); reviewed alerts are never deleted', ai: 'AUTHORISED_USER' },
   PublicProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'EDITABLE', retention: 'Until an administrator removes the person (published professional details only, no contact details)', ai: 'AUTHORISED_USER' },
