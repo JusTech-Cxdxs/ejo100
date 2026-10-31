@@ -31,5 +31,6 @@ export const ROW_OUTCOME: Record<string, string> = {
   CREATED: 'Added',
   UPDATED: 'Filled in an existing record',
   SKIPPED: 'Not added',
-  UNDONE: 'Undone',
+  UNDONE: 'Undone (moved to the Recycle bin)',
+  KEPT: 'Kept (work was recorded on it during the undo)',
 };
