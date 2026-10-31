@@ -173,6 +173,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'store-manager': {
     'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B,
     'analytics.inventory.view': B, 'security.pass.approve': 'DEPARTMENT',
+    // The branch's parts, opening stock and suppliers coming in from SAP are the Store Manager's to approve.
+    'dataexchange.import.approve': B,
   },
   'store-officer': { 'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B, 'analytics.inventory.view': B },
   // ── Warranty ─────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ export const LOCKABLE = {
   customerVehicle: { table: 'customer_vehicles', column: 'id' },
   customer: { table: 'customers', column: 'id' },
   part: { table: 'parts', column: 'id' },
+  supplier: { table: 'suppliers', column: 'id' },
 } as const;
 export type LockTarget = keyof typeof LOCKABLE;
 

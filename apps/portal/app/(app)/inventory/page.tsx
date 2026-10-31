@@ -6,6 +6,7 @@ import { PageHeader, NavCard, type IconName } from '@/components/ui';
 const sections: { name: string; href: string; desc: string; icon: IconName }[] = [
   { name: 'Parts Catalog', href: '/inventory/parts', icon: 'package', desc: 'Parts the Store stocks, with tracking type, unit and stock on hand.' },
   { name: 'Goods Receipts', href: '/inventory/goods-receipts', icon: 'receipt', desc: 'Deliveries received into the Store.' },
+  { name: 'Suppliers', href: '/inventory/suppliers', icon: 'truck', desc: 'The organisation\'s suppliers (SAP vendors), with how often each delivers.' },
   { name: 'Part Categories & Types', href: '/inventory/part-types', icon: 'layers', desc: 'The categories and types technicians choose from on an estimate.' },
   { name: 'Estimate Matching', href: '/inventory/estimate-matching', icon: 'match', desc: 'Store Part lines waiting to be matched to a catalogue part and priced.' },
   { name: 'Inventory Analytics', href: '/inventory/analytics', icon: 'chart', desc: 'Stock health, suggested reorder points and safety stock, demand, ABC/XYZ, turnover and profitability.' },

@@ -8,6 +8,8 @@ import { SerialNumberInput } from './SerialNumberInput';
 import { IdempotencyKey } from './IdempotencyKey';
 import { pluralizeWord } from '@/lib/utils/pluralize';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
+import { searchPartsForReceipt } from '@/lib/actions/store';
+import { suggestSupplierNames } from '@/lib/actions/suppliers';
 
 type PartOption = {
   id: string;
@@ -28,15 +30,17 @@ type SerialRow = { key: string; value: string };
  */
 export function GoodsReceiptForm({
   branchId,
-  parts,
   action,
 }: {
   branchId: string;
-  parts: PartOption[];
   action: (formData: FormData) => void | Promise<void>;
 }) {
   const [selectedPartId, setSelectedPartId] = useState('');
-  const selectedPart = parts.find((p) => p.id === selectedPartId);
+  const [supplierNames, setSupplierNames] = useState<string[]>([]);
+  const supplierTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Parts come from the server as the person types (a catalogue can hold hundreds of thousands); those seen are kept here.
+  const seen = useRef(new Map<string, PartOption>());
+  const selectedPart = selectedPartId ? seen.current.get(selectedPartId) : undefined;
   const [quantity, setQuantity] = useState('');
   const [unitUsed, setUnitUsed] = useState('');
   const [totalCost, setTotalCost] = useState('');
@@ -47,19 +51,17 @@ export function GoodsReceiptForm({
     setSelectedPartId(partId);
     // Default to the alternative unit (deliveries usually come by the drum
     // or carton). Set on every part change; defaultValue would only apply once.
-    const newPart = parts.find((p) => p.id === partId);
+    const newPart = seen.current.get(partId);
     setUnitUsed(newPart?.alternativeUnits[0]?.unitName ?? newPart?.baseUnitOfMeasure ?? '');
   }
 
-  // Parts are already loaded, so search filters on the client.
-  const allPartOptions: SearchableOption[] = parts.map((p) => ({ value: p.id, label: p.name }));
   async function searchPartsLocal(query: string): Promise<SearchableOption[]> {
-    const q = query.trim().toLowerCase();
-    if (!q) return allPartOptions;
-    return allPartOptions.filter((o) => o.label.toLowerCase().includes(q));
+    const found = await searchPartsForReceipt(branchId, query);
+    for (const p of found) seen.current.set(p.id, p);
+    return found.map((p) => ({ value: p.id, label: p.name, sublabel: p.partNumber ?? undefined }));
   }
   async function loadAllPartsLocal(): Promise<SearchableOption[]> {
-    return allPartOptions;
+    return searchPartsLocal('');
   }
 
   function addSerialRow() {
@@ -102,12 +104,22 @@ export function GoodsReceiptForm({
       <input type="hidden" name="branchId" value={branchId} />
 
       <div>
-        <label className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Supplier</label>
+        <label htmlFor="grn-supplier" className="mb-1 block text-xs text-[var(--ejo-text-muted)]">Supplier</label>
         <input
+          id="grn-supplier"
           name="supplierName"
           required
+          list="grn-supplier-list"
+          autoComplete="off"
+          onChange={(e) => {
+            const v = e.target.value;
+            if (supplierTimer.current) clearTimeout(supplierTimer.current);
+            supplierTimer.current = setTimeout(() => { suggestSupplierNames(v).then(setSupplierNames).catch(() => setSupplierNames([])); }, 250);
+          }}
           className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
         />
+        <datalist id="grn-supplier-list">{supplierNames.map((n) => <option key={n} value={n} />)}</datalist>
+        <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">Suppliers from the supplier list are suggested as you type; any name can be entered.</p>
       </div>
 
       <div>
@@ -117,7 +129,7 @@ export function GoodsReceiptForm({
           required
           search={searchPartsLocal}
           loadDefaultOptions={loadAllPartsLocal}
-          defaultOptionsLabel="All Parts"
+          defaultOptionsLabel="Recently changed parts"
           placeholder="Search Parts…"
           emptyMessage="No Part matches."
           onChange={selectPart}

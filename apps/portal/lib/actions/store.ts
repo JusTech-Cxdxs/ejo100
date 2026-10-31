@@ -13,7 +13,7 @@ import { logFailure } from '@/lib/log';
 
 import { claimed } from '@/lib/integrity';
 import { isUniqueClashOn, retryOnNumberClash } from '@/lib/integrity-core';
-import { prisma, PartTrackingType } from '@ejo/database';
+import { prisma, PartTrackingType, type Prisma } from '@ejo/database';
 import { notifyWarrantyDepartmentOfPartWarranty } from '@/lib/warranty-department-notify';
 import { loadQuantityTraces } from '@/lib/inventory/quantity-trace';
 import { pluralize } from '@/lib/utils/pluralize';
@@ -1136,11 +1136,74 @@ export async function matchEstimateStorePartLine(lineItemId: string, partId: str
   }
 }
 
-export async function listParts(branchId: string, search?: string) {
+// A 'use server' file exports only async functions: the page size stays private.
+const PARTS_PAGE_SIZE = 50;
+
+/**
+ * One page of the branch's catalogue (newest search first, by name), with the
+ * total — a catalogue of hundreds of thousands of SAP materials never loads
+ * whole into a page.
+ */
+export async function listPartsPage(branchId: string, search: string | undefined, page: number): Promise<{ parts: Awaited<ReturnType<typeof listParts>>; total: number; page: number; pages: number }> {
+  await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
+  const q = search?.trim();
+  const where: Prisma.PartWhereInput = {
+    branchId,
+    isActive: true,
+    ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } }, { category: { contains: q, mode: 'insensitive' } }, { barcode: { equals: q } }] } : {}),
+  };
+  const total = await prisma.part.count({ where });
+  const pages = Math.max(1, Math.ceil(total / PARTS_PAGE_SIZE));
+  const p = Math.min(Math.max(1, Math.trunc(page) || 1), pages);
+  const parts = await prisma.part.findMany({ where, orderBy: [{ name: 'asc' }, { id: 'asc' }], skip: (p - 1) * PARTS_PAGE_SIZE, take: PARTS_PAGE_SIZE, include: { stock: true, alternativeUnits: true } });
+  return { parts, total, page: p, pages };
+}
+
+/**
+ * Parts for the goods-receipt picker, as the person types (at most 25, with
+ * their units and tracking) — or the 25 most recently changed when nothing is
+ * typed. Never the whole catalogue in the browser.
+ */
+export async function searchPartsForReceipt(branchId: string, search: string): Promise<{ id: string; name: string; partNumber: string | null; trackingType: string; baseUnitOfMeasure: string; alternativeUnits: { unitName: string; conversionFactor: string }[] }[]> {
+  await requireUser();
+  await authorize('store.grn.record', undefined, 'searchPartsForReceipt');
+  branchId = await branchWithinReach('store.view', branchId);
+  const q = String(search ?? '').trim().slice(0, 80);
+  const rows = await prisma.part.findMany({
+    where: { branchId, isActive: true, ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } }, { barcode: { equals: q } }] } : {}) },
+    orderBy: q ? [{ name: 'asc' }] : [{ updatedAt: 'desc' }],
+    take: 25,
+    select: { id: true, name: true, partNumber: true, trackingType: true, baseUnitOfMeasure: true, alternativeUnits: { select: { unitName: true, conversionFactor: true } } },
+  });
+  return rows.map((p) => ({ ...p, alternativeUnits: p.alternativeUnits.map((u) => ({ unitName: u.unitName, conversionFactor: String(u.conversionFactor) })) }));
+}
+
+/**
+ * The branch's parts that are out of stock or at / below their reorder point
+ * (worst first, at most 300) — found by the database, so a catalogue of any
+ * size is never read whole.
+ */
+export async function listLowStockParts(branchId: string) {
+  await requireUser();
+  branchId = await branchWithinReach('store.view', branchId);
+  const low = await prisma.$queryRaw<{ id: string }[]>`
+    SELECT p.id FROM parts p LEFT JOIN part_stock s ON s."partId" = p.id
+     WHERE p."branchId" = ${branchId} AND p."isActive"
+       AND (COALESCE(s."quantityOnHand", 0) - COALESCE(s."quantityReserved", 0) <= 0
+            OR (p."reorderPoint" IS NOT NULL AND COALESCE(s."quantityOnHand", 0) - COALESCE(s."quantityReserved", 0) <= p."reorderPoint"))
+     ORDER BY COALESCE(s."quantityOnHand", 0) - COALESCE(s."quantityReserved", 0) - COALESCE(p."reorderPoint", 0) ASC, p.name ASC
+     LIMIT 300`;
+  if (!low.length) return [];
+  return prisma.part.findMany({ where: { id: { in: low.map((x) => x.id) }, branchId }, include: { stock: true, alternativeUnits: true } });
+}
+
+export async function listParts(branchId: string, search?: string, take?: number) {
   await requireUser();
   branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
   return prisma.part.findMany({
+    ...(take ? { take: Math.min(Math.max(1, take), 500) } : {}),
     where: {
       branchId,
       isActive: true,
@@ -1440,12 +1503,15 @@ async function recordGoodsReceiptOnce(input: RecordGoodsReceiptInput, user: Awai
     newAlertsForEmail.length = 0;
     referenceNumber = await generateGoodsReceiptNumber();
     return prisma.$transaction(async (tx) => {
+    // Linked to the organisation's supplier list when the name matches one (v-A2); the name stays as typed.
+    const supplier = await tx.supplier.findFirst({ where: { name: { equals: supplierName, mode: 'insensitive' }, isActive: true, organisation: { businessUnits: { some: { branches: { some: { id: input.branchId } } } } } }, select: { id: true } });
     const created = await tx.goodsReceipt.create({
       data: {
         idempotencyKey: input.idempotencyKey || null,
         branchId: input.branchId,
         referenceNumber,
         supplierName,
+        supplierId: supplier?.id ?? null,
         receivedById: user.id,
         notes: input.notes?.trim() || undefined,
       },

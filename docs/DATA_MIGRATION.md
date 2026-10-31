@@ -1,13 +1,13 @@
 # Data migration — bringing existing records into EJO 100
 
-How an organisation's existing data (years of customers, vehicles and, from
-phase A2, parts and opening stock) comes into EJO 100 from SAP and from
-spreadsheets, **without retyping and without risk to the live records**.
+How an organisation's existing data — years of customers and vehicles, the
+suppliers, the parts catalogue (SAP material master) and the stock each
+branch holds — comes into EJO 100 from SAP and from spreadsheets, **without
+retyping and without risk to the live records**.
 
-> Status: **A1** (this document's first version). Customers and vehicles.
-> Coming next: A2 parts master (800,000 lines), opening stock, suppliers;
-> A3 open job cards, service history, warranties, price lists; A4 export from
-> every list and the measured performance run.
+> Status: **A2.** Customers, vehicles (A1); suppliers, parts, opening stock
+> (A2). Coming next: SAP history (customer-since dates, invoice history,
+> production / QC / PDI registers); A4 export from every list.
 
 ## 1. The principle
 
@@ -36,15 +36,21 @@ deleted at once if the import is cancelled.
 
 | Role | Prepare (upload, match, check, send for approval) | Approve, load, send back, undo |
 | --- | --- | --- |
-| Administrator (headquarters) | Yes | Yes (never their own) |
+| Administrator (headquarters) | Yes | Yes, everything (never their own) |
 | Group IT administrator | Yes | — (the business approves what goes in) |
 | Branch administrator | Yes | — |
-| Workshop manager | — | Yes |
-| Customer care lead | — | Yes |
-| Everyone else (front desk, technicians, finance, store, security…) | — | — |
+| Workshop manager | — | Customers and vehicles of their branch |
+| Customer care lead | — | Customers and vehicles |
+| Store manager | — | Suppliers, parts and opening stock of their branch |
+| Finance officer | — | — · **confirms the value** of loaded opening stock |
+| Everyone else (front desk, technicians, security…) | — | — |
 
-Approving also needs the right to manage customers, so only the people who
-own customer records approve them.
+Each kind of record is approved by the **department that owns it**: approving
+customers also needs the right to manage customers; approving suppliers,
+parts and stock needs the right to manage the Store's parts. Opening stock
+has a second signature: after it loads, someone in **Finance** (not the
+person who prepared or approved it) confirms the value. Finance opens
+opening-stock imports only — never a customers file.
 
 ## 3. Customers
 
@@ -108,7 +114,83 @@ VINs and plates are unique on the platform: one registered for another
 organisation is rejected. A VIN that is not the standard 17 characters is
 kept as written, with a note.
 
-## 5. File rules
+## 5. Suppliers
+
+The organisation's supplier list (SAP vendors), shared by every branch, at
+**Store → Suppliers**. Goods receipts link to a supplier when the name
+typed matches one, and the receipt form suggests suppliers as you type.
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Supplier number | — | LIFNR, vendor number, creditor |
+| Name (+ second line) | **Yes** | NAME1 (+ NAME2), supplier name |
+| Contact, phone, email | — | contact person / TELF1 / SMTP_ADDR |
+| Address, city, tax ID | — | STRAS / ORT01 / STCD1 |
+
+Matched by supplier number, then by name. Undo moves imported suppliers to
+the Recycle bin (refused for any that goods receipts already name).
+
+## 6. Parts (the SAP material master)
+
+Into **one branch's** catalogue, chosen when the import starts.
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Part number | **Yes** | MATNR, material number, part number, item code |
+| Description | **Yes** | MAKTX, material description |
+| Material group / category | — | MATKL, material group |
+| Base unit | — (Piece) | MEINS — SAP codes become words: ST/PC → Piece, EA → Each, L → Litre, KG → Kilogram, CAR → Carton, DR → Drum… |
+| Tracking | — (Quantity) | XCHPF = X → Batch; a serial profile (SERNP) → Serial |
+| Barcode, selling price | — | EAN11 / price |
+| Reorder point, safety stock | — | MINBE / EISBE |
+| Alternative unit + base units in it | — | MEINH + UMREZ (e.g. Drum = 208 Litre) |
+| Number in SAP, if different | — | BISMT (old material number). From SAP and empty: the part number. |
+
+Matched by SAP number, then part number (any case). New parts are added with
+their alternative unit; an existing part is left as it is, or gets only its
+empty fields filled — never its stock, unit or tracking. Undo moves imported
+parts to the Recycle bin (refused for any that have stock, receipts or
+issues — reverse an opening-stock import first).
+
+**Large catalogues stay fast:** the Parts list is paged (50 a page, with the
+total), the goods-receipt form searches parts as you type instead of loading
+the catalogue, and the stock tools ask the database for the low parts only.
+
+## 7. Opening stock
+
+What each part of one branch held **at the cut-over**, with its cost — from
+the SAP stock and valuation report (MB52 / MC.9 / the material valuation).
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Part number | **Yes** | MATNR — the part must already be in the branch's catalogue |
+| Quantity on hand | **Yes** | LABST (unrestricted stock) |
+| Unit | — (base unit) | MEINS — the base unit or the part's alternative unit |
+| Stock value | **This or the unit cost** | SALK3 |
+| Unit cost (+ price unit) | **This or the stock value** | VERPR / STPRS (+ PEINH: a price per 100 has 100) |
+| Batch | for batch parts | CHARG |
+| Serial numbers | for serial parts | SERNR, separated by commas or semicolons |
+| Storage location | — | LGORT (kept on the receipt's notes; the same batch in two locations is added together) |
+
+- **Before approval**, the check shows the lines, units and **total value**
+  that will load, to compare with the SAP report for the same plant and date.
+- Loaded as **opening-balance goods receipts** (one per batch of lines),
+  numbered like any receipt (GRN-…), dated at the **cut-over date** chosen at
+  upload, supplier *Opening balance — SAP (IMP-…)*. So **stock on hand, FIFO
+  cost layers, stock value and the inventory analytics** count it exactly
+  like a delivery; ageing starts from the cut-over date.
+- Only for parts with **no stock history** yet (no deliveries, stock on hand
+  or issues); otherwise the line is rejected — record a goods receipt instead.
+  Negative stock, a zero quantity, no cost, a batch part without its batch,
+  serial numbers that do not match the quantity or already exist: rejected.
+- After loading, the report shows the value now on the shelves and whether it
+  **matches the checked file exactly**; **Finance confirms** it.
+- **Reversal** takes the stock back off the shelves and removes the
+  opening-balance receipts — refused once anything has been issued or
+  reserved from them. The file stays in the import: **Reopen** checks it again
+  and it needs a fresh approval to load.
+
+## 8. File rules
 
 - **CSV** (comma, semicolon, tab or pipe — worked out from the first line;
   UTF-8 or Windows-1252) or **Excel .xlsx** (first sheet).
@@ -124,7 +206,7 @@ kept as written, with a note.
   neutralises spreadsheet formulas, so nothing typed into the system can run
   as a formula when opened in Excel.
 
-## 6. Size and the database
+## 9. Size, speed and the database
 
 The staging area lives in the organisation's own Postgres database (no new
 services). A row of a typical customers file takes roughly 0.5–1 KB staged.
@@ -133,17 +215,19 @@ database plan must allow for the staged rows plus the records themselves; the
 free development tier (500 MB) does not. The A4 performance run will record
 measured timings and sizes here.
 
-## 7. For the database administrator
+## 10. For the database administrator
 
 | Change | Script |
 | --- | --- |
 | A0 — customer email optional; SAP numbers on customers, vehicles, parts | `scripts/predeploy/0003-external-keys.sql` (deploy) · `scripts/v-a0-optional-email-sap-keys.sql` (manual, Supabase SQL editor) |
 | A1 — import tables; "made by this import" on customers and vehicles | `scripts/predeploy/0004-data-exchange.sql` (deploy) · `scripts/v-a1-data-exchange.sql` (manual) |
+| A2 — suppliers; opening-balance receipts; parts made by an import; Finance sign-off | `scripts/predeploy/0005-parts-stock-suppliers.sql` (deploy) · `scripts/v-a2-parts-stock-suppliers.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
-twice on Postgres 16 against the previous structure. Run A0 before A1.
+twice on Postgres 16 against the previous structure and compared with a
+fresh schema. Run them in order (A0, A1, A2).
 
-## 8. Open questions for the organisation (not guessed in code)
+## 11. Open questions for the organisation (not guessed in code)
 
 1. Which SAP extracts will be supplied (customer master, material master,
    stock), from which SAP release, and with which field names.

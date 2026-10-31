@@ -29,10 +29,12 @@ async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
  * Choosing a file: read here, in the browser, and sent in blocks to the
  * staging area. Nothing in the live records changes at this step.
  */
-export function ImportUploader({ entity, entityLabel }: { entity: string; entityLabel: string }) {
+export function ImportUploader({ entity, entityLabel, branches, needsBranch = false, needsDate = false }: { entity: string; entityLabel: string; branches?: { id: string; name: string }[]; needsBranch?: boolean; needsDate?: boolean }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [source, setSource] = useState<'SAP' | 'LEGACY'>('SAP');
+  const [branchId, setBranchId] = useState(branches && branches.length === 1 ? branches[0]!.id : '');
+  const [asOf, setAsOf] = useState(() => new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date()));
   const [phase, setPhase] = useState<Phase>('idle');
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -44,6 +46,7 @@ export function ImportUploader({ entity, entityLabel }: { entity: string; entity
   async function start(file: File) {
     setError(null); setNote(null); setRead(0); setSent(0); setFileName(file.name);
     try {
+      if (needsBranch && !branchId) throw new Error('Choose the branch whose Store this file belongs to first.');
       if (!/\.(csv|txt|xlsx)$/i.test(file.name)) throw new Error('Choose a CSV file or an Excel workbook (.xlsx). Macro workbooks (.xlsm) and old .xls files are not accepted — save as .xlsx or CSV.');
       const kind = await sniffKind(file);
       if (kind === 'xls') throw new Error('This is an old Excel file (.xls). Open it in Excel and save it as .xlsx or CSV, then choose it again.');
@@ -68,7 +71,7 @@ export function ImportUploader({ entity, entityLabel }: { entity: string; entity
         for (const r of rows) {
           if (!headers) {
             headers = r.cells;
-            const job = await createImportJob({ entity, fileName: file.name, fileSha256: sha, headers, fileRows: 0, sourceSystem: source });
+            const job = await createImportJob({ entity, fileName: file.name, fileSha256: sha, headers, fileRows: 0, sourceSystem: source, ...(needsBranch ? { branchId } : {}), ...(needsDate ? { asOf } : {}) });
             jobId = job.id;
             if (job.sameFileBefore) setNote(`The same file was imported before as ${job.sameFileBefore.number}. Records already in the system are recognised and not added twice.`);
             setPhase('sending');
@@ -106,6 +109,27 @@ export function ImportUploader({ entity, entityLabel }: { entity: string; entity
         </div>
         <p className="text-xs text-[var(--ejo-text-muted)]">The numbers in the file (SAP customer numbers and the like) are kept with each record under this source, so a later file is recognised.</p>
       </fieldset>
+
+      {needsBranch || needsDate ? (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {needsBranch ? (
+            <div>
+              <label htmlFor="import-branch" className="text-sm font-medium text-[var(--ejo-text)]">Branch (its Store)</label>
+              <select id="import-branch" value={branchId} disabled={busy} onChange={(e) => setBranchId(e.target.value)} className="mt-1 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]">
+                <option value="">Choose…</option>
+                {(branches ?? []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          ) : null}
+          {needsDate ? (
+            <div>
+              <label htmlFor="import-asof" className="text-sm font-medium text-[var(--ejo-text)]">Counted on (the cut-over date)</label>
+              <input id="import-asof" type="date" value={asOf} disabled={busy} max={new Intl.DateTimeFormat('en-CA', { timeZone: 'Africa/Lagos' }).format(new Date())} onChange={(e) => setAsOf(e.target.value)} className="mt-1 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">The opening-balance receipts carry this date, so stock ageing starts from it.</p>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <div
         onDragOver={(e) => { e.preventDefault(); }}

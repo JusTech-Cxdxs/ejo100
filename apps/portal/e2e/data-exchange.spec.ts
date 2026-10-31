@@ -99,7 +99,7 @@ test('customers from an SAP export: columns match themselves, the check rejects 
   await page.getByRole('button', { name: /Send for approval/ }).click();
   await expect(page.getByRole('heading', { name: 'Approval' })).toBeVisible();
   // Group IT prepares; it does not approve.
-  await expect(page.getByText(/must approve it|Waiting for a manager/)).toBeVisible();
+  await expect(page.getByText(/the person who prepared an import cannot approve it/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 });
 

@@ -6,7 +6,7 @@
  */
 import { allows } from '@/lib/authz/server';
 import { STORE_COST_PERMISSIONS } from '@/lib/authz/catalogue';
-import { getLastKnownUnitCostForPart, getPricingAlertSummary, getStoreBranchId, listParts } from '@/lib/actions/store';
+import { getLastKnownUnitCostForPart, getPricingAlertSummary, getStoreBranchId, listParts, listLowStockParts } from '@/lib/actions/store';
 import { money, nothing, ok, r2, refused, text } from '../tool-helpers';
 import type { StaffTool } from '../types';
 
@@ -46,7 +46,7 @@ export const storeTools: StaffTool[] = [
     run: async (args) => {
       if (!(await allows('store.view'))) return refused(STORE_WHO);
       const branchId = await getStoreBranchId();
-      const parts = (await listParts(branchId, text(args.query, 80))).slice(0, 8);
+      const parts = await listParts(branchId, text(args.query, 80), 8);
       if (!parts.length) return nothing('No active part in this Store matches that.');
       const costs = await seesCosts(branchId);
       const rows = await Promise.all(parts.map(async (p) => {
@@ -70,7 +70,8 @@ export const storeTools: StaffTool[] = [
     run: async () => {
       if (!(await allows('store.view'))) return refused(STORE_WHO);
       const branchId = await getStoreBranchId();
-      const parts = await listParts(branchId);
+      // Only the parts at or below their reorder point, found by the database (a catalogue may hold hundreds of thousands).
+      const parts = await listLowStockParts(branchId);
       const low = parts
         .map((p) => ({ p, s: stockOf(p) }))
         .filter(({ s }) => s.level !== 'In stock')

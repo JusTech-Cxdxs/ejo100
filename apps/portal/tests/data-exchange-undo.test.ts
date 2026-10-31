@@ -9,8 +9,11 @@ const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8')
 test('undoing an import moves its records to the Recycle bin; it never deletes them outright', () => {
   const src = read('lib/actions/data-exchange.ts');
   const undo = src.slice(src.indexOf('export async function undoImportBatch('), src.indexOf('// ── Dashboard'));
-  assert.match(undo, /moveManyToBinInTx\(tx, entity === 'customers' \? 'Customer' : 'CustomerVehicle', \[\.\.\.mine\], `Undo of import \$\{job\.number\}`, userId\)/);
-  assert.doesNotMatch(undo, /tx\.customer\.deleteMany|tx\.customerVehicle\.deleteMany/);
+  assert.match(undo, /const binKind = \(\{ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' \} as const\)\[entity\];/);
+  assert.match(undo, /moveManyToBinInTx\(tx, binKind, \[\.\.\.mine\], `Undo of import \$\{job\.number\}`, userId\)/);
+  // No direct delete of customers, vehicles, parts or suppliers in the undo (opening stock is reversed, not binned).
+  assert.doesNotMatch(undo, /tx\.(customer|customerVehicle|part|supplier)\.deleteMany/);
+  assert.match(undo, /if \(entity === 'stock'\) \{\s+const left = await reverseStockBatch\(tx, job\.id\);/);
   // Only what this import made.
   assert.match(undo, /importJobId: job\.id/);
   // A record that got work recorded meanwhile is kept and reported, not lost or retried for ever.
