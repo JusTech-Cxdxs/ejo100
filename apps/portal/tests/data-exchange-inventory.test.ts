@@ -120,3 +120,21 @@ test('the Store’s lists stay fast with a catalogue of any size', () => {
   assert.doesNotMatch(read('components/GoodsReceiptForm.tsx'), /parts: PartOption\[\]/);
   assert.match(read('app/(app)/inventory/parts/page.tsx'), /listPartsPage\(branchId, q, Number\(page\) \|\| 1\)/);
 });
+
+test('long imports stay inside the flood limit and survive a dropped connection', () => {
+  // Server: each check, load and undo request works in blocks for about two seconds, reading on from a row cursor.
+  const src = read('lib/actions/data-exchange.ts');
+  assert.match(src, /const STEP_BUDGET_MS = 2_500;/);
+  assert.equal((src.match(/Date\.now\(\) - begun > STEP_BUDGET_MS\) break;/g) ?? []).length, 3);
+  assert.match(src, /rowNumber: \{ gt \} \}, orderBy: \{ rowNumber: 'asc' \}, take: CHECK_BATCH/);
+  assert.match(src, /writeRowResults\(tx, updates, 'PENDING'\)/);
+  // Browser: retried for longer than the limit's one-minute window; uploads paced under 120 a minute.
+  const view = read('components/data-exchange/ImportJobView.tsx');
+  assert.match(view, /const RETRY_DELAYS_MS = \[2_000, 5_000, 10_000, 20_000, 30_000\];/);
+  assert.match(view, /if \(busy\.current\) return null;/);
+  const up = read('components/data-exchange/ImportUploader.tsx');
+  assert.match(up, /const MIN_SEND_GAP_MS = 600;/);
+  assert.match(up, /const RETRY_DELAYS_MS = \[2_000, 5_000, 10_000, 20_000, 40_000\];/);
+  const mw = read('middleware.ts');
+  assert.match(mw, /const MAX_POSTS = 120;/, 'the pacing above assumes this limit');
+});

@@ -12,18 +12,28 @@ type Phase = 'idle' | 'reading' | 'sending' | 'finishing' | 'error';
 const BLOCK_CHARS = 600_000;
 const BLOCK_ROWS = 5000;
 
-async function withRetry<T>(fn: () => Promise<T>, tries = 4): Promise<T> {
+/**
+ * Tries a send again after a dropped connection or a busy server, for about
+ * a minute and a quarter in all — longer than the flood limit's one-minute
+ * window (middleware.ts), so a burst never ends an upload. Sending a block
+ * twice is harmless: rows are kept by their row number.
+ */
+const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 40_000];
+async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   let last: unknown;
-  for (let i = 0; i < tries; i += 1) {
+  for (let i = 0; i <= RETRY_DELAYS_MS.length; i += 1) {
     try {
       return await fn();
     } catch (err) {
       last = err;
-      await new Promise((r) => setTimeout(r, 800 * 2 ** i));
+      if (i < RETRY_DELAYS_MS.length) await new Promise((r) => setTimeout(r, RETRY_DELAYS_MS[i]));
     }
   }
   throw last;
 }
+
+/** At most one block every 0.6 s (100 a minute): inside the limit of 120 submissions a minute per person. */
+const MIN_SEND_GAP_MS = 600;
 
 /**
  * Choosing a file: read here, in the browser, and sent in blocks to the
@@ -58,11 +68,15 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
       let block: { rowNumber: number; cells: string[] }[] = [];
       let chars = 0;
       let count = 0;
+      let lastSend = 0;
       const flush = async () => {
         if (!block.length || !jobId) return;
         const send = block;
         const id = jobId;
         block = []; chars = 0;
+        const gap = MIN_SEND_GAP_MS - (Date.now() - lastSend);
+        if (gap > 0) await new Promise((r) => setTimeout(r, gap));
+        lastSend = Date.now();
         await withRetry(() => appendImportRows(id, send));
         count += send.length;
         setSent(count);

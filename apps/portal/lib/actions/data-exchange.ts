@@ -41,6 +41,8 @@ class DataExchangeError extends Error {}
 /** Blocks sent from the browser, rows per check / load batch, rows read per undo step. */
 const MAX_BLOCK_ROWS = 5000;
 const CHECK_BATCH = 2000;
+/** How long one check, load or undo request works before answering (blocks are repeated until then). */
+const STEP_BUDGET_MS = 2_500;
 const LOAD_BATCH = 1000;
 const UNDO_BATCH = 500;
 const MAX_COLUMNS = 400;
@@ -386,13 +388,17 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
   if (mappingProblems(entity, mapping).length) throw new DataExchangeError('Match the columns first.');
   if (job.status === 'UPLOADED') await prisma.importJob.updateMany({ where: { id: job.id, status: 'UPLOADED' }, data: { status: 'VALIDATING' } });
 
-  const from = Number.isInteger(after) && after > 0 ? after : 0;
+  // Blocks of rows until about two seconds have passed: few, steady requests whatever the speed of the
+  // server, well inside the flood limit on submissions (middleware.ts), and the bar still moves often.
+  let last = Number.isInteger(after) && after > 0 ? after : 0;
   const next = (gt: number) => prisma.importRow.findMany({ where: { jobId: job.id, status: 'PENDING', rowNumber: { gt } }, orderBy: { rowNumber: 'asc' }, take: CHECK_BATCH, select: { id: true, rowNumber: true, cells: true } });
-  // Nothing after the page's place (another page checked them, or the place is stale): start again from the top.
-  let rows = await next(from);
-  if (!rows.length && from > 0) rows = await next(0);
-  const last = rows.length ? rows[rows.length - 1]!.rowNumber : 0;
-  if (rows.length) {
+  const begun = Date.now();
+  for (;;) {
+    // Nothing after the page's place (another page checked them, or the place is stale): start again from the top.
+    let rows = await next(last);
+    if (!rows.length && last > 0) rows = await next(0);
+    if (!rows.length) break;
+    last = rows[rows.length - 1]!.rowNumber;
     const updates: RowUpdate[] = [];
     if (isInventoryEntity(entity)) {
       updates.push(...(await checkInventoryRows(entity, invJob(job), mapping, rows)));
@@ -461,6 +467,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       }
     }
     await prisma.$transaction(async (tx) => { await writeRowResults(tx, updates, 'PENDING'); }, TX);
+    if (Date.now() - begun > STEP_BUDGET_MS) break;
   }
 
   const pending = await prisma.importRow.count({ where: { jobId: job.id, status: 'PENDING' } });
@@ -580,23 +587,30 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   }
   const entity = job.entity as EntityKey;
   const mapping = (job.mapping as Mapping | null) ?? {};
-  const from = Number.isInteger(after) && after > 0 ? after : 0;
-  let last = 0;
+  let last = Number.isInteger(after) && after > 0 ? after : 0;
+  // Batches, each in its own transaction (a failure loses only that batch), until about two seconds have passed:
+  // few, steady requests, well inside the flood limit on submissions (middleware.ts).
+  const begun = Date.now();
   try {
-    await prisma.$transaction(async (tx) => {
-      // One loader at a time for this import (a second tab waits, then finds nothing left to do).
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
-      const fresh = await tx.importJob.findUnique({ where: { id: job.id }, select: { status: true } });
-      if (fresh?.status !== 'LOADING') return;
-      const next = (gt: number) => tx.importRow.findMany({ where: { jobId: job.id, status: { in: ['GOOD', 'WARNING'] }, rowNumber: { gt } }, orderBy: { rowNumber: 'asc' }, take: LOAD_BATCH, select: { id: true, rowNumber: true, cells: true, issues: true, matchedBy: true } });
-      let rows = await next(from);
-      if (!rows.length && from > 0) rows = await next(0);
-      if (!rows.length) return;
-      last = rows[rows.length - 1]!.rowNumber;
-      if (isInventoryEntity(entity)) await loadInventoryRows(tx, entity, invJob(job), mapping, rows);
-      else if (entity === 'customers') await loadCustomers(tx, job, mapping, rows);
-      else await loadVehicles(tx, job, mapping, rows);
-    }, TX);
+    for (;;) {
+      const from = last;
+      const loaded = await prisma.$transaction(async (tx) => {
+        // One loader at a time for this import (a second tab waits, then finds nothing left to do).
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
+        const fresh = await tx.importJob.findUnique({ where: { id: job.id }, select: { status: true } });
+        if (fresh?.status !== 'LOADING') return 0;
+        const next = (gt: number) => tx.importRow.findMany({ where: { jobId: job.id, status: { in: ['GOOD', 'WARNING'] }, rowNumber: { gt } }, orderBy: { rowNumber: 'asc' }, take: LOAD_BATCH, select: { id: true, rowNumber: true, cells: true, issues: true, matchedBy: true } });
+        let rows = await next(from);
+        if (!rows.length && from > 0) rows = await next(0);
+        if (!rows.length) return 0;
+        last = rows[rows.length - 1]!.rowNumber;
+        if (isInventoryEntity(entity)) await loadInventoryRows(tx, entity, invJob(job), mapping, rows);
+        else if (entity === 'customers') await loadCustomers(tx, job, mapping, rows);
+        else await loadVehicles(tx, job, mapping, rows);
+        return rows.length;
+      }, TX);
+      if (!loaded || Date.now() - begun > STEP_BUDGET_MS) break;
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message.slice(0, 300) : 'Unknown error';
     await prisma.importJob.updateMany({ where: { id: job.id, status: 'LOADING' }, data: { status: 'PAUSED', error: `Paused after a problem: ${message}. Nothing from the failed batch was saved; press Resume to try it again.` } });
@@ -845,85 +859,91 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
     if (!res.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
     await writeAuditLog({ userId, action: 'data_exchange.undo_started', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, created: job.createdRows, updated: job.updatedRows } });
   }
-  await prisma.$transaction(async (tx) => {
-    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
-    // Opening stock: the opening-balance receipts are reversed one at a time (stock off, receipt gone), then the rows marked.
-    if (entity === 'stock') {
-      const left = await reverseStockBatch(tx, job.id);
-      if (left === 0) await tx.importRow.updateMany({ where: { jobId: job.id, status: 'CREATED' }, data: { status: 'UNDONE' } });
-      return;
-    }
-    const rows = await tx.importRow.findMany({ where: { jobId: job.id, status: { in: ['CREATED', 'UPDATED'] } }, orderBy: { rowNumber: 'asc' }, take: UNDO_BATCH, select: { id: true, status: true, resultId: true, filled: true, cells: true } });
-    if (!rows.length) return;
-    // Only what this import made (importJobId), each moved to the Recycle bin as its own restorable item, with the
-    // bin's own rules checked again under the lock: one that has had work recorded meanwhile is kept and reported.
-    const createdRows = rows.filter((r) => r.status === 'CREATED' && r.resultId);
-    const createdIds = createdRows.map((r) => r.resultId!);
-    const mineOf = async (): Promise<{ id: string }[]> => {
-      if (!createdIds.length) return [];
-      const where = { id: { in: createdIds }, importJobId: job.id };
-      if (entity === 'customers') return tx.customer.findMany({ where, select: { id: true } });
-      if (entity === 'vehicles') return tx.customerVehicle.findMany({ where, select: { id: true } });
-      if (entity === 'parts') return tx.part.findMany({ where, select: { id: true } });
-      return tx.supplier.findMany({ where, select: { id: true } });
-    };
-    const mine = new Set((await mineOf()).map((x) => x.id));
-    const binKind = ({ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' } as const)[entity];
-    const moved = new Set(await moveManyToBinInTx(tx, binKind, [...mine], `Undo of import ${job.number}`, userId));
-    const kept = createdRows.filter((r) => !moved.has(r.resultId!));
-    if (kept.length) {
-      await tx.importRow.updateMany({ where: { id: { in: kept.map((r) => r.id) } }, data: { status: 'KEPT' } });
-    }
-    const mapping = (job.mapping as Mapping | null) ?? {};
-    for (const r of rows.filter((x) => x.status === 'UPDATED' && x.resultId && x.filled.length)) {
-      if (entity === 'parts') {
-        const v = checkPartRow(r.cells as unknown[], mapping, job.sourceSystem === 'LEGACY' ? 'LEGACY' : 'SAP').values;
-        const cur = await tx.part.findUnique({ where: { id: r.resultId! }, select: { category: true, barcode: true, sellingPrice: true, reorderPoint: true, safetyStock: true, externalId: true } });
-        if (!v || !cur) continue;
-        const data: Prisma.PartUpdateInput = {};
-        if (r.filled.includes('category') && cur.category === v.category) data.category = null;
-        if (r.filled.includes('barcode') && cur.barcode === v.barcode) data.barcode = null;
-        if (r.filled.includes('sellingPrice') && Number(cur.sellingPrice) === v.sellingPrice) data.sellingPrice = null;
-        if (r.filled.includes('reorderPoint') && Number(cur.reorderPoint) === v.reorderPoint) data.reorderPoint = null;
-        if (r.filled.includes('safetyStock') && Number(cur.safetyStock) === v.safetyStock) data.safetyStock = null;
-        if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
-        if (Object.keys(data).length) await tx.part.update({ where: { id: r.resultId! }, data });
-        continue;
+  // Batches until about two seconds have passed (few, steady requests; see checkImportBatch).
+  const begun = Date.now();
+  for (;;) {
+    const did = await prisma.$transaction(async (tx): Promise<number> => {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
+      // Opening stock: the opening-balance receipts are reversed one at a time (stock off, receipt gone), then the rows marked.
+      if (entity === 'stock') {
+        const left = await reverseStockBatch(tx, job.id);
+        if (left === 0) await tx.importRow.updateMany({ where: { jobId: job.id, status: 'CREATED' }, data: { status: 'UNDONE' } });
+        return left;
       }
-      if (entity === 'suppliers') {
-        const v = checkSupplierRow(r.cells as unknown[], mapping).values;
-        const cur = await tx.supplier.findUnique({ where: { id: r.resultId! }, select: { contactName: true, phone: true, email: true, address: true, taxId: true, externalId: true } });
-        if (!v || !cur) continue;
-        const data: Prisma.SupplierUpdateInput = {};
-        for (const k of ['contactName', 'phone', 'email', 'address', 'taxId'] as const) if (r.filled.includes(k) && cur[k] === v[k]) data[k] = null;
-        if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
-        if (Object.keys(data).length) await tx.supplier.update({ where: { id: r.resultId! }, data });
-        continue;
+      const rows = await tx.importRow.findMany({ where: { jobId: job.id, status: { in: ['CREATED', 'UPDATED'] } }, orderBy: { rowNumber: 'asc' }, take: UNDO_BATCH, select: { id: true, status: true, resultId: true, filled: true, cells: true } });
+      if (!rows.length) return 0;
+      // Only what this import made (importJobId), each moved to the Recycle bin as its own restorable item, with the
+      // bin's own rules checked again under the lock: one that has had work recorded meanwhile is kept and reported.
+      const createdRows = rows.filter((r) => r.status === 'CREATED' && r.resultId);
+      const createdIds = createdRows.map((r) => r.resultId!);
+      const mineOf = async (): Promise<{ id: string }[]> => {
+        if (!createdIds.length) return [];
+        const where = { id: { in: createdIds }, importJobId: job.id };
+        if (entity === 'customers') return tx.customer.findMany({ where, select: { id: true } });
+        if (entity === 'vehicles') return tx.customerVehicle.findMany({ where, select: { id: true } });
+        if (entity === 'parts') return tx.part.findMany({ where, select: { id: true } });
+        return tx.supplier.findMany({ where, select: { id: true } });
+      };
+      const mine = new Set((await mineOf()).map((x) => x.id));
+      const binKind = ({ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' } as const)[entity];
+      const moved = new Set(await moveManyToBinInTx(tx, binKind, [...mine], `Undo of import ${job.number}`, userId));
+      const kept = createdRows.filter((r) => !moved.has(r.resultId!));
+      if (kept.length) {
+        await tx.importRow.updateMany({ where: { id: { in: kept.map((r) => r.id) } }, data: { status: 'KEPT' } });
       }
-      if (entity === 'customers') {
-        const v = checkCustomerRow(r.cells as unknown[], mapping).values;
-        const cur = await tx.customer.findUnique({ where: { id: r.resultId! }, select: { email: true, phone: true, altPhone: true, address: true, externalId: true } });
-        if (!v || !cur) continue;
-        const data: Prisma.CustomerUpdateInput = {};
-        if (r.filled.includes('phone') && cur.phone === v.phone) data.phone = null;
-        if (r.filled.includes('altPhone') && cur.altPhone === v.altPhone) data.altPhone = null;
-        if (r.filled.includes('address') && cur.address === v.address) data.address = null;
-        if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
-        if (r.filled.includes('email') && cur.email === v.email && !(await tx.customerAccount.count({ where: { customerId: r.resultId! } }))) data.email = null;
-        if (Object.keys(data).length) await tx.customer.update({ where: { id: r.resultId! }, data });
-      } else {
-        const v = checkVehicleRow(r.cells as unknown[], mapping).values;
-        const cur = await tx.customerVehicle.findUnique({ where: { id: r.resultId! }, select: { engineNumber: true, engineType: true, make: true, model: true, year: true, vehicleType: true, mileage: true, externalId: true, chassisNumber: true, plateNumber: true } });
-        if (!v || !cur) continue;
-        const data: Record<string, null> = {};
-        for (const k of ['engineNumber', 'engineType', 'make', 'model', 'year', 'vehicleType', 'mileage', 'chassisNumber', 'plateNumber'] as const) if (r.filled.includes(k) && cur[k] === v[k]) data[k] = null;
-        if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
-        if (Object.keys(data).length) await tx.customerVehicle.update({ where: { id: r.resultId! }, data });
+      const mapping = (job.mapping as Mapping | null) ?? {};
+      for (const r of rows.filter((x) => x.status === 'UPDATED' && x.resultId && x.filled.length)) {
+        if (entity === 'parts') {
+          const v = checkPartRow(r.cells as unknown[], mapping, job.sourceSystem === 'LEGACY' ? 'LEGACY' : 'SAP').values;
+          const cur = await tx.part.findUnique({ where: { id: r.resultId! }, select: { category: true, barcode: true, sellingPrice: true, reorderPoint: true, safetyStock: true, externalId: true } });
+          if (!v || !cur) continue;
+          const data: Prisma.PartUpdateInput = {};
+          if (r.filled.includes('category') && cur.category === v.category) data.category = null;
+          if (r.filled.includes('barcode') && cur.barcode === v.barcode) data.barcode = null;
+          if (r.filled.includes('sellingPrice') && Number(cur.sellingPrice) === v.sellingPrice) data.sellingPrice = null;
+          if (r.filled.includes('reorderPoint') && Number(cur.reorderPoint) === v.reorderPoint) data.reorderPoint = null;
+          if (r.filled.includes('safetyStock') && Number(cur.safetyStock) === v.safetyStock) data.safetyStock = null;
+          if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
+          if (Object.keys(data).length) await tx.part.update({ where: { id: r.resultId! }, data });
+          continue;
+        }
+        if (entity === 'suppliers') {
+          const v = checkSupplierRow(r.cells as unknown[], mapping).values;
+          const cur = await tx.supplier.findUnique({ where: { id: r.resultId! }, select: { contactName: true, phone: true, email: true, address: true, taxId: true, externalId: true } });
+          if (!v || !cur) continue;
+          const data: Prisma.SupplierUpdateInput = {};
+          for (const k of ['contactName', 'phone', 'email', 'address', 'taxId'] as const) if (r.filled.includes(k) && cur[k] === v[k]) data[k] = null;
+          if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
+          if (Object.keys(data).length) await tx.supplier.update({ where: { id: r.resultId! }, data });
+          continue;
+        }
+        if (entity === 'customers') {
+          const v = checkCustomerRow(r.cells as unknown[], mapping).values;
+          const cur = await tx.customer.findUnique({ where: { id: r.resultId! }, select: { email: true, phone: true, altPhone: true, address: true, externalId: true } });
+          if (!v || !cur) continue;
+          const data: Prisma.CustomerUpdateInput = {};
+          if (r.filled.includes('phone') && cur.phone === v.phone) data.phone = null;
+          if (r.filled.includes('altPhone') && cur.altPhone === v.altPhone) data.altPhone = null;
+          if (r.filled.includes('address') && cur.address === v.address) data.address = null;
+          if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
+          if (r.filled.includes('email') && cur.email === v.email && !(await tx.customerAccount.count({ where: { customerId: r.resultId! } }))) data.email = null;
+          if (Object.keys(data).length) await tx.customer.update({ where: { id: r.resultId! }, data });
+        } else {
+          const v = checkVehicleRow(r.cells as unknown[], mapping).values;
+          const cur = await tx.customerVehicle.findUnique({ where: { id: r.resultId! }, select: { engineNumber: true, engineType: true, make: true, model: true, year: true, vehicleType: true, mileage: true, externalId: true, chassisNumber: true, plateNumber: true } });
+          if (!v || !cur) continue;
+          const data: Record<string, null> = {};
+          for (const k of ['engineNumber', 'engineType', 'make', 'model', 'year', 'vehicleType', 'mileage', 'chassisNumber', 'plateNumber'] as const) if (r.filled.includes(k) && cur[k] === v[k]) data[k] = null;
+          if (r.filled.includes('externalId') && cur.externalId === v.externalId) { data.externalId = null; data.externalSource = null; }
+          if (Object.keys(data).length) await tx.customerVehicle.update({ where: { id: r.resultId! }, data });
+        }
       }
-    }
-    const keptIds = new Set(kept.map((r) => r.id));
-    await tx.importRow.updateMany({ where: { id: { in: rows.filter((r) => !keptIds.has(r.id)).map((r) => r.id) } }, data: { status: 'UNDONE' } });
-  }, TX);
+      const keptIds = new Set(kept.map((r) => r.id));
+      await tx.importRow.updateMany({ where: { id: { in: rows.filter((r) => !keptIds.has(r.id)).map((r) => r.id) } }, data: { status: 'UNDONE' } });
+      return rows.length;
+    }, TX);
+    if (!did || Date.now() - begun > STEP_BUDGET_MS) break;
+  }
   const left = await prisma.importRow.count({ where: { jobId: job.id, status: { in: ['CREATED', 'UPDATED'] } } });
   if (left > 0) return { done: false, left, blockers: [] };
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'UNDOING' }, data: { status: 'UNDONE', undoneAt: new Date(), undoneById: userId } });
