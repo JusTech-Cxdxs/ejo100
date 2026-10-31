@@ -27,6 +27,8 @@ export const PERMISSIONS = {
   'audit.view': { module: 'Administration', label: 'View the full audit trail' },
   'admin.recycle_bin.manage': { module: 'Administration', label: 'Open the Recycle bin, restore records deleted by mistake, and delete such records' },
   'enyo.manage': { module: 'Administration', label: 'Manage Enyo (AI): switch features on or off, see what it is learning and how accurate it is' },
+  'dataexchange.import.run': { module: 'Data Exchange', label: 'Bring records in from SAP or spreadsheets: upload a file, match its columns and check it (loading it needs a second person’s approval)' },
+  'dataexchange.import.approve': { module: 'Data Exchange', label: 'Approve an import someone else prepared, load it, send it back, and undo a finished import' },
   'integrity.review': { module: 'Administration', label: 'Review integrity alerts (unusual money, parts, warranty, gate and sign-in activity) and Speak up reports — never alerts about themselves' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
@@ -119,12 +121,15 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
     'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
     'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
+    // Bringing existing records in (SAP, old spreadsheets): prepares and approves — never both on the same import.
+    'dataexchange.import.run': A, 'dataexchange.import.approve': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
     'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B, 'support.tickets.manage': B,
+    'dataexchange.import.run': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
@@ -154,6 +159,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
     'crm.view': B, 'crm.manage': B, 'support.tickets.manage': B,
+    // The branch's customer records are the Manager's to approve when they come in from SAP or a spreadsheet.
+    'dataexchange.import.approve': B,
   },
   // ── Finance ──────────────────────────────────────────────────────
   // Money only: payments, refunds, outside-purchase review and cash.
@@ -195,6 +202,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'customer-care-lead': {
     'support.tickets.manage': A, 'crm.view': A, 'crm.manage': A, 'workshop.view': A, 'workshop.job_card.view': A, 'warranty.view': A,
     'analytics.warranty.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
+    // Keeping customer records right includes approving customer imports.
+    'dataexchange.import.approve': A,
   },
   // ── Leadership & IT ──────────────────────────────────────────────
   // A director or general manager: sees how the whole business is doing —
@@ -214,6 +223,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'it-administrator': {
     'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'admin.structure.manage': A, 'audit.view': A,
     'enyo.manage': A, 'schedule.view': 'OWN', 'website.news.manage': A,
+    // Migrations from SAP and old systems: IT prepares the file; the business approves what goes in.
+    'dataexchange.import.run': A,
     // System notices: planned downtime, a security warning, a password reminder.
     'notifications.broadcast.send': A,
   },

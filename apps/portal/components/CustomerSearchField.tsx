@@ -36,7 +36,7 @@ export function CustomerSearchField({
         return recent.map((c) => ({
           value: c.id,
           label: c.fullName,
-          sublabel: c.phone ? `${c.email} · ${c.phone}` : c.email,
+          sublabel: [c.email ?? 'No email on file', c.phone].filter(Boolean).join(' · '),
         }));
       }}
       search={async (query) => {
@@ -44,7 +44,7 @@ export function CustomerSearchField({
         return found.map((c) => ({
           value: c.id,
           label: c.fullName,
-          sublabel: c.phone ? `${c.email} · ${c.phone}` : c.email,
+          sublabel: [c.email ?? 'No email on file', c.phone].filter(Boolean).join(' · '),
         }));
       }}
     />

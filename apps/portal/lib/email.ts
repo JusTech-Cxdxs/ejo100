@@ -34,7 +34,21 @@ export type SendEmailOptions = {
  * Sends one email as multipart/alternative (HTML and plain text), so
  * text-only clients and spam filters both get a proper version.
  */
-export async function sendEmail(to: string, subject: string, html: string, attachments?: EmailAttachment[], options: SendEmailOptions = {}) {
+/** Raised when there is no address to send to: a customer brought in from SAP or an old spreadsheet without an email. */
+export class NoEmailAddressError extends Error {
+  constructor() {
+    super('This customer has no email address on file. Add one on their customer page, or reach them by phone.');
+    this.name = 'NoEmailAddressError';
+  }
+}
+
+/**
+ * Sends one email. A missing address (a customer with no email on file) is
+ * refused with NoEmailAddressError rather than skipped, so every caller's
+ * existing "could not be sent" path runs and nothing is recorded as sent.
+ */
+export async function sendEmail(to: string | null | undefined, subject: string, html: string, attachments?: EmailAttachment[], options: SendEmailOptions = {}) {
+  if (!to || !to.trim()) throw new NoEmailAddressError();
   // The observer copy is for staff workflow mail only: never sign-in links or
   // account emails (observer: false), never mail to customers or outsiders.
   const watch = options.observer === false ? [] : await staffOnly(to).then((ok) => (ok ? observerCopies(to) : [])).catch(() => []);

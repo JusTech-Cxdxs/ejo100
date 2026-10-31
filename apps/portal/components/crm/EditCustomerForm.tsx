@@ -11,7 +11,7 @@ const req = <span className="text-[var(--ejo-error)]">*</span>;
 const PHONE_PATTERN = '\\+?[0-9 ]{7,20}';
 
 export type EditableCustomer = {
-  id: string; fullName: string; customerType: string; email: string; phone: string | null; altPhone: string | null; address: string | null;
+  id: string; fullName: string; customerType: string; email: string | null; phone: string | null; altPhone: string | null; address: string | null;
   tags: string[]; notifyByEmail: boolean; companyName: string | null; taxId: string | null;
 };
 
@@ -38,9 +38,9 @@ export function EditCustomerForm({ customer, cancelHref }: { customer: EditableC
         <input id="ed-name" name="fullName" required minLength={2} maxLength={120} defaultValue={v('fullName', customer.fullName)} key={`n-${v('fullName', customer.fullName)}`} className={field} />
       </div>
       <div>
-        <label className={labelCls} htmlFor="ed-email">Email {req}</label>
-        <input id="ed-email" name="email" type="email" required maxLength={200} defaultValue={v('email', customer.email)} key={`e-${v('email', customer.email)}`} className={field} />
-        <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">They sign in to the customer portal with this email.</p>
+        <label className={labelCls} htmlFor="ed-email">Email {customer.email ? req : null}</label>
+        <input id="ed-email" name="email" type="email" required={Boolean(customer.email)} maxLength={200} defaultValue={v('email', customer.email ?? '')} key={`e-${v('email', customer.email ?? '')}`} className={field} />
+        <p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">{customer.email ? 'They sign in to the customer portal with this email.' : 'No email on file. Add their own email to give them customer portal access and email updates; until then, reach them by phone.'}</p>
       </div>
       <div>
         <label className={labelCls} htmlFor="ed-phone">Primary phone {req}</label>

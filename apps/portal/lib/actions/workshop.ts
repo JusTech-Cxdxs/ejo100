@@ -1,4 +1,5 @@
 'use server';
+import { NO_CUSTOMER_EMAIL } from '@/lib/customer-email';
 import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
@@ -319,7 +320,7 @@ export async function listCustomers(search?: string) {
 export type CustomerSearchResult = {
   id: string;
   fullName: string;
-  email: string;
+  email: string | null; // null: no email on file (an imported customer)
   phone: string | null;
 };
 
@@ -4093,6 +4094,9 @@ export async function sendApprovalReminder(jobCardId: string): Promise<void> {
   const websiteUrl = websiteBaseUrl();
   const orgContext = await getWorkshopOrgContext();
 
+  // No email on file (an imported customer): stop before anything is recorded as sent.
+  if (!jobCard.customer.email) throw new WorkshopActionError(NO_CUSTOMER_EMAIL);
+
   await prisma.estimate.update({ where: { id: jobCard.estimate.id }, data: { reminderSentAt: new Date() } });
 
   // Staged reminders (lib/custody-reminders): refused until due.
@@ -4210,6 +4214,9 @@ export async function notifyOverdueCancelledVehicle(jobCardId: string, notes?: s
   }
   const daysElapsed = workingDaysBetween(anchor, new Date());
 
+  // No email on file (an imported customer): stop before anything is recorded as sent.
+  if (!jobCard.customer.email) throw new WorkshopActionError(NO_CUSTOMER_EMAIL);
+
   await writeAuditLog({
     userId: user.id,
     action: 'collection.overdue_notice_sent',
@@ -4273,6 +4280,9 @@ export async function sendReadyForCollectionReminder(jobCardId: string): Promise
   if (!reminderState.dueNow) {
     throw new WorkshopActionError(notDueYetMessage('COLLECTION', reminderState));
   }
+
+  // No email on file (an imported customer): stop before anything is recorded as sent.
+  if (!jobCard.customer.email) throw new WorkshopActionError(NO_CUSTOMER_EMAIL);
 
   await writeAuditLog({
     userId: user.id,

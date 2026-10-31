@@ -170,6 +170,10 @@ const SKIP_MODELS = new Set([
   'IntegrityAlert',
   // v37: a person's own sent emails (their writing style) — personal content, never journaled.
   'MailStyleSample',
+  // v-A1: the staging copy of an imported file (up to a million rows of raw cells, often personal data).
+  // The import job writes its own business audit entries (uploaded, approved, loaded, undone); the records
+  // it creates are journaled in batches as usual.
+  'ImportRow',
 ]);
 const SENSITIVE_KEY = /password|token|secret|hash/i;
 const MAX_JSON = 6000;

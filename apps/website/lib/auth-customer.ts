@@ -78,6 +78,8 @@ export const customerAuth = betterAuth({
         await prisma.customerVerification.deleteMany({ where: { identifier: `reset-password:${token}` } });
         return;
       }
+      // A reset is only ever asked for by email, so the customer has one; never write to a missing address.
+      if (!customer.email) return;
       markCustomerActor(customer.organisationId);
       await prisma.customerVerification.deleteMany({
         where: { value: customer.id, identifier: { startsWith: 'reset-password:', not: `reset-password:${token}` } },

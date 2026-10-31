@@ -120,6 +120,8 @@ model Organisation {
 
   @@map("organisations")
   broadcasts Broadcast[]
+  importJobs ImportJob[]
+  importMappingProfiles ImportMappingProfile[]
 }
 
 model BusinessUnit {
@@ -433,6 +435,9 @@ model User {
   assistsGiven      AssistSession[]    @relation("AssistSessionAssistant")
   assistsReceived   AssistSession[]    @relation("AssistSessionSubject")
   notificationPreference NotificationPreference? @relation("NotificationPreference")
+  importJobsCreated  ImportJob[] @relation("ImportJobCreatedBy")
+  importJobsApproved ImportJob[] @relation("ImportJobApprovedBy")
+  importMappingProfilesCreated ImportMappingProfile[] @relation("ImportMappingProfileCreatedBy")
 }
 
 // One-to-one HR extension of User, keeping the identity table small.
@@ -554,7 +559,12 @@ model Customer {
   // Primary address: one short line printed on the Job Card (max 80 characters,
   // enforced in the app). Extra addresses go in CustomerAddress.
   address       String?
-  email         String       @unique
+  // Optional (v-A0): customers brought in from SAP or old spreadsheets often
+  // have no email, or share a fleet address. Unique when present (Postgres
+  // allows many NULLs under a unique index). Only a customer with a real,
+  // verified email can use the customer portal; the others are full CRM
+  // records reached by phone. Never filled with a made-up address.
+  email         String?      @unique
   emailVerified Boolean      @default(false)
   image         String?
   phone         String?
@@ -569,6 +579,15 @@ model Customer {
 
   isActive      Boolean  @default(true)
   lastLoginAt   DateTime?
+
+  // The number this customer has in another system (v-A0): externalSource is
+  // where it came from (SAP, LEGACY_EXCEL), externalId the number there (the
+  // SAP business partner / KUNNR). Unique per organisation and source, so an
+  // import matched on it never creates the same customer twice.
+  externalSource String?
+  externalId     String?
+  // The import that created this customer (Data Exchange): "Undo this import" removes exactly these.
+  importJobId    String?
 
   // Nullable: customers who sign themselves up have no staff creator.
   createdById   String?
@@ -589,6 +608,8 @@ model Customer {
   vehicleServices VehicleService[]
 
   @@index([organisationId])
+  @@unique([organisationId, externalSource, externalId])
+  @@index([importJobId])
   @@map("customers")
   warranties      Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -630,6 +651,15 @@ model CustomerVehicle {
   serviceIntervalKm   Int?
   serviceIntervalDays Int?
 
+  // The vehicle's number in another system (v-A0), e.g. SAP equipment number.
+  // Vehicles have no organisation column of their own (they belong through the
+  // customer), so this is indexed, and the importer checks it within the
+  // customer's organisation. The VIN and plate stay the real unique keys.
+  externalSource String?
+  externalId     String?
+  // The import that created this vehicle (Data Exchange).
+  importJobId    String?
+
   createdById String? // staff member who registered this vehicle
   createdBy   User?   @relation("VehicleCreatedBy", fields: [createdById], references: [id])
   createdAt    DateTime @default(now())
@@ -639,6 +669,8 @@ model CustomerVehicle {
   reminderLogs ServiceReminderLog[]
 
   @@index([customerId])
+  @@index([externalSource, externalId])
+  @@index([importJobId])
   @@map("customer_vehicles")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -1687,6 +1719,10 @@ model Part {
   // Warranty issued with this part on release to a customer (null = none).
   // Set on the Part page.
   warrantyPolicyId String?
+  // The part's number in another system (v-A0): externalSource SAP and
+  // externalId the material number (MATNR). Unique per branch and source.
+  externalSource String?
+  externalId     String?
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1711,6 +1747,7 @@ model Part {
   pricingAlerts     PricingAlert[]
 
   @@unique([branchId, partNumber])
+  @@unique([branchId, externalSource, externalId])
   @@map("parts")
 }
 
@@ -4148,4 +4185,119 @@ model NewsPost {
   @@unique([organisationId, slug])
   @@index([organisationId, status, publishedAt])
   @@map("news_posts")
+}
+
+// ─── Data Exchange (v-A1): bringing existing data in from SAP and spreadsheets ───
+//
+// One import = one file for one kind of record (customers, vehicles, …).
+// The browser reads the file and sends its rows in blocks into ImportRow (a
+// staging table), so a file of any size never travels in one request and an
+// interrupted upload carries on. Nothing touches the live records until a
+// second person approves; the load then runs in batches, can be paused, and
+// is idempotent. Statuses are text (checked in code) so new steps never need
+// a database type change.
+model ImportJob {
+  id             String   @id @default(cuid())
+  // IMP-2026-000001
+  number         String   @unique
+  organisationId String
+  // Branch-owned records (parts, stock) load into this branch; customers and vehicles do not need one.
+  branchId       String?
+  // customers | vehicles (later: parts, stock, suppliers, …)
+  entity         String
+  fileName       String
+  // SHA-256 of the file as read in the browser: the same file twice is recognised.
+  fileSha256     String
+  fileRows       Int      @default(0)
+  // The file's column headers, in order.
+  headers        Json
+  // { fieldKey: headerIndex } — which column feeds which field.
+  mapping        Json?
+  // ADD_ONLY: matches are skipped. FILL_BLANKS: matches get only their empty fields filled. Nothing is ever overwritten.
+  matchMode      String   @default("ADD_ONLY")
+  // Where the file came from: SAP | LEGACY (an old system or spreadsheet). Stamped on every record as externalSource.
+  sourceSystem   String   @default("SAP")
+  // Rows that only MIGHT be an existing record (same phone, different name and number): SKIP them (listed for
+  // follow-up) or ADD them as new. Never merged silently.
+  possibleDuplicates String @default("SKIP")
+  // UPLOADING → UPLOADED → VALIDATING → VALIDATED → AWAITING_APPROVAL → APPROVED → LOADING ⇄ PAUSED → COMPLETED;
+  // also CANCELLED, FAILED, UNDONE.
+  status         String   @default("UPLOADING")
+  goodRows       Int      @default(0)
+  warningRows    Int      @default(0)
+  rejectedRows   Int      @default(0)
+  duplicateRows  Int      @default(0)
+  matchedRows    Int      @default(0)
+  createdRows    Int      @default(0)
+  updatedRows    Int      @default(0)
+  skippedRows    Int      @default(0)
+  // Totals shown in the reconciliation report (e.g. stock quantity and value).
+  totals         Json?
+  error          String?
+  createdById    String
+  submittedAt    DateTime?
+  approvedById   String?
+  approvedAt     DateTime?
+  startedAt      DateTime?
+  completedAt    DateTime?
+  undoneById     String?
+  undoneAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ImportJobCreatedBy", fields: [createdById], references: [id])
+  approvedBy   User?        @relation("ImportJobApprovedBy", fields: [approvedById], references: [id])
+  rows         ImportRow[]
+
+  @@index([organisationId, createdAt])
+  @@index([organisationId, entity, fileSha256])
+  @@map("import_jobs")
+}
+
+/// One row of an imported file, as it was in the file, with what checking and loading made of it.
+model ImportRow {
+  id        String   @id @default(cuid())
+  jobId     String
+  // The row's line in the file (the header is line 1), as people see it in Excel.
+  rowNumber Int
+  // The cell values, in header order.
+  cells     Json
+  // PENDING → GOOD | WARNING | REJECTED | DUPLICATE; when loaded: CREATED | UPDATED | SKIPPED; UNDONE after an undo.
+  status    String   @default("PENDING")
+  // [{ field, message, level: "error" | "warning" }]
+  issues    Json?
+  // The keys the row is recognised by ("ext:1000123", "email:…", "vin:…"): finds duplicates across the whole file.
+  keys      String[] @default([])
+  // An existing record this row matched (by SAP number, email, phone, VIN, plate…).
+  matchedId String?
+  matchedBy String?
+  // The record created or updated from this row, and (FILL_BLANKS) which fields were filled — what an undo reverses.
+  resultId  String?
+  filled    String[] @default([])
+
+  job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, rowNumber])
+  @@index([jobId, status])
+  @@map("import_rows")
+}
+
+/// A saved column matching ("SAP customer master", "Workshop Excel 2024"), offered for the next file of the same kind.
+model ImportMappingProfile {
+  id             String   @id @default(cuid())
+  organisationId String
+  entity         String
+  name           String
+  // { fieldKey: headerName } — by header name, so it fits a file whose columns are in another order.
+  mapping        Json
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User         @relation("ImportMappingProfileCreatedBy", fields: [createdById], references: [id])
+
+  @@unique([organisationId, entity, name])
+  @@map("import_mapping_profiles")
 }

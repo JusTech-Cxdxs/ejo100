@@ -44,6 +44,8 @@ export const lookupCustomer = cache(async (): Promise<Lookup> => {
   });
   if (!c) return { state: 'none' };
   if (!c.isActive) return { state: 'inactive' };
+  // Portal sessions start from an email sign-in; a customer with no email on file has no portal access.
+  if (!c.email) return { state: 'none' };
   markCustomerActor(c.organisationId);
   return {
     state: 'ok',

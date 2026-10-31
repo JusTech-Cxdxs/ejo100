@@ -18,6 +18,7 @@
     "@ejo/utils": "*",
     "@react-pdf/renderer": "^4.9.0",
     "better-auth": "~1.6.33",
+    "fflate": "^0.8.3",
     "framer-motion": "^11.18.2",
     "imapflow": "^2.4.2",
     "mailparser": "^3.9.39",

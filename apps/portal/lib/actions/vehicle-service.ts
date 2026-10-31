@@ -1,4 +1,5 @@
 'use server';
+import { NO_CUSTOMER_EMAIL } from '@/lib/customer-email';
 import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
@@ -1389,6 +1390,9 @@ export async function sendVehicleServiceCollectionReminder(serviceId: string): P
     throw new VehicleServiceActionError(notDueYetMessage('COLLECTION', reminderState));
   }
 
+  // No email on file (an imported customer): stop before anything is recorded as sent.
+  if (!service.customer.email) throw new VehicleServiceActionError(NO_CUSTOMER_EMAIL);
+
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.collection_reminder_sent',
@@ -1762,6 +1766,9 @@ export async function sendVehicleServiceCancelledCollectionNotice(serviceId: str
     throw new VehicleServiceActionError(notDueYetMessage('CANCELLED_COLLECTION', reminderState));
   }
   const daysElapsed = workingDaysBetween(service.cancelledAt, new Date());
+  // No email on file (an imported customer): stop before anything is recorded as sent.
+  if (!service.customer.email) throw new VehicleServiceActionError(NO_CUSTOMER_EMAIL);
+
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle_service.cancelled_collection_notice_sent',

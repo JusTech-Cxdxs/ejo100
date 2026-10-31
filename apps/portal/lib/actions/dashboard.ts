@@ -1,4 +1,5 @@
 'use server';
+import { getDataExchangeDashboardItems } from '@/lib/actions/data-exchange';
 import { logFailure } from '@/lib/log';
 
 import { countOpenIntegrityAlerts } from './integrity';
@@ -241,6 +242,8 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   // Scheduling: today's appointments (host or participant) still to come.
   for (const w of await workflowP) notifications.push({ ...w, kind: 'WORKFLOW' });
   for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
+  // Data Exchange: imports waiting for this approver (never their own), and their own approved or sent back.
+  for (const w of await getDataExchangeDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Integrity watch reviewers: new alerts (never ones about themselves).
   const integrity = await countOpenIntegrityAlerts().catch(() => ({ open: 0, high: 0 }));
   if (integrity.open) {

@@ -182,7 +182,7 @@ export async function scanOrganisation(organisationId: string, windowDays = 7, d
     const customers = await prisma.customer.findMany({ where: { organisationId, email: { in: emails, mode: 'insensitive' } }, select: { id: true, email: true } });
     const staffOf = new Map(staff.map((s) => [s.email.toLowerCase(), s.id]));
     if (!customers.length) return;
-    const userOf = new Map(customers.map((c) => [c.id, staffOf.get(c.email.toLowerCase())]));
+    const userOf = new Map(customers.map((c) => [c.id, c.email ? staffOf.get(c.email.toLowerCase()) : undefined]));
     const custIds = customers.map((c) => c.id);
     const users = [...new Set([...userOf.values()].filter((x): x is string => Boolean(x)))];
     const onOwn = { OR: [{ jobCard: { customerId: { in: custIds } } }, { vehicleService: { customerId: { in: custIds } } }] };

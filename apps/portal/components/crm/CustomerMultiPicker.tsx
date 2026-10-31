@@ -10,7 +10,7 @@ type Picked = { id: string; fullName: string };
 export function CustomerMultiPicker({ name = 'audienceIds', initial = [] }: { name?: string; initial?: Picked[] }) {
   const [picked, setPicked] = useState<Picked[]>(initial);
   const [q, setQ] = useState('');
-  const [results, setResults] = useState<{ id: string; fullName: string; email: string; phone: string | null }[]>([]);
+  const [results, setResults] = useState<{ id: string; fullName: string; email: string | null; phone: string | null }[]>([]);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -72,7 +72,7 @@ export function CustomerMultiPicker({ name = 'audienceIds', initial = [] }: { na
                 <li key={c.id} role="option" aria-selected={chosen}>
                   <button type="button" onClick={() => add({ id: c.id, fullName: c.fullName })} className="block w-full px-3 py-2 text-left hover:bg-[var(--ejo-bg)]">
                     <span className="block text-sm font-medium text-[var(--ejo-text)]">{c.fullName}{chosen ? ' ✓' : ''}</span>
-                    <span className="block truncate text-xs text-[var(--ejo-text-muted)]">{c.email}{c.phone ? ` · ${c.phone}` : ''}</span>
+                    <span className="block truncate text-xs text-[var(--ejo-text-muted)]">{[c.email ?? 'No email on file', c.phone].filter(Boolean).join(' · ')}</span>
                   </button>
                 </li>
               );
