@@ -46,6 +46,8 @@ const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/security/deliveries', needs: ['security.view', 'store.grn.record'] },
   { url: '/security/contractors', needs: ['security.view', 'security.pass.approve'] },
   { url: '/security/road-tests', needs: ['security.view', 'workshop.job_card.view'] },
+  { url: '/plant', needs: ['plant.view'] },
+  { url: '/plant/vehicles', needs: ['plant.view'] },
   { url: '/schedule', needs: ['schedule.view', 'schedule.manage'] },
   { url: '/schedule/rooms', needs: ['schedule.view', 'schedule.manage'] },
   { url: '/notifications/broadcasts/analytics', needs: ['notifications.broadcast.send'] },

@@ -108,6 +108,21 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'integrity.alert_reviewed': 'Integrity alert reviewed',
   'integrity.speak_up': 'Concern raised (Speak up)',
   'integrity.scan': 'Integrity checks run',
+  // Assembly plant and vehicle labels.
+  'plant.vehicle_registered': 'Vehicle registered in the plant',
+  'plant.pdi_started': 'PDI started',
+  'plant.pdi_defect': 'PDI item Not OK',
+  'plant.pdi_item_reworked': 'PDI item put right',
+  'plant.pdi_fault_codes': 'PDI fault codes recorded',
+  'plant.pdi_to_rework': 'PDI sent to rework',
+  'plant.pdi_submitted': 'PDI sent for approval',
+  'plant.pdi_passed': 'PDI accepted (A)',
+  'plant.pdi_rejected': 'PDI rejected to rework (R)',
+  'plant.pdi_cancelled': 'PDI cancelled',
+  'vehicle.label_printed': 'Vehicle label or paper printed',
+  // Data Exchange exports.
+  'data_exchange.export_created': 'List exported',
+  'data_exchange.exported': 'Export downloaded',
 };
 
 export function securityActionLabel(action: string): string {
@@ -220,6 +235,21 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return Array.isArray(meta.people) ? `For ${(meta.people as string[]).join(', ')} — ${meta.returning ? 'returning' : 'not returning'}` : null;
     case 'exit_pass.gate_in':
       return [s('away') ? `Away ${s('away')}` : null, s('late') ? `late by ${s('late')}` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.pdi_started':
+    case 'plant.pdi_to_rework':
+    case 'plant.pdi_submitted':
+    case 'plant.pdi_passed':
+      return [s('number'), s('vin')].filter(Boolean).join(' · ') || null;
+    case 'plant.pdi_rejected':
+    case 'plant.pdi_cancelled':
+      return [s('number'), s('reason')].filter(Boolean).join(' · ') || null;
+    case 'plant.pdi_defect':
+    case 'plant.pdi_item_reworked':
+      return [s('number'), s('item'), s('note')].filter(Boolean).join(' · ') || null;
+    case 'plant.vehicle_registered':
+      return [s('vin'), s('model')].filter(Boolean).join(' · ') || null;
+    case 'vehicle.label_printed':
+      return [s('what'), s('vin')].filter(Boolean).join(' · ') || null;
     case 'vehicle.gate_exit':
       return [s('exitNumber'), s('number'), s('collectedBy') ?? s('driver') ? `collected by ${s('collectedBy') ?? s('driver')}` : null].filter(Boolean).join(' · ') || null;
     default:

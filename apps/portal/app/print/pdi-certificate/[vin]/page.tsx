@@ -22,16 +22,21 @@ export default async function PdiCertificate({ params }: { params: Promise<{ vin
   const r = await loadVehiclePrint(vin, 'pdi-certificate');
   if (!r.ok) return <PrintRefusal message={r.message} />;
   const { p, scanUrl, printed, organisation, branch } = r;
-  const v = pdiVerdict(p.stages);
+  // A PDI recorded on screen decides (passed only once a second person accepted it, SAP usage decision A);
+  // otherwise the plant's PDI register rows do.
+  const day0 = (d: Date) => d.toISOString().slice(0, 10);
+  const v = p.pdi
+    ? { state: p.pdi.status === 'PASSED' ? 'passed' as const : 'not-passed' as const, date: day0(p.pdi.at), checks: p.pdi.items.map((it, i) => ({ id: String(i), stage: `${it.section}: ${it.label}`, result: it.result === 'OK' ? 'OK' : it.result === 'NOT_OK' ? 'Not OK' : it.result === 'NA' ? 'N/A' : '—', tone: it.result === 'OK' || it.result === 'NA' ? 'pass' as const : 'fail' as const, date: day0(p.pdi!.at) })) }
+    : pdiVerdict(p.stages);
   const passed = v.state === 'passed';
   return (
     <div style={{ maxWidth: '780px', margin: '0 auto', padding: '32px 24px', fontFamily: 'Arial, Helvetica, sans-serif', color: '#0F172A', position: 'relative' }}>
       <PrintOnLoad />
       <style>{'@page { size: A4; margin: 14mm }'}</style>
-      <DocumentHeader organisation={organisation} branch={branch} logoUrl={`${portalBaseUrl()}/images/logo/logo.png`} documentTitle="Pre-Delivery Inspection Certificate" referenceNumber={p.vin} statusLabel={passed ? 'PDI passed' : v.state === 'not-recorded' ? 'PDI not recorded' : 'PDI not passed'} accentColor="#16A34A" />
+      <DocumentHeader organisation={organisation} branch={branch} logoUrl={`${portalBaseUrl()}/images/logo/logo.png`} documentTitle="Pre-Delivery Inspection Certificate" referenceNumber={p.pdi ? `${p.vin} · ${p.pdi.number}` : p.vin} statusLabel={passed ? 'PDI passed' : v.state === 'not-recorded' ? 'PDI not recorded' : 'PDI not passed'} accentColor="#16A34A" />
       {!passed ? (
         <p role="alert" style={{ marginTop: '14px', padding: '10px 12px', border: '2px solid #B91C1C', color: '#B91C1C', fontWeight: 700, fontSize: '13px', textAlign: 'center' }}>
-          NOT A CERTIFICATE — {v.state === 'not-recorded' ? 'no pre-delivery inspection is recorded for this vehicle yet.' : 'the pre-delivery inspection has checks that have not passed.'}
+          NOT A CERTIFICATE — {v.state === 'not-recorded' ? 'no pre-delivery inspection is recorded for this vehicle yet.' : p.pdi && p.pdi.status !== 'PASSED' ? 'the pre-delivery inspection has not been completed and approved yet.' : 'the pre-delivery inspection has checks that have not passed.'}
         </p>
       ) : null}
       <div style={{ display: 'flex', gap: '16px', alignItems: 'center', justifyContent: 'space-between', marginTop: '18px' }}>

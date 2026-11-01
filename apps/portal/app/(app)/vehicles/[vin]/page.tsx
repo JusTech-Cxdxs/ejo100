@@ -29,7 +29,7 @@ const day = (s: string) => formatDateOnly(new Date(`${s}T12:00:00Z`));
  */
 export default async function VehiclePassportPage({ params }: { params: Promise<{ vin: string }> }) {
   const { vin: raw } = await params;
-  await guardAnyPage(['workshop.view', 'warranty.view', 'security.view', 'crm.view'], `/vehicles/${raw}`);
+  await guardAnyPage(['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view'], `/vehicles/${raw}`);
   const p = await getVehiclePassport(decodeURIComponent(raw));
   if (!p) notFound();
   const scanUrl = `${portalBaseUrl().replace(/\/$/, '')}${vehicleScanPath(p.vin)}`;
@@ -69,13 +69,25 @@ export default async function VehiclePassportPage({ params }: { params: Promise<
             </div>
             <Fact label="Model" value={p.description} />
             <Fact label="Plate" value={p.vehicle?.plate ?? null} mono />
-            <Fact label="Engine number" value={p.vehicle?.engineNumber ?? null} mono />
+            <Fact label="Engine number" value={p.vehicle?.engineNumber ?? p.plant?.engineNumber ?? null} mono />
+            {p.plant ? <Fact label="Colour" value={p.plant.colour} /> : null}
             <Fact label="Mileage" value={p.vehicle?.mileage ? `${p.vehicle.mileage.toLocaleString('en-NG')} km` : null} />
             <div>
               <dt className="text-xs text-[var(--ejo-text-muted)]">Customer</dt>
               <dd className="mt-0.5 font-medium text-[var(--ejo-text)]">{p.vehicle?.customer ? <LoadingLink href={`/crm/customers/${p.vehicle.customer.id}`} className="text-[var(--ejo-primary)] hover:underline">{p.vehicle.customer.name}</LoadingLink> : p.vehicle ? (p.may.customers ? '—' : 'Sold (customer details are for the CRM)') : 'Not sold yet'}</dd>
             </div>
           </dl>
+          {p.plant ? (
+            <div className="mt-4 border-t border-[var(--ejo-border)] pt-3">
+              <p className="text-xs font-semibold text-[var(--ejo-text)]">In the plant: {p.plant.branch}{p.may.plant ? <> · <LoadingLink href="/plant" className="font-normal text-[var(--ejo-primary)] hover:underline">open the plant</LoadingLink></> : null}</p>
+              <dl className="mt-2 grid grid-cols-2 gap-x-6 gap-y-2 text-sm sm:grid-cols-4">
+                <Fact label="SAP plant (WERKS)" value={p.plant.sapPlant} mono />
+                <Fact label="Material (MATNR)" value={p.plant.sapMaterial} mono />
+                <Fact label="Production order (AUFNR)" value={p.plant.sapProductionOrder} mono />
+                <Fact label="Equipment (EQUNR)" value={p.plant.sapEquipment} mono />
+              </dl>
+            </div>
+          ) : null}
         </SectionCard>
       </div>
 

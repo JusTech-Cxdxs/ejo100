@@ -53,6 +53,8 @@ export type UpdateBranchInput = {
   bankName?: string;
   bankAccountName?: string;
   bankAccountNumber?: string;
+  /** SAP plant code (WERKS), 4 letters or digits; undefined leaves it as it is. */
+  sapPlant?: string;
 };
 
 /** Edits a branch's printed identity: the address and hotlines on a Job
@@ -87,6 +89,10 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
   if (bankAccountNumber && !/^\d{10}$/.test(bankAccountNumber)) {
     throw new BranchActionError('The account number must be exactly 10 digits.');
   }
+  const sapPlant = input.sapPlant === undefined ? undefined : input.sapPlant.trim().toUpperCase() || null;
+  if (sapPlant && !/^[A-Z0-9]{4}$/.test(sapPlant)) {
+    throw new BranchActionError('The SAP plant code is 4 letters or digits (WERKS), e.g. 1000.');
+  }
   await prisma.branch.update({
     where: { id: branchId },
     data: {
@@ -98,6 +104,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       bankName,
       bankAccountName,
       bankAccountNumber,
+      ...(sapPlant !== undefined ? { sapPlant } : {}),
     },
   });
   await writeAuditLog({
