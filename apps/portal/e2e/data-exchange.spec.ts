@@ -53,6 +53,7 @@ function vehiclesXlsx(): Buffer {
 async function startImport(page: Page, entity: 'customers' | 'vehicles', file: { name: string; mimeType: string; buffer: Buffer }): Promise<string> {
   await page.goto(`/data-exchange/new?entity=${entity}`);
   await expect(page.getByRole('heading', { name: `Import ${entity}` })).toBeVisible();
+  await expect(page.locator('#import-file')).toHaveCount(1);
   await page.locator('#import-file').setInputFiles(file);
   await page.waitForURL(/\/data-exchange\/imports\/[^/?]+$/, { timeout: 60_000 });
   return page.url();

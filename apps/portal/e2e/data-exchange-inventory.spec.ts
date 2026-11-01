@@ -25,6 +25,7 @@ async function upload(page: Page, entity: string, name: string, body: string, op
   await page.goto(`/data-exchange/new?entity=${entity}`);
   // The page settles first (while it is still arriving the picker can briefly appear twice).
   if (opts.branchId) { await expect(page.locator('#import-branch')).toHaveCount(1); await page.locator('#import-branch').selectOption(opts.branchId); }
+  await expect(page.locator('#import-file')).toHaveCount(1);
   await page.locator('#import-file').setInputFiles({ name, mimeType: 'text/csv', buffer: Buffer.from(body) });
   await page.waitForURL(/\/data-exchange\/imports\/[^/?]+$/, { timeout: 60_000 });
   await expect(page.getByRole('heading', { name: 'Match the columns' })).toBeVisible();
@@ -80,6 +81,8 @@ test('parts from the SAP material master: units translated, batch parts, an alte
   expect(oil.alternativeUnits.map((u) => [u.unitName, Number(u.conversionFactor)])).toEqual([['Drum', 208]]);
   // The catalogue is paged, and finds the imported parts.
   await page.goto(`/inventory/parts?q=${encodeURIComponent(T)}`);
+  // (While the page streams in, React holds a hidden copy for a moment: wait for the one that stays.)
+  await expect(page.getByText(/Showing 1–3 of 3 parts/)).toHaveCount(1);
   await expect(page.getByText(/Showing 1–3 of 3 parts/)).toBeVisible();
 });
 

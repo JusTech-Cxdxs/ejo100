@@ -166,7 +166,8 @@ test('people who may not open a kind of record never find it', async ({ page }) 
   // A calendar user: no security, workshop or store.
   await as(page, 'calendar-user');
   await page.goto('/dashboard');
-  for (const q of ['VX', num('VX'), num('RT'), num('JC'), num('GRN')]) {
+  // 'VX-' (the prefix as numbers are written): a bare 'VX' can match another test's random tag in a name.
+  for (const q of ['VX-', num('VX'), num('RT'), num('JC'), num('GRN')]) {
     const panel = await search(page, q);
     await expect(panel, `calendar user must not find "${q}"`).toContainText('Nothing found for');
   }

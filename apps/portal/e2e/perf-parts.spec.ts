@@ -30,6 +30,7 @@ test('a full SAP material master: upload, check, approve, load', async ({ page }
   await expect(page.locator('#import-branch')).toHaveCount(1);
   await page.locator('#import-branch').selectOption(branchId);
   let s = Date.now();
+  await expect(page.locator('#import-file')).toHaveCount(1);
   await page.locator('#import-file').setInputFiles(process.env.PERF_FILE!);
   await page.waitForURL(/\/data-exchange\/imports\/[^/?]+$/, { timeout: 3_600_000 });
   mark('uploadSeconds', s);

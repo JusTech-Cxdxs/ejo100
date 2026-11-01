@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { appendImportRows, createImportJob, finishImportUpload } from '@/lib/actions/data-exchange';
 import { fingerprint, readFileRows, sniffKind } from '@/lib/data-exchange/read-file';
@@ -109,6 +109,13 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
     }
   }
 
+
+  // A file chosen while the page was still arriving (before it could react) is picked up as soon as it can.
+  useEffect(() => {
+    const f = input.current?.files?.[0];
+    if (f) { void start(f); input.current!.value = ''; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, when the page is ready
+  }, []);
   return (
     <div className="space-y-5">
       <fieldset disabled={busy} className="space-y-2">
