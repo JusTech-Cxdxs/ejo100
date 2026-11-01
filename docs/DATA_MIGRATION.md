@@ -285,6 +285,16 @@ delivery to **Sale**; otherwise Production rows are **Assembly stations**, QC
 rows **Quality audit** and PDI rows **Pre-delivery inspection**. A failed or
 rework result shows as needing attention until a later pass of the same check.
 
+**Kits from now on are recorded, not imported.** Past kit arrivals come in as
+register rows (above). New shipments are recorded as they land under
+**Assembly plant → Record a shipment**, with the kits pasted from the
+supplier's packing list (VIN, engine number, model, lot, cases; one kit per
+line, straight from Excel). Nothing is saved until every line is right, and a
+VIN already in a kit or in the plant is refused. Their arrival check then
+appears next to the register rows on the same vehicle page. The demo packing
+list is `docs/demo/correct/09_kit_packing_list_demo.csv`; the copy in
+`with-mistakes/` has four bad lines.
+
 ## 7c. Undoing history
 
 Undo of an invoice-history or register import **voids** what it loaded: the

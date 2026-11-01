@@ -66,6 +66,8 @@ const READ_FENCES = [
   'myExportJob(',
   // Assembly plant (lib/actions/plant.ts): where { id, organisationId, branch reach } (myPdi / plantFence).
   'myPdi(', 'plantFence(',
+  // Kits and shipments (lib/actions/plant-kits.ts): where { id, organisationId, branch reach } (myKit / myShipment / kitFence).
+  'myKit(', 'myShipment(', 'kitFence(',
 ];
 
 /** Reads that need no record fence, with the reason. */

@@ -93,6 +93,32 @@ as an inspection lot:
 | Accepted by a second person | Usage decision **A** | Never the inspector |
 | Rejected back to rework | Usage decision **R** | With the reason and the items to put right |
 
+### Kits arriving (D2) — goods receipt and incoming inspection
+
+A **shipment** is one bill of lading; each **kit** in it is one vehicle (CKD
+or SKD), named on the supplier's packing list. In SAP the kits are received
+against a purchase order (MIGO, movement **101**), and the receipt opens a
+QM inspection lot (origin 01, goods receipt). EJO is where the receiving
+bay records that inspection as it happens.
+
+| EJO | SAP | Notes |
+| --- | --- | --- |
+| Shipment (SHP-2026-000001) | Inbound delivery (VBELN), purchase order (EBELN) | Both typed on the shipment; the bill of lading, vessel and containers are kept with it |
+| Kit (KIT-2026-000001) | Inspection lot (PRUEFLOS); material document of the goods receipt (MBLNR) | Typed on the kit once SAP has them; until then the kit number is EJO's reference |
+| VIN / frame number, engine number, lot | Serial / batch on the receipt; later the vehicle's equipment (EQUI) | One kit per VIN: a VIN cannot be a kit twice, nor a kit once it is a vehicle |
+| Arrival checks: OK / Not OK / N/A | Characteristic results | Versioned checklists per model family; codes are stable (CS02 case count, FR01 frame rails…) |
+| Shortage, damage, wrong part, excess | Defects (QMFE) / quality notification for the supplier (Q2) | Part number, case and quantity; *stops the line* or not; the claim's reference and the resolution |
+| Released to the line by a second person | Usage decision **A** (stock to unrestricted) | Never the inspector or anyone who checked it. *With shortages* needs a written concession |
+| On hold | No usage decision yet (stock stays in quality inspection) | Put right, then sent again |
+| Rejected | Usage decision **R** | The kit is not built: back to the supplier or an insurance claim |
+
+Releasing a kit creates the vehicle in the plant at stage *On the line*
+(or moves on a vehicle already registered). A PDI cannot start on a VIN whose
+kit is still at arrival, on hold or rejected.
+
+Exports: **Kits arriving at the plant** (every kit with the SAP numbers above)
+and **Kit shortages and damage**, the list a supplier claim is built from.
+
 ## 3. The daily files *(coming in C1)*
 
 C1 adds, through Data Exchange, without new infrastructure:

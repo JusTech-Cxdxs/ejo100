@@ -131,6 +131,8 @@ model Organisation {
   exportJobs ExportJob[]
   plantVehicles PlantVehicle[]
   pdiInspections PdiInspection[]
+  plantShipments PlantShipment[]
+  plantKits     PlantKit[]
 }
 
 model BusinessUnit {
@@ -244,6 +246,8 @@ model Branch {
   contractorPasses ContractorPass[]
   plantVehicles PlantVehicle[]
   pdiInspections PdiInspection[]
+  plantShipments PlantShipment[]
+  plantKits     PlantKit[]
 }
 
 model Department {
@@ -4564,6 +4568,7 @@ model PlantVehicle {
   organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
   branch       Branch          @relation(fields: [branchId], references: [id])
   pdis         PdiInspection[]
+  kits         PlantKit[]
 
   @@unique([organisationId, vinKey])
   @@index([organisationId, stage])
@@ -4613,6 +4618,147 @@ model PdiInspection {
   @@index([plantVehicleId])
   @@index([branchId, status])
   @@map("pdi_inspections")
+}
+
+/// D2: a shipment of kits arriving at the plant (one bill of lading). Its
+/// status is read from its kits (lib/plant/kits.ts).
+model PlantShipment {
+  id                 String    @id @default(cuid())
+  /// SHP-2026-000001
+  number             String    @unique
+  organisationId     String
+  /// The plant (a branch).
+  branchId           String
+  supplier           String
+  /// Country or port the kits were shipped from.
+  origin             String?
+  billOfLading       String?
+  vessel             String?
+  containers         String[]  @default([])
+  arrivedAt          DateTime
+  /// SAP purchase order (EBELN) and inbound delivery (VBELN) the kits are received against.
+  sapPurchaseOrder   String?
+  sapInboundDelivery String?
+  notes              String?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  kits         PlantKit[]
+
+  @@index([organisationId, arrivedAt])
+  @@index([branchId])
+  @@map("plant_shipments")
+}
+
+/// D2: one vehicle's kit (CKD or SKD) as it arrives, checked against the
+/// packing list and released to the line by a second person. The vehicle in
+/// the plant is created when the kit is released.
+model PlantKit {
+  id                  String    @id @default(cuid())
+  /// KIT-2026-000001
+  number              String    @unique
+  organisationId      String
+  branchId            String
+  shipmentId          String
+  /// From the packing list: the frame number / VIN, as typed, and as matched.
+  vin                 String
+  vinKey              String
+  engineNumber        String?
+  modelCode           String
+  lotNumber           String?
+  /// CKD | SKD
+  kitType             String
+  casesExpected       Int?
+  casesReceived       Int?
+  templateKey         String
+  templateVersion     Int
+  /// ARRIVED | INSPECTING | SUBMITTED | ON_HOLD | RELEASED | REJECTED | CANCELLED
+  status              String    @default("ARRIVED")
+  inspectorId         String?
+  startedAt           DateTime?
+  submittedAt         DateTime?
+  decidedById         String?
+  decidedAt           DateTime?
+  decisionNote        String?
+  releasedWithShortages Boolean @default(false)
+  /// SAP QM usage decision: A (released) or R (rejected); none while on hold.
+  sapUsageDecision    String?
+  /// SAP inspection lot (PRUEFLOS) and the goods receipt's material document (MBLNR, movement 101).
+  sapInspectionLot    String?
+  sapMaterialDocument String?
+  notes               String?
+  /// The vehicle in the plant, once released.
+  plantVehicleId      String?
+  createdById         String
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch         @relation(fields: [branchId], references: [id])
+  shipment     PlantShipment  @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  vehicle      PlantVehicle?  @relation(fields: [plantVehicleId], references: [id], onDelete: SetNull)
+  checks       PlantKitCheck[]
+  issues       PlantKitIssue[]
+
+  @@index([organisationId, status])
+  @@index([organisationId, vinKey])
+  @@index([shipmentId])
+  @@index([branchId, status])
+  @@map("plant_kits")
+}
+
+/// One arrival check of a kit, as the checklist read when the kit was registered.
+model PlantKitCheck {
+  id          String    @id @default(cuid())
+  kitId       String
+  code        String
+  section     String
+  label       String
+  sort        Int
+  allowNa     Boolean   @default(false)
+  /// OK | NOT_OK | NA
+  result      String?
+  note        String?
+  checkedById String?
+  checkedAt   DateTime?
+
+  kit PlantKit @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@unique([kitId, code])
+  @@map("plant_kit_checks")
+}
+
+/// A shortage, damaged part, wrong part or excess found in a kit, followed to
+/// its claim from the supplier and its resolution. Never deleted.
+model PlantKitIssue {
+  id             String    @id @default(cuid())
+  organisationId String
+  kitId          String
+  /// SHORTAGE | DAMAGE | WRONG_PART | EXCESS
+  kind           String
+  partNumber     String?
+  description    String
+  caseNumber     String?
+  quantity       Int       @default(1)
+  stopsLine      Boolean   @default(false)
+  /// OPEN | CLAIMED | RESOLVED
+  status         String    @default("OPEN")
+  claimReference String?
+  resolution     String?
+  raisedById     String
+  raisedAt       DateTime  @default(now())
+  claimedAt      DateTime?
+  resolvedById   String?
+  resolvedAt     DateTime?
+
+  kit PlantKit @relation(fields: [kitId], references: [id], onDelete: Cascade)
+
+  @@index([kitId])
+  @@index([organisationId, status])
+  @@map("plant_kit_issues")
 }
 
 /// One checklist line of a PDI, as the checklist read when the PDI started.

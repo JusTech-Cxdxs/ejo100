@@ -36,6 +36,9 @@ export const REFERENCE_TYPES = [
   { prefix: 'EXP', model: 'ExportJob', group: 'Exports', path: (id: string) => `/data-exchange/exports/${id}` },
   // Assembly plant: a pre-delivery inspection.
   { prefix: 'PDI', model: 'PdiInspection', group: 'Pre-delivery inspections', path: (id: string) => `/plant/pdi/${id}` },
+  // Assembly plant: a kit (one vehicle, CKD or SKD) and the shipment that brought it.
+  { prefix: 'KIT', model: 'PlantKit', group: 'Kits', path: (id: string) => `/plant/kits/${id}` },
+  { prefix: 'SHP', model: 'PlantShipment', group: 'Shipments', path: (id: string) => `/plant/shipments/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

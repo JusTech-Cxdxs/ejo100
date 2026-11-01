@@ -317,10 +317,50 @@ Manager**). Give the branch its SAP plant code first (Branches → the branch
 
 How each record lines up with SAP is in [`docs/SAP_INTEGRATION.md`](SAP_INTEGRATION.md).
 
+## 11. Kits arriving: checked against the packing list, released to the line (D2)
+
+*The question: "a shipment of kits lands — what is missing, and which can go to the line?"*
+
+People: a **Kit Inspector** and a **Quality Supervisor** (or the **Plant
+Manager**).
+
+1. As the **Kit Inspector**: **Assembly plant → Record a shipment**. Fill
+   in the supplier (*Isuzu Motors Ltd*), the bill of lading, containers and
+   the SAP purchase order. For the kits, open
+   `docs/demo/with-mistakes/09_kit_packing_list_demo.csv`, copy every line
+   and paste it in. Before anything is sent the form says *12 kits ready*
+   and lists the four bad lines: **a part name where the VIN should be**,
+   **a VIN twice**, **a D-MAX** (not built here) and **900 cases**. Press
+   *Record the shipment*: *Nothing was saved*. Paste
+   `docs/demo/correct/09_kit_packing_list_demo.csv` instead, and it records
+   the shipment with its 12 kits (8 Isuzu CKD, 4 Soueast S07 SKD).
+2. Open the first kit. Tap through the checks. Mark **Case count matches the
+   packing list** Not OK (*Case 07 missing*) and type **13** cases arrived
+   (the packing list says 14). Under *Shortages and damage*, raise the
+   front axle hubs (part **8-97366-430-0**, case C07, quantity 2) and tick
+   **It stops the line**. Raise a mirror bracket too, which doesn't stop
+   the line. **Send for release**: the inspector cannot release their own
+   kit.
+3. In the PDI bay, try to start a PDI on that VIN: *its kit has not been
+   released to the line yet*.
+4. As the **Quality Supervisor**: **Approvals → Plant → Release kit …**.
+   Release is refused while a shortage stops the line, so **Hold** it with
+   a note. On the hub shortage, type the claim reference and press
+   **Claimed**, then **Resolved** (*arrived by air freight*). The inspector
+   sends it again. One shortage is still open, so releasing needs a written
+   concession (*fitted at the trim station when they arrive*). Press
+   **Release with shortages (A)**: the vehicle is created **on the line**.
+5. Reject another kit (**Reject (R)**, e.g. *cab crushed in transit*): it is
+   final, and that VIN will not be built.
+6. Open the released VIN: *Kit arrival and QC* shows the kit, the shipment
+   and the open shortage. Search the **KIT-…** or **SHP-…** number. **Kits →
+   Export shortages** gives the list for the supplier claim, with part, case,
+   quantity and the SAP purchase order.
+
 ---
 
-*Coming in the next releases (each adds a section here):* kit arrival and
-QC, line stations and QA, the yard, sale and plant dashboards (D2–D4); a
+*Coming in the next releases (each adds a section here):* line stations and
+QA, the yard, sale and plant dashboards (D3–D4); a
 complete KCG-style demo organisation with a one-command reset; round-trip updates from an
 exported file with a preview of the changes (A4b); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and

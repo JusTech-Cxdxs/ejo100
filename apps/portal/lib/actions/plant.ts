@@ -22,6 +22,7 @@ import { writeAuditLog } from '@/lib/workshop-core';
 import { lagosYear } from '@/lib/utils/format-date';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { isChassisLike, normaliseVin } from '@/lib/vin';
+import { KIT_OPEN, KIT_STATUS_WORDS, type KitStatus } from '@/lib/plant/kits';
 import {
   EDITABLE, PLANT_STAGES, afterSubmit, isPdiResult, modelByCode, parseFaultCodes, pdiBlockers, pdiWarnings, templateFor, PDI_TEMPLATES,
   type PdiFamily, type PdiItemState, type PdiReadings, type PdiStatus, type PlantStage,
@@ -67,15 +68,17 @@ export type PlantOverview = {
 export async function getPlantOverview(): Promise<PlantOverview> {
   await authorize('plant.view', undefined, 'getPlantOverview', 'The assembly plant is for the plant team.');
   const f = await plantFence();
-  const [byStage, open, passed, perform, approve, register] = await Promise.all([
+  const [byStage, openKits, open, passed, perform, approve, register] = await Promise.all([
     prisma.plantVehicle.groupBy({ by: ['stage'], where: { organisationId: f.organisationId, ...f.branch }, _count: { _all: true } }),
+    // Kits not yet released are the plant's KIT stage (their vehicle is created on release).
+    prisma.plantKit.count({ where: { organisationId: f.organisationId, ...f.branch, status: { in: KIT_OPEN } } as Prisma.PlantKitWhereInput }),
     prisma.pdiInspection.findMany({ where: { organisationId: f.organisationId, ...f.branch, status: { in: ['IN_PROGRESS', 'REWORK', 'SUBMITTED'] } }, orderBy: { updatedAt: 'desc' }, take: 200, include: { vehicle: { select: { vin: true, modelCode: true, modelName: true } } } }),
     prisma.pdiInspection.findMany({ where: { organisationId: f.organisationId, ...f.branch, status: 'PASSED' }, orderBy: { decidedAt: 'desc' }, take: 15, include: { vehicle: { select: { vin: true, modelCode: true, modelName: true } } } }),
     allows('plant.pdi.perform'), allows('plant.pdi.approve'), allows('plant.vehicle.register'),
   ]);
   const names = await userNames(open.map((p) => p.inspectorId));
   return {
-    stages: PLANT_STAGES.map((stage) => ({ stage, count: byStage.find((b) => b.stage === stage)?._count._all ?? 0 })),
+    stages: PLANT_STAGES.map((stage) => ({ stage, count: (byStage.find((b) => b.stage === stage)?._count._all ?? 0) + (stage === 'KIT' ? openKits : 0) })),
     queue: open.map((p) => ({ id: p.id, number: p.number, status: p.status as PdiStatus, vin: p.vehicle.vin, model: p.vehicle.modelName ?? p.vehicle.modelCode, inspector: names.get(p.inspectorId) ?? 'Someone', at: p.updatedAt, attempt: p.attempt })),
     passed: passed.map((p) => ({ id: p.id, number: p.number, vin: p.vehicle.vin, model: p.vehicle.modelName ?? p.vehicle.modelCode, at: p.decidedAt ?? p.updatedAt })),
     may: { perform, approve, register },
@@ -185,6 +188,9 @@ export async function startPdi(input: StartPdiInput): Promise<Done<{ id: string;
   const vin = normaliseVin(input.vin);
   if (!isChassisLike(vin)) return fail('Scan or type the VIN: 6 to 25 letters and digits.');
   let vehicle = await prisma.plantVehicle.findFirst({ where: { organisationId: f.organisationId, vinKey: vin } });
+  // A vehicle that arrived as a kit is inspected only once its kit is released to the line (D2).
+  const kit = vehicle ? null : await prisma.plantKit.findFirst({ where: { organisationId: f.organisationId, vinKey: vin, status: { in: [...KIT_OPEN, 'REJECTED'] } }, orderBy: { createdAt: 'desc' }, select: { number: true, status: true } });
+  if (kit) return fail(kit.status === 'REJECTED' ? `This VIN’s kit ${kit.number} was rejected: it is not built.` : `This VIN’s kit ${kit.number} has not been released to the line yet (${KIT_STATUS_WORDS[kit.status as KitStatus] ?? kit.status}).`);
   if (vehicle) {
     // A vehicle in another plant of the organisation is that plant's to inspect.
     try { await branchWithinReach('plant.pdi.perform', vehicle.branchId); } catch { return fail('This vehicle is in another plant.'); }
