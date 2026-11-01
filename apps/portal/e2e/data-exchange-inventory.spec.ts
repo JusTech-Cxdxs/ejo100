@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { as, uniq } from './helpers';
+import { as, uniq, open } from './helpers';
 import { db } from './db';
 import { who } from './people';
 
@@ -22,7 +22,7 @@ async function storeBranchId(): Promise<string> {
 }
 
 async function upload(page: Page, entity: string, name: string, body: string, opts: { branchId?: string } = {}): Promise<string> {
-  await page.goto(`/data-exchange/new?entity=${entity}`);
+  await open(page, `/data-exchange/new?entity=${entity}`);
   // The page settles first (while it is still arriving the picker can briefly appear twice).
   if (opts.branchId) { await expect(page.locator('#import-branch')).toHaveCount(1); await page.locator('#import-branch').selectOption(opts.branchId); }
   await expect(page.locator('#import-file')).toHaveCount(1);
@@ -36,7 +36,7 @@ async function upload(page: Page, entity: string, name: string, body: string, op
 
 async function approveAndLoad(page: Page, url: string) {
   await as(page, 'store-manager');
-  await page.goto(url);
+  await open(page, url);
   await page.getByRole('button', { name: 'Approve' }).click();
   await page.getByRole('button', { name: 'Start loading' }).click();
   await expect(page.getByRole('heading', { name: 'Report' })).toBeVisible({ timeout: 90_000 });
@@ -55,7 +55,7 @@ test('suppliers from the SAP vendor list: the Store Manager approves; the Suppli
   await expect(page.getByText('Name is required.')).toBeVisible();
   await page.getByRole('button', { name: /Send for approval/ }).click();
   await approveAndLoad(page, url);
-  await page.goto(`/inventory/suppliers?q=${encodeURIComponent(`Isuzu Parts ${T}`)}`);
+  await open(page, `/inventory/suppliers?q=${encodeURIComponent(`Isuzu Parts ${T}`)}`);
   await expect(page.getByText(`Isuzu Parts ${T} Africa`)).toBeVisible();
 });
 
@@ -80,7 +80,7 @@ test('parts from the SAP material master: units translated, batch parts, an alte
   expect(oil).toMatchObject({ baseUnitOfMeasure: 'Litre', trackingType: 'BATCH', externalSource: 'SAP', externalId: pn(2) });
   expect(oil.alternativeUnits.map((u) => [u.unitName, Number(u.conversionFactor)])).toEqual([['Drum', 208]]);
   // The catalogue is paged, and finds the imported parts.
-  await page.goto(`/inventory/parts?q=${encodeURIComponent(T)}`);
+  await open(page, `/inventory/parts?q=${encodeURIComponent(T)}`);
   // (While the page streams in, React holds a hidden copy for a moment: wait for the one that stays.)
   await expect(page.getByText(/Showing 1–3 of 3 parts/)).toHaveCount(1);
   await expect(page.getByText(/Showing 1–3 of 3 parts/)).toBeVisible();
@@ -116,7 +116,7 @@ test('opening stock: totals before approval, an opening-balance receipt at the c
   // The Store Manager approved it, so cannot confirm the value; Finance does.
   await expect(page.getByText('Waiting for Finance to confirm the value.')).toBeVisible();
   await as(page, 'finance-officer');
-  await page.goto(stockUrl);
+  await open(page, stockUrl);
   await page.getByRole('button', { name: 'Confirm the value (Finance)' }).click();
   await expect(page.getByText(/Value confirmed by .* \(Finance\)/)).toBeVisible();
 });
@@ -127,12 +127,12 @@ test('Finance opens only stock imports; reversing the opening stock takes it bac
   const customers = await db().importJob.findFirst({ where: { entity: 'customers' }, select: { id: true } });
   if (customers) {
     await as(page, 'finance-officer');
-    await page.goto(`/data-exchange/imports/${customers.id}`);
+    await open(page, `/data-exchange/imports/${customers.id}`);
     await expect(page.getByText(/could not be found|404|not found/i).first()).toBeVisible();
   }
   await as(page, 'store-manager');
   page.on('dialog', (d) => void d.accept());
-  await page.goto(stockUrl);
+  await open(page, stockUrl);
   await page.getByRole('button', { name: 'Reverse this opening stock' }).click();
   await expect(page.getByRole('heading', { name: 'Undone' })).toBeVisible({ timeout: 60_000 });
   const stock = await db().partStock.findFirstOrThrow({ where: { part: { branchId, partNumber: pn(1) } }, select: { quantityOnHand: true } });
@@ -140,6 +140,6 @@ test('Finance opens only stock imports; reversing the opening stock takes it bac
   expect(await db().goodsReceiptLine.count({ where: { part: { branchId, partNumber: { in: [pn(1), pn(2), pn(3)] } } } })).toBe(0);
   // The file is still there: it can be reopened, checked and loaded again.
   await as(page, 'it-administrator');
-  await page.goto(stockUrl);
+  await open(page, stockUrl);
   await expect(page.getByRole('button', { name: /Reopen: check and load this file again/ })).toBeVisible();
 });
