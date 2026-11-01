@@ -197,9 +197,17 @@ export function lagosMonthStart(now: Date): Date {
   return new Date(`${lagosMonthKey(now)}-01T00:00:00+01:00`);
 }
 
-export function customerMoney(jobs: CrmJob[], now: Date = new Date()) {
+/**
+ * An invoice from SAP, before EJO 100 (v-A3): read-only history, already
+ * settled in SAP. It counts as spend and as a visit on its date; it is never
+ * "outstanding", and the averages (job value, turnaround) stay EJO's own.
+ */
+export type SapInvoice = { at: Date; amount: number };
+
+export function customerMoney(jobs: CrmJob[], now: Date = new Date(), sap: SapInvoice[] = []) {
   const payments = jobs.flatMap((j) => j.payments);
   const refunds = jobs.flatMap((j) => j.refunds);
+  const fromSap = r2(total(sap));
   const paidIn = r2(total(payments));
   const refunded = r2(total(refunds));
   const finished = jobs.filter((j) => !j.cancelled && j.finishedAt);
@@ -210,32 +218,37 @@ export function customerMoney(jobs: CrmJob[], now: Date = new Date()) {
   const turnarounds = finished.filter((j) => j.receivedAt && j.finishedAt && +j.finishedAt >= +j.receivedAt).map((j) => (+j.finishedAt! - +j.receivedAt!) / DAY);
   const yearStart = lagosYearStart(now);
   const inYear = (x: { at: Date }) => +x.at >= +yearStart && +x.at <= +now;
-  const lastVisit = visitsList.reduce<Date | null>((m, j) => (!m || +j.receivedAt! > +m ? j.receivedAt : m), null);
+  const lastEjo = visitsList.reduce<Date | null>((m, j) => (!m || +j.receivedAt! > +m ? j.receivedAt : m), null);
+  const lastSap = sap.reduce<Date | null>((m, x) => (!m || +x.at > +m ? x.at : m), null);
+  const lastVisit = lastEjo && lastSap ? (+lastEjo >= +lastSap ? lastEjo : lastSap) : lastEjo ?? lastSap;
   return {
     paidIn,
     refunded,
-    netPaid: r2(paidIn - refunded),
+    /** Spend: EJO payments less refunds, plus SAP invoices before EJO. */
+    netPaid: r2(paidIn - refunded + fromSap),
+    fromSap,
+    sapInvoices: sap.length,
     billed,
     outstanding,
-    visits: visitsList.length,
+    visits: visitsList.length + sap.length,
     finishedJobs: finished.length,
     averageJob: finished.length ? r2(billed / finished.length) : null,
     averageTurnaroundDays: turnarounds.length ? Math.round((turnarounds.reduce((s, x) => s + x, 0) / turnarounds.length) * 10) / 10 : null,
-    netPaidThisYear: r2(total(payments.filter(inYear)) - total(refunds.filter(inYear))),
+    netPaidThisYear: r2(total(payments.filter(inYear)) - total(refunds.filter(inYear)) + total(sap.filter(inYear))),
     lastVisit,
   };
 }
 
-export type SpendMonth = { key: string; label: string; paid: number; refunds: number; net: number; billed: number };
+export type SpendMonth = { key: string; label: string; paid: number; refunds: number; net: number; billed: number; /** SAP invoices before EJO, in the month (also in net). */ sap: number };
 
 /** The last `months` Lagos calendar months (oldest first): money paid and
  * refunded in each month, and customer-billed work finished in it. */
-export function monthlySpend(jobs: CrmJob[], now: Date = new Date(), months = 12): SpendMonth[] {
+export function monthlySpend(jobs: CrmJob[], now: Date = new Date(), months = 12, sap: SapInvoice[] = []): SpendMonth[] {
   const nowL = new Date(now.getTime() + 3600000);
   const out: SpendMonth[] = [];
   for (let i = months - 1; i >= 0; i -= 1) {
     const d = new Date(Date.UTC(nowL.getUTCFullYear(), nowL.getUTCMonth() - i, 1));
-    out.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' }), paid: 0, refunds: 0, net: 0, billed: 0 });
+    out.push({ key: d.toISOString().slice(0, 7), label: d.toLocaleDateString('en-NG', { month: 'short', year: '2-digit', timeZone: 'UTC' }), paid: 0, refunds: 0, net: 0, billed: 0, sap: 0 });
   }
   const at = new Map(out.map((m) => [m.key, m]));
   for (const j of jobs) {
@@ -243,7 +256,8 @@ export function monthlySpend(jobs: CrmJob[], now: Date = new Date(), months = 12
     for (const r of j.refunds) { const m = at.get(lagosMonthKey(r.at)); if (m) m.refunds += r.amount; }
     if (!j.cancelled && j.finishedAt) { const m = at.get(lagosMonthKey(j.finishedAt)); if (m) m.billed += j.customerBilled; }
   }
-  for (const m of out) { m.paid = r2(m.paid); m.refunds = r2(m.refunds); m.billed = r2(m.billed); m.net = r2(m.paid - m.refunds); }
+  for (const x of sap) { const m = at.get(lagosMonthKey(x.at)); if (m) m.sap += x.amount; }
+  for (const m of out) { m.paid = r2(m.paid); m.refunds = r2(m.refunds); m.billed = r2(m.billed); m.sap = r2(m.sap); m.net = r2(m.paid - m.refunds + m.sap); }
   return out;
 }
 
@@ -270,6 +284,8 @@ export type CrmSort = (typeof CRM_SORTS)[number];
 
 export type CrmRow = {
   id: string; fullName: string; customerType: string; tags: string[]; isActive: boolean; createdAt: Date;
+  /** When they became a customer (SAP ERDAT, v-A3); createdAt when not known. */
+  customerSince?: Date | null;
   address: string | null; phone: string | null; hasPortalAccount: boolean; lastLoginAt: Date | null;
   vehicles: number; openJobs: number; netPaid: number; lastVisit: Date | null;
 };
@@ -299,7 +315,7 @@ export function sortCrmRows<T extends CrmRow>(rows: T[], sort: string | undefine
   if (s === 'name') copy.sort((a, b) => a.fullName.localeCompare(b.fullName, 'en', { sensitivity: 'base' }));
   else if (s === 'spend') copy.sort((a, b) => b.netPaid - a.netPaid || a.fullName.localeCompare(b.fullName));
   else if (s === 'last_visit') copy.sort((a, b) => (+(b.lastVisit ?? 0)) - (+(a.lastVisit ?? 0)) || a.fullName.localeCompare(b.fullName));
-  else copy.sort((a, b) => +b.createdAt - +a.createdAt);
+  else copy.sort((a, b) => +(b.customerSince ?? b.createdAt) - +(a.customerSince ?? a.createdAt));
   return copy;
 }
 

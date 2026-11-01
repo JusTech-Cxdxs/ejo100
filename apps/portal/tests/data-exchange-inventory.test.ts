@@ -101,10 +101,11 @@ test('opening stock goes in as an opening-balance goods receipt; its reversal ch
   assert.match(rev, /quantityReserved: \{ not: 0 \}/);
 });
 
-test('approvals belong to the department; Finance confirms opening stock and sees only stock imports', () => {
+test('approvals belong to the department; Finance confirms opening stock and invoice history, and sees only those imports', () => {
   const src = read('lib/actions/data-exchange.ts');
   assert.match(src, /await authorize\(ENTITIES\[asEntity\(job\.entity\)\]\.needs, undefined, 'approveImport'/);
-  assert.match(src, /if \(!run && !approve && job\.entity !== 'stock'\) throw new DataExchangeError\('This import was not found\.'\);/);
+  assert.match(src, /if \(!run && !approve && !financeSigned\(job\.entity\)\) throw new DataExchangeError\('This import was not found\.'\);/);
+  assert.match(src, /const financeSigned = \(e: string\): boolean => Boolean\(ENTITIES\[asEntity\(e\)\]\.financeSignOff\);/);
   assert.match(src, /You prepared or approved this import, so someone else in Finance confirms its totals\./);
   const cat = read('lib/authz/catalogue.ts');
   const store = cat.slice(cat.indexOf("'store-manager': {"), cat.indexOf("'store-officer':"));

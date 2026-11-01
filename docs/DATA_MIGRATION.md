@@ -1,13 +1,14 @@
 # Data migration — bringing existing records into EJO 100
 
 How an organisation's existing data — years of customers and vehicles, the
-suppliers, the parts catalogue (SAP material master) and the stock each
-branch holds — comes into EJO 100 from SAP and from spreadsheets, **without
+suppliers, the parts catalogue (SAP material master), the stock each branch
+holds, the invoices from SAP and the plant's production, QC and PDI
+registers — comes into EJO 100 from SAP and from spreadsheets, **without
 retyping and without risk to the live records**.
 
-> Status: **A2.** Customers, vehicles (A1); suppliers, parts, opening stock
-> (A2). Coming next: SAP history (customer-since dates, invoice history,
-> production / QC / PDI registers); A4 export from every list.
+> Status: **A3.** Customers, vehicles (A1); suppliers, parts, opening stock
+> (A2); SAP history — customer-since dates, invoice history, production / QC
+> / PDI registers (A3). Coming next: A4 export from every list.
 
 ## 1. The principle
 
@@ -39,18 +40,18 @@ deleted at once if the import is cancelled.
 | Administrator (headquarters) | Yes | Yes, everything (never their own) |
 | Group IT administrator | Yes | — (the business approves what goes in) |
 | Branch administrator | Yes | — |
-| Workshop manager | — | Customers and vehicles of their branch |
-| Customer care lead | — | Customers and vehicles |
+| Workshop manager | — | Customers, vehicles and invoice history of their branch; production / QC / PDI registers |
+| Customer care lead | — | Customers, vehicles and invoice history |
 | Store manager | — | Suppliers, parts and opening stock of their branch |
-| Finance officer | — | — · **confirms the value** of loaded opening stock |
+| Finance officer | — | — · **confirms the totals** of loaded opening stock and invoice history |
 | Everyone else (front desk, technicians, security…) | — | — |
 
 Each kind of record is approved by the **department that owns it**: approving
 customers also needs the right to manage customers; approving suppliers,
 parts and stock needs the right to manage the Store's parts. Opening stock
-has a second signature: after it loads, someone in **Finance** (not the
-person who prepared or approved it) confirms the value. Finance opens
-opening-stock imports only — never a customers file.
+and invoice history have a second signature: after they load, someone in
+**Finance** (not the person who prepared or approved it) confirms the totals.
+Finance opens those two kinds of import only — never a customers file.
 
 ## 3. Customers
 
@@ -69,6 +70,16 @@ Instructions sheet and dropdowns) or *CSV template*.
 | Address, City, State | — | STRAS, STREET / ORT01, CITY1 / REGIO |
 | Tax ID | — | STCD1, STCEG, TIN |
 | Tags | — | tags, group, KDGRP |
+| Customer since | — | ERDAT, CRDAT, created on, customer since, first purchase |
+
+**Customer since.** SAP's creation date of the business partner (ERDAT —
+written 20140602, 02.06.2014, 02/06/2014 or 2014-06-02) becomes the
+customer's *customer since*. The CRM shows it ("Customer since 02/06/2014
+(from SAP, customer 1000123) · in EJO 100 since …"), the newest-first list
+sorts by it, and **new customers** — the CRM's *New this month* and
+Headquarters' *New customers* — count people new to the business, not new
+to the system: a long-standing customer imported today is not "new". A date
+that cannot be read is a note (the import day is used), never a rejection.
 
 **Matching an existing customer**, in this order: the customer number (from
 the same source), then the email, then the phone.
@@ -190,6 +201,83 @@ the SAP stock and valuation report (MB52 / MC.9 / the material valuation).
   reserved from them. The file stays in the import: **Reopen** checks it again
   and it needs a fresh approval to load.
 
+## 7a. Invoice history from SAP (before EJO)
+
+The invoices each customer had in SAP before EJO 100 came in, so a
+long-standing customer does not look new: **read-only history** that counts
+in the customer's **lifetime spend, visits and last visit**, in the CRM list
+(spend, *spend this year*, top spenders, last visit) and in **Headquarters**
+and the analytics, always labelled **"From SAP, before EJO"**.
+
+Load the **customers file first** (and the vehicles, to link invoices to
+them). Choose the **branch** whose sales they were.
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Invoice number | **Yes** | VBELN (billing document), BELNR (accounting document), invoice number |
+| Invoice date | **Yes** | FKDAT, BUDAT, BLDAT, invoice date |
+| Customer number (SAP) | **Yes**, or the phone | KUNAG (sold-to), KUNRG (payer), KUNNR |
+| Amount (₦) | **Yes** | NETWR (net value), DMBTR / WRBTR (line item), amount, total |
+| Tax (₦) | — | MWSBK — added to a net amount, so the history is gross |
+| Currency | — | WAERK, WAERS — naira only (give DMBTR, the company-currency amount, for others) |
+| Chassis number (VIN) | — | VHVIN, VIN, chassis — links the invoice to the vehicle |
+| Document type, Description | — | FKART / BLART (F2 invoice, G2 credit), ARKTX / SGTXT |
+
+From SAP: a billing-document list (VF05, or table VBRK with its customer and
+vehicle) or the customer line items (FBL5N), exported to Excel.
+
+- **Each invoice number loads once.** Loading the same file again adds
+  nothing; an invoice already in the history is *Already in the history*.
+- **Credit notes** (a negative amount — SAP's `20000-` is understood) reduce
+  the customer's total.
+- **Rejected:** no invoice number, no date or a date that is not a real day,
+  a date in the future, no amount, a currency other than naira, a customer
+  who is not in EJO. **A note:** a VIN that is not a vehicle in EJO yet (the
+  invoice stays on the customer).
+- **What the history is not:** it is never edited, paid, refunded or
+  "outstanding"; it is not in EJO's own sales, margins, average job or
+  projections (those stay EJO's work); and it is **never shown to the
+  customer** in the customer portal.
+- **The check shows the totals** — invoices, amount, first and last date — to
+  compare with SAP's report for the same period before approving; Finance
+  confirms them after the load.
+
+Where it shows: the customer's page (*Lifetime spend* "incl. ₦… from SAP,
+before EJO", *Visits*, the 12-month chart, and **Jobs → From SAP, before
+EJO** with every invoice); the CRM list and its KPIs; the vehicle's page
+(*Before EJO 100*); Headquarters (each branch's *Collected* shows "+ ₦… in
+SAP" for the period, and a line under the figures) and the analytics' top
+customers.
+
+## 7b. Production, QC and PDI registers
+
+The plant's existing Excel registers — the production line, quality checks
+and pre-delivery inspections — one row per vehicle per check. Read-only
+history, shown on each vehicle's page under **Before EJO 100**, by its VIN
+(the vehicle can be a customer's or still in stock).
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Chassis number (VIN) | **Yes** | VIN, VHVIN, chassis, frame number |
+| Register | **Yes**, or chosen when importing | register, check type — Production, QC (quality), PDI (pre-delivery) |
+| Date | **Yes** | date, PDI date, inspection date, production date |
+| Model | — | model, variant |
+| Station / step | — | station, step, gate, checkpoint |
+| Result | — | result, status — OK / Pass, NG / Fail, Rework (kept as written otherwise) |
+| Inspector | — | inspected by, checked by — **staff only**, never shown to customers |
+| Reference, Notes | — | report no, sheet number / remarks, defects, findings |
+
+A file that is one register only (a "PDI register" workbook) needs no
+*Register* column: choose **Which register is this file?** when importing.
+The same check (register, VIN, date and station) is loaded once.
+
+## 7c. Undoing history
+
+Undo of an invoice-history or register import **voids** what it loaded: the
+rows stop counting everywhere at once and are **kept** (nothing is deleted).
+**Reopen** the import and load it again to restore exactly the same rows —
+never a second copy.
+
 ## 8. File rules
 
 - **CSV** (comma, semicolon, tab or pipe — worked out from the first line;
@@ -271,10 +359,11 @@ which fits comfortably. On the organisation's paid plan this is routine.
 | A0 — customer email optional; SAP numbers on customers, vehicles, parts | `scripts/predeploy/0003-external-keys.sql` (deploy) · `scripts/v-a0-optional-email-sap-keys.sql` (manual, Supabase SQL editor) |
 | A1 — import tables; "made by this import" on customers and vehicles | `scripts/predeploy/0004-data-exchange.sql` (deploy) · `scripts/v-a1-data-exchange.sql` (manual) |
 | A2 — suppliers; opening-balance receipts; parts made by an import; Finance sign-off | `scripts/predeploy/0005-parts-stock-suppliers.sql` (deploy) · `scripts/v-a2-parts-stock-suppliers.sql` (manual) |
+| A3 — customer since; invoice history; production / QC / PDI registers | `scripts/predeploy/0006-sap-history.sql` (deploy) · `scripts/v-a3-sap-history.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a
-fresh schema. Run them in order (A0, A1, A2).
+fresh schema. Run them in order (A0, A1, A2, A3).
 
 ## 11. Open questions for the organisation (not guessed in code)
 

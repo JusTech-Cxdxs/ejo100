@@ -105,7 +105,7 @@ export default async function Customer360Page({ params, searchParams }: { params
                 <li className="flex min-w-0 items-center gap-1.5"><CrmIcon name="mail" size={14} className="shrink-0 text-[var(--ejo-text-muted)]" /><a href={`mailto:${c.email}`} className="truncate hover:text-[var(--ejo-primary)]">{c.email}</a></li>
                 <li className="flex min-w-0 items-center gap-1.5"><CrmIcon name="map" size={14} className="shrink-0 text-[var(--ejo-text-muted)]" />{c.address ? <span className="break-words">{c.address}</span> : <span className="text-[var(--ejo-warning)]">No primary address</span>}</li>
               </ul>
-              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Customer since {formatDateOnly(c.createdAt)}{c.createdBy ? ` · registered by ${c.createdBy}` : ''}</p>
+              <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Customer since {formatDateOnly(c.customerSince ?? c.createdAt)}{c.customerSince ? ` (from ${c.externalSource === 'LEGACY' ? 'the old system' : 'SAP'}${c.externalId ? `, customer ${c.externalId}` : ''}) · in EJO 100 since ${formatDateOnly(c.createdAt)}` : ''}{c.createdBy ? ` · registered by ${c.createdBy}` : ''}</p>
             </div>
           </div>
           {/* Quick actions */}
@@ -133,10 +133,10 @@ export default async function Customer360Page({ params, searchParams }: { params
 
       {/* KPIs */}
       <div className="mt-6 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Kpi icon="wallet" label="Lifetime spend" value={money.netPaid} format="naira" hint={`Paid ${naira(money.paidIn)} in total`} delay={0} />
+        <Kpi icon="wallet" label="Lifetime spend" value={money.netPaid} format="naira" hint={money.fromSap ? `Incl. ${naira(money.fromSap)} from SAP, before EJO` : `Paid ${naira(money.paidIn)} in total`} delay={0} />
         <Kpi icon="alert" label="Outstanding" value={money.outstanding} format="naira" tone={money.outstanding > 0 ? 'warning' : undefined} hint="Still owed on finished work" href={`${base}?tab=jobs`} delay={40} />
         <Kpi icon="refund" label="Refunds" value={money.refunded} format="naira" hint="Money returned to them" href={`${base}?tab=payments`} delay={80} />
-        <Kpi icon="calendar" label="Visits" value={money.visits} hint={money.lastVisit ? `Last: ${formatDateOnly(money.lastVisit)}` : 'No visits yet'} href={`${base}?tab=jobs`} delay={120} />
+        <Kpi icon="calendar" label="Visits" value={money.visits} hint={money.lastVisit ? `Last: ${formatDateOnly(money.lastVisit)}${money.sapInvoices ? ` · ${money.sapInvoices} in SAP` : ''}` : 'No visits yet'} href={`${base}?tab=jobs`} delay={120} />
         <Kpi icon="car" label="Vehicles" value={data.vehicles.length} hint={data.vehicles.length ? data.vehicles.slice(0, 2).map((v) => v.plateNumber || v.make).filter(Boolean).join(', ') : 'None registered'} href={`${base}?tab=vehicles`} delay={160} />
         <Kpi icon="receipt" label="Average job" value={money.averageJob} format="naira" hint={`${pluralize(money.finishedJobs, 'finished job')}`} delay={200} />
         <Kpi icon="clock" label="Average turnaround" value={money.averageTurnaroundDays} format="days" hint="Received → completed" delay={240} />
@@ -222,9 +222,14 @@ export default async function Customer360Page({ params, searchParams }: { params
             <JobList jobs={data.jobs} />
           </Section>
         ) : null}
+        {tab === 'jobs' && data.sapInvoices.length ? (
+          <Section icon="receipt" title={`From SAP, before EJO (${data.sapInvoices.length})`} subtitle={`Invoices brought in from SAP: read-only history, already settled there. ${naira(money.fromSap)} in all — counted in lifetime spend, visits and last visit.`} className="mt-6">
+            <SapInvoiceList rows={data.sapInvoices} />
+          </Section>
+        ) : null}
 
         {tab === 'payments' ? (
-          <Section icon="receipt" title="Payments & refunds" subtitle={`Paid ${naira(money.paidIn)} · refunded ${naira(money.refunded)} · net ${naira(money.netPaid)}`}>
+          <Section icon="receipt" title="Payments & refunds" subtitle={`Paid ${naira(money.paidIn)} · refunded ${naira(money.refunded)} · net ${naira(money.netPaid - money.fromSap)}${money.fromSap ? ` · plus ${naira(money.fromSap)} invoiced in SAP before EJO (see Jobs)` : ''}`}>
             {data.ledger.length === 0 ? <Empty icon="receipt" title="No payments or refunds yet." /> : (
               <ul className="divide-y divide-[var(--ejo-border)]">
                 {data.ledger.map((p) => (
@@ -540,3 +545,25 @@ function ContactsTab({ data }: { data: Data }) {
     </div>
   );
 }
+
+/** Invoices from SAP before EJO 100: read-only (no links to edit, pay or refund). */
+function SapInvoiceList({ rows }: { rows: { id: string; number: string; date: string; amount: number; vehicleLabel: string | null; documentType: string | null; description: string | null }[] }) {
+  return (
+    <ul className="divide-y divide-[var(--ejo-border)]">
+      {rows.slice(0, 500).map((h) => (
+        <li key={h.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)]"><CrmIcon name="receipt" size={16} /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--ejo-text)]">Invoice {h.number}{h.documentType ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">({h.documentType})</span> : null} <Chip tone="muted">From SAP, before EJO</Chip></p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(`${h.date}T12:00:00+01:00`))}{h.vehicleLabel ? ` · ${h.vehicleLabel}` : ''}{h.description ? ` · ${h.description}` : ''}</p>
+            </div>
+          </div>
+          <span className={`text-sm font-semibold tabular-nums ${h.amount < 0 ? 'text-[var(--ejo-warning)]' : 'text-[var(--ejo-text)]'}`}>{naira(h.amount)}</span>
+        </li>
+      ))}
+      {rows.length > 500 ? <li className="py-3 text-xs text-[var(--ejo-text-muted)]">and {rows.length - 500} older invoices.</li> : null}
+    </ul>
+  );
+}
+

@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -34,9 +34,13 @@ export type EntityDef = {
   plural: string;
   description: string;
   /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
-  needs: 'crm.manage' | 'store.parts.manage';
-  /** Loads into one branch (its catalogue / stock), chosen when the import starts. */
+  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve';
+  /** Loads into one branch (its catalogue / stock / sales), chosen when the import starts. */
   branch?: boolean;
+  /** Read-only history (v-A3): shown and counted, never edited; undo voids it. */
+  history?: boolean;
+  /** Finance confirms the totals after loading (opening stock, invoice history). */
+  financeSignOff?: boolean;
   /** Who approves, in words. */
   approver: string;
   /** In this order, a row is matched to an existing record. */
@@ -70,6 +74,7 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'state', label: 'State', help: 'Optional.', aliases: ['REGIO', 'REGION', 'state', 'region', 'province'], example: 'Lagos' },
       { key: 'taxId', label: 'Tax ID', help: 'Optional, for organisations (TIN / VAT number).', aliases: ['STCD1', 'STCEG', 'TAXNUM', 'tin', 'tax id', 'tax number', 'vat', 'vat number'], example: '' },
       { key: 'tags', label: 'Tags', help: 'Optional labels separated by commas, e.g. "Fleet, VIP".', aliases: ['tags', 'labels', 'group', 'segment', 'customer group', 'KDGRP'], example: 'Fleet' },
+      { key: 'customerSince', label: 'Customer since', help: 'Optional: when they became a customer — SAP’s creation date of the business partner (ERDAT), e.g. 14.03.2019. Used for “customer since” and the analytics instead of the day of the import.', aliases: ['ERDAT', 'CRDAT', 'customer since', 'created on', 'creation date', 'date created', 'created', 'opened on', 'account opened', 'first purchase', 'since'], example: '14.03.2019' },
     ],
   },
   vehicles: {
@@ -153,6 +158,7 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
     needs: 'store.parts.manage',
     approver: 'a Store manager or an administrator, then Finance confirms the totals',
     branch: true,
+    financeSignOff: true,
     matchOrder: ['part number'],
     after: 'parts',
     fields: [
@@ -165,6 +171,54 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'batch', label: 'Batch', help: 'SAP CHARG. Needed for batch-tracked parts.', aliases: ['CHARG', 'batch', 'batch number', 'lot', 'lot number'], example: '' },
       { key: 'serials', label: 'Serial numbers', help: 'For serial-tracked parts: one per unit, separated by commas or semicolons.', aliases: ['SERNR', 'serial', 'serials', 'serial numbers', 'serial number'], example: '' },
       { key: 'storageLocation', label: 'Storage location', help: 'Optional — SAP LGORT. Kept on the receipt’s notes.', aliases: ['LGORT', 'storage location', 'sloc', 'location', 'bin'], example: '0001' },
+    ],
+  },
+  invoices: {
+    key: 'invoices',
+    label: 'Invoice history',
+    noun: 'invoice',
+    plural: 'invoices',
+    description: 'Invoices from SAP before EJO 100 (billing documents or customer line items): date, number, customer, vehicle, amount. Read-only history that counts in each customer’s spend, last visit and the analytics.',
+    needs: 'crm.manage',
+    approver: 'a Workshop manager, the Customer care lead or an administrator, then Finance confirms the totals',
+    branch: true,
+    history: true,
+    financeSignOff: true,
+    matchOrder: ['invoice number'],
+    after: 'customers',
+    fields: [
+      { key: 'invoiceNumber', label: 'Invoice number', help: 'The SAP billing document (VBELN) or accounting document (BELNR). Each invoice is loaded once.', aliases: ['VBELN', 'BELNR', 'invoice number', 'invoice no', 'invoice', 'billing document', 'document number', 'doc no', 'document no', 'reference'], example: '90001234', required: true },
+      { key: 'invoiceDate', label: 'Invoice date', help: 'The billing date (SAP FKDAT) or posting date (BUDAT), e.g. 14.03.2023.', aliases: ['FKDAT', 'BUDAT', 'BLDAT', 'invoice date', 'billing date', 'posting date', 'document date', 'date'], example: '14.03.2023', required: true },
+      { key: 'customerExternalId', label: 'Customer number (SAP)', help: 'The customer the invoice is for: SAP sold-to (KUNAG), payer (KUNRG) or customer (KUNNR). The customer must be imported first.', aliases: ['KUNAG', 'KUNRG', 'KUNNR', 'customer number', 'customer no', 'customer', 'sold-to', 'sold to party', 'payer', 'account number', 'bp number'], example: '1000123' },
+      { key: 'customerPhone', label: 'Customer phone', help: 'Alternative way to find the customer.', aliases: ['customer phone', 'phone', 'telephone', 'mobile'], example: '' },
+      { key: 'amount', label: 'Amount (₦)', help: 'The invoice amount in naira: SAP net value (NETWR) — add the tax column below to make it gross — or the line item amount (DMBTR / WRBTR). Negative for a credit note (100- is understood).', aliases: ['NETWR', 'DMBTR', 'WRBTR', 'amount', 'total', 'invoice total', 'invoice amount', 'gross amount', 'net value', 'value'], example: '485000.00', required: true },
+      { key: 'tax', label: 'Tax (₦)', help: 'Optional: the tax amount (SAP MWSBK), added to a net amount.', aliases: ['MWSBK', 'MWSTS', 'tax', 'tax amount', 'vat', 'vat amount'], example: '36375.00' },
+      { key: 'currency', label: 'Currency', help: 'Optional: SAP WAERK. Only naira (NGN) is loaded.', aliases: ['WAERK', 'WAERS', 'currency', 'curr'], example: 'NGN' },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'Optional: the vehicle the work was on. Links the invoice to the vehicle when it is in the system.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'vehicle', 'frame number'], example: 'JAANLR85EL7100001' },
+      { key: 'documentType', label: 'Document type', help: 'Optional: SAP billing type (FKART, e.g. F2 invoice, G2 credit) or document type (BLART).', aliases: ['FKART', 'BLART', 'document type', 'billing type', 'doc type', 'type'], example: 'F2' },
+      { key: 'description', label: 'Description', help: 'Optional: what the invoice was for.', aliases: ['ARKTX', 'SGTXT', 'BKTXT', 'description', 'text', 'item text', 'narration', 'details'], example: 'Service 40,000 km and brake pads' },
+    ],
+  },
+  registers: {
+    key: 'registers',
+    label: 'Production, QC and PDI registers',
+    noun: 'register entry',
+    plural: 'register entries',
+    description: 'The plant’s existing Excel registers — production line, quality checks and pre-delivery inspections — one row per vehicle per check: VIN, model, date, result, inspector. Shown as read-only history on each vehicle.',
+    needs: 'workshop.close.approve',
+    approver: 'a Workshop manager or an administrator',
+    history: true,
+    matchOrder: ['register, chassis number, date and stage'],
+    fields: [
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle’s 17-character VIN.', aliases: ['VIN', 'VHVIN', 'chassis', 'chassis number', 'chassis no', 'frame number', 'vehicle'], example: 'JAANLR85EL7100001', required: true },
+      { key: 'kind', label: 'Register', help: 'Production, QC or PDI. Leave the column out when the whole file is one register: choose it when importing.', aliases: ['register', 'kind', 'check type', 'inspection type', 'type', 'process'], example: 'PDI', choices: ['Production', 'QC', 'PDI'] },
+      { key: 'eventDate', label: 'Date', help: 'When the check was done, e.g. 14.03.2024.', aliases: ['date', 'check date', 'inspection date', 'production date', 'pdi date', 'build date', 'date checked', 'date inspected'], example: '14.03.2024', required: true },
+      { key: 'model', label: 'Model', help: 'Optional, e.g. NQR, NPR, QLR, QMR, S07.', aliases: ['model', 'vehicle model', 'model name', 'variant'], example: 'NQR' },
+      { key: 'stage', label: 'Station / step', help: 'Optional: the line station, QC gate or PDI step, e.g. "Trim 2", "Final inspection", "Road test".', aliases: ['station', 'stage', 'step', 'gate', 'checkpoint', 'operation', 'line station', 'area'], example: 'Final inspection' },
+      { key: 'result', label: 'Result', help: 'Pass, Fail or Rework (OK / NG are understood).', aliases: ['result', 'status', 'outcome', 'pass/fail', 'pass fail', 'ok/ng', 'decision'], example: 'Pass', choices: ['Pass', 'Fail', 'Rework'] },
+      { key: 'inspector', label: 'Inspector', help: 'Optional: who did the check. Seen by staff only, never by customers.', aliases: ['inspector', 'inspected by', 'checked by', 'qc inspector', 'technician', 'operator', 'signed by'], example: 'A. Bello' },
+      { key: 'reference', label: 'Reference', help: 'Optional: the register’s own number (sheet, report or job number).', aliases: ['reference', 'ref', 'report number', 'report no', 'sheet number', 'job number', 'document number'], example: 'PDI-2024-0311' },
+      { key: 'notes', label: 'Notes', help: 'Optional: defects found, remarks.', aliases: ['notes', 'remarks', 'comments', 'defects', 'findings', 'observation'], example: 'Door seal replaced before release' },
     ],
   },
 };
@@ -255,6 +309,7 @@ export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   const out: string[] = [];
   for (const f of ENTITIES[entity].fields) if (f.required && mapping[f.key] == null) out.push(`Choose the column for “${f.label}”.`);
   if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
+  if (entity === 'invoices' && mapping.customerExternalId == null && mapping.customerPhone == null) out.push('Choose how to find each invoice’s customer: their SAP customer number or phone.');
   if (entity === 'vehicles') {
     if (mapping.customerExternalId == null && mapping.customerEmail == null && mapping.customerPhone == null) out.push('Choose how to find each vehicle’s customer: their customer number, email or phone.');
     if (mapping.chassisNumber == null && mapping.plateNumber == null) out.push('Choose the column for the chassis number (VIN) or the plate.');

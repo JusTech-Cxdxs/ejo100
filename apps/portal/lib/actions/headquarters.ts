@@ -26,12 +26,15 @@ export type Headquarters = {
   scope: 'organisation' | 'branch';
   organisationName: string | null;
   branches: HqRow[];
-  totals: { staff: number; staffAtHeadOffice: number | null; staffNew: number; customersNew: number | null; opened: number; finished: number; collected: number; inWorkshop: number; ready: number; waiting: number; supportOpen: number; supportLate: number; branchesToAct: number };
+  totals: { staff: number; staffAtHeadOffice: number | null; staffNew: number; customersNew: number | null; opened: number; finished: number; collected: number; fromSap: number; inWorkshop: number; ready: number; waiting: number; supportOpen: number; supportLate: number; branchesToAct: number };
   broadcasts: { id: string; number: string; title: string; category: string; audience: string; state: string; startsAt: Date }[] | null;
   canBroadcast: boolean;
   /** The branch lens: the one branch being looked at, if any. */
   lensBranch: string | null;
 };
+
+/** The Lagos calendar day a moment falls on, as a date-only value (for SAP history's invoice dates). */
+const lagosDay = (d: Date) => new Date(`${new Date(d.getTime() + 3_600_000).toISOString().slice(0, 10)}T00:00:00.000Z`);
 
 export async function getHeadquarters(periodKey?: string): Promise<Headquarters> {
   await authorize('analytics.business.view', undefined, 'getHeadquarters', 'Headquarters is for leadership and managers.');
@@ -53,7 +56,8 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
     org ? prisma.organisation.findUnique({ where: { id: org }, select: { name: true } }) : null,
     prisma.user.groupBy({ by: ['branchId'], where: { organisationId: org ?? '__none__', isActive: true, ...inB }, _count: { _all: true } }),
     prisma.user.count({ where: { organisationId: org ?? '__none__', ...(orgWide ? {} : inB), createdAt: range } }),
-    orgWide && org ? prisma.customer.count({ where: { organisationId: org, createdAt: range } }) : null,
+    // New to the business in the period: by when they became a customer (SAP ERDAT for imported customers), else when they were registered.
+    orgWide && org ? prisma.customer.count({ where: { organisationId: org, OR: [{ customerSince: { gte: lagosDay(period.from), lt: lagosDay(period.to) } }, { customerSince: null, createdAt: range }] } }) : null,
     prisma.jobCard.groupBy({ by: ['branchId'], where: { ...inB, createdAt: range }, _count: { _all: true } }),
     prisma.vehicleService.groupBy({ by: ['branchId'], where: { ...inB, createdAt: range }, _count: { _all: true } }),
     prisma.jobCard.groupBy({ by: ['branchId'], where: { ...inB, completedAt: range, status: { not: 'CANCELLED' } }, _count: { _all: true } }),
@@ -92,6 +96,12 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
     ]);
     money.set(b, num(pj._sum.amount) + num(pv._sum.amount) - num(rj._sum.amount) - num(rv._sum.amount));
   }));
+  // Invoices from SAP before EJO 100 dated in the period, per branch (history: shown beside collected, never mixed into it).
+  const sapB = new Map<string, number>();
+  if (org && ids.length) {
+    const hist = await prisma.historicalInvoice.groupBy({ by: ['branchId'], where: { organisationId: org, voidedAt: null, branchId: { in: ids }, invoiceDate: { gte: lagosDay(period.from), lt: lagosDay(period.to) } }, _sum: { amount: true } });
+    for (const h of hist) if (h.branchId) sapB.set(h.branchId, num(h._sum.amount));
+  }
 
   // Decisions waiting: how many, and since when (the oldest).
   const waitN = new Map<string, number>();
@@ -119,6 +129,7 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
       opened: (opJ.get(b.id) ?? 0) + (opV.get(b.id) ?? 0),
       finished: (dnJ.get(b.id) ?? 0) + (dnV.get(b.id) ?? 0),
       collected: Math.round(money.get(b.id) ?? 0),
+      fromSap: Math.round(sapB.get(b.id) ?? 0),
       inWorkshop: (inJ.get(b.id) ?? 0) + (inV.get(b.id) ?? 0),
       ready: (rdJ.get(b.id) ?? 0) + (rdV.get(b.id) ?? 0),
       waiting: waitN.get(b.id) ?? 0,
@@ -143,7 +154,7 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
     organisationName: organisation?.name ?? null,
     branches: rows,
     totals: {
-      staff: sum('staff') + (headOffice ?? 0), staffAtHeadOffice: headOffice, staffNew, customersNew, opened: sum('opened'), finished: sum('finished'), collected: sum('collected'),
+      staff: sum('staff') + (headOffice ?? 0), staffAtHeadOffice: headOffice, staffNew, customersNew, opened: sum('opened'), finished: sum('finished'), collected: sum('collected'), fromSap: sum('fromSap'),
       inWorkshop: sum('inWorkshop'), ready: sum('ready'), waiting: sum('waiting'), supportOpen: sum('supportOpen'), supportLate: sum('supportLate'),
       branchesToAct: rows.filter((r) => r.health.tone === 'act').length,
     },

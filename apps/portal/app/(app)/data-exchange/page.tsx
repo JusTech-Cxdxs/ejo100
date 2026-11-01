@@ -38,10 +38,10 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         {ENTITY_KEYS.map((k) => {
           const e = ENTITIES[k];
           return (
-            <SectionCard key={k} icon={({ customers: 'users', vehicles: 'car', suppliers: 'truck', parts: 'boxes', stock: 'package' } as const)[k]} title={e.label} description={e.description}>
+            <SectionCard key={k} icon={({ customers: 'users', vehicles: 'car', suppliers: 'truck', parts: 'boxes', stock: 'package', invoices: 'receipt', registers: 'clipboard' } as const)[k]} title={e.label} description={e.description}>
               <p className="text-xs text-[var(--ejo-text-muted)]">Recognised by {e.matchOrder.join(', then ')}.{e.after ? ` Load the ${ENTITIES[e.after].plural} file first.` : ''}</p>
               <div className="mt-3 flex flex-wrap gap-2">
-                {canRun ? <Link href={`/data-exchange/new?entity=${k}`} className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"><Icon name="plus" size={14} /> Import {k === 'stock' ? 'opening stock' : e.plural}</Link> : null}
+                {canRun ? <Link href={`/data-exchange/new?entity=${k}`} className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"><Icon name="plus" size={14} /> Import {k === 'stock' ? 'opening stock' : k === 'invoices' ? 'invoice history' : k === 'registers' ? 'registers' : e.plural}</Link> : null}
                 <a href={`/data-exchange/templates/${k}`} className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={14} /> Excel template</a>
                 <a href={`/data-exchange/templates/${k}?format=csv`} className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={14} /> CSV template</a>
               </div>

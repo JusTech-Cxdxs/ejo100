@@ -9,6 +9,7 @@
  * A row is REJECTED only when the record would be wrong or unusable: no name,
  * no chassis number or plate, no way to find a vehicle's customer.
  */
+import { lagosToday, parseDay } from './dates';
 import { CrmInputError, PRIMARY_ADDRESS_MAX, cleanEmail, cleanName, cleanOptional, cleanPhone, normaliseTags } from '../crm';
 import { ENTITIES, type EntityKey, type Mapping } from './fields';
 
@@ -28,6 +29,8 @@ export type CustomerValues = {
   fullAddress: { line1: string; city: string | null; state: string | null } | null;
   taxId: string | null;
   tags: string[];
+  /** When they became a customer (SAP ERDAT), "YYYY-MM-DD". */
+  customerSince: string | null;
 };
 
 export type VehicleValues = {
@@ -150,6 +153,11 @@ export function checkCustomerRow(cells: unknown[], mapping: Mapping): Checked<Cu
   let tags: string[] = [];
   try { tags = normaliseTags(get(cells, mapping, 'tags')); } catch (e) { warn('tags', `${msg(e)} Tags were left out.`); }
 
+  const sinceRaw = get(cells, mapping, 'customerSince');
+  let customerSince = sinceRaw ? parseDay(sinceRaw) : null;
+  if (sinceRaw && !customerSince) warn('customerSince', `“${sinceRaw}” is not a date, so “customer since” was left as the day of the import.`);
+  if (customerSince && customerSince > lagosToday()) { warn('customerSince', `“Customer since” ${customerSince} is in the future, so it was left out.`); customerSince = null; }
+
   const externalId = get(cells, mapping, 'externalId').replace(/^0+(?=\d)/, '') || null;
   if (externalId && externalId.length > 60) fail('externalId', 'The customer number is longer than 60 characters.');
   if (!externalId && !email && !phone) warn('externalId', 'No customer number, email or phone: a later file cannot recognise this customer, so it may be added twice.');
@@ -160,7 +168,7 @@ export function checkCustomerRow(cells: unknown[], mapping: Mapping): Checked<Cu
     status: failed ? 'REJECTED' : issues.length ? 'WARNING' : 'GOOD',
     issues,
     keys,
-    values: failed ? null : { externalId, fullName, customerType, companyName: customerType === 'ORGANIZATION' ? companyName : null, email, phone, altPhone, address: addr.address, fullAddress: addr.full, taxId: customerType === 'ORGANIZATION' ? taxId : null, tags },
+    values: failed ? null : { externalId, fullName, customerType, companyName: customerType === 'ORGANIZATION' ? companyName : null, email, phone, altPhone, address: addr.address, fullAddress: addr.full, taxId: customerType === 'ORGANIZATION' ? taxId : null, tags, customerSince },
   };
 }
 

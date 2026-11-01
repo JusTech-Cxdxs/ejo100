@@ -116,10 +116,59 @@ someone in **Finance**.
    anything has been issued); **Reopen** brings the file back to be checked
    and approved again.
 
+## 5. SAP history feeds EJO's own figures (A3)
+
+*The question: "Our customers have years with us — will EJO show them as
+new?"*
+
+People: the **preparer** (Group IT), the **Workshop manager** of a branch,
+someone in **Finance**. Sections 1 and 2 loaded first.
+
+1. **Customer since.** Open any customer from section 1 in **Customers
+   (CRM)**: *Customer since 13/04/2015 (from SAP, customer 1000103) · in EJO
+   100 since today* — SAP's ERDAT column in `01_SAP_customers_demo.csv`. The
+   CRM's *New this month* does **not** count them: they are new to the
+   system, not to the business. (Customers loaded before this release:
+   re-run section 1's file with *fill in only empty fields* to add the date.)
+2. **Invoice history.** Preparer → Data Exchange → *Invoice history* →
+   choose the branch → drop `docs/demo/06_SAP_invoice_history_demo.csv`
+   (SAP billing layout: VBELN, FKDAT, KUNAG, NETWR, MWSBK, WAERK, VHVIN,
+   FKART). Point out:
+   - net + tax (NETWR + MWSBK) is kept as the gross amount; credit notes
+     (`25000.00-`, type G2) come in negative;
+   - the check shows **the totals to reconcile with SAP**: invoices, amount,
+     first and last date;
+   - the planted mistakes: an **unknown customer**, a **dollar invoice**, **no
+     invoice number**, **31 June**, and **the same invoice exported twice**.
+3. **Workshop manager** approves and loads; **Finance** → bell → *Confirm
+   invoice history IMP-…* → **Confirm the totals (Finance)**.
+4. Open a customer: *Lifetime spend* now says **"Incl. ₦… from SAP, before
+   EJO"**, *Visits* and *Last visit* include the SAP years, the 12-month chart
+   shows recent SAP invoices, and **Jobs → From SAP, before EJO** lists every
+   invoice, read-only. The CRM list's spend, *spend this year* and top
+   spenders include them.
+5. **Headquarters** (choose *This year*): each branch's
+   *Collected* shows **"+ ₦… in SAP"** for the period, with a line under the
+   figures; **Analytics** → *Top customers* marks the SAP share. EJO's own
+   sales, margins and projections are unchanged — the history is reported
+   beside them, not mixed in.
+6. **Registers.** Preparer → *Production, QC and PDI registers* → **Which
+   register is this file? → PDI register** → drop
+   `docs/demo/07_PDI_register_demo.xlsx` (one row with no VIN is rejected).
+   Then the same for `08_production_QC_register_demo.csv` (it has a
+   *Register* column, so leave the choice empty). Workshop manager approves
+   both.
+7. Open a vehicle from section 2 (Workshop → Vehicles): **Before EJO 100**
+   shows its production stations, QC gates (one *Rework* with the reason) and
+   PDI steps (OK, or NG with the rectification) with dates and inspectors, and
+   its SAP invoices. Inspectors' names are for staff only — the customer
+   portal never shows this history.
+8. To show it is recoverable: Workshop manager → the invoice import → **Undo
+   this import** → the customer's spend drops back; nothing was deleted.
+   **Reopen** and load again → the same invoices return, never twice.
+
 ---
 
-*Coming in the next releases (each adds a section here):* customer-since
-dates and SAP invoice history in the analytics, production / QC / PDI
-registers, export from every list (A4), the daily SAP files and
-reconciliation (C1), PDI with certificates (D), and inviting imported
-customers to the portal (B).
+*Coming in the next releases (each adds a section here):* export from every
+list (A4), the daily SAP files and reconciliation (C1), PDI with
+certificates (D), and inviting imported customers to the portal (B).
