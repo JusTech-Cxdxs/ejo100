@@ -17,7 +17,7 @@ const AREA_HINT: Record<ApprovalArea, string> = {
   Money: 'Outside purchases',
   Warranty: 'Warranties to verify, claims, policy and provider removals',
   Security: 'Exit passes, road tests and contractor passes',
-  Plant: 'Pre-delivery inspections to accept or reject',
+  Plant: 'Kits to release to the line, and pre-delivery inspections to accept or reject',
 };
 
 /**

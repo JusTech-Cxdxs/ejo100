@@ -223,5 +223,41 @@
     "expect": "rejected",
     "by": "check",
     "says": "“Paint shop” is not Production, QC or PDI."
+  },
+  {
+    "file": "09_kit_packing_list_demo.csv",
+    "row": 14,
+    "entity": "kits",
+    "what": "A part name where the VIN should be",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Line 14: “BRAKE PAD SET” is not a VIN or frame number."
+  },
+  {
+    "file": "09_kit_packing_list_demo.csv",
+    "row": 15,
+    "entity": "kits",
+    "what": "VIN JAANLR85EL7210001 twice",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Line 15: JAANLR85EL7210001 is already on line 2."
+  },
+  {
+    "file": "09_kit_packing_list_demo.csv",
+    "row": 16,
+    "entity": "kits",
+    "what": "A model the plant does not build (D-MAX)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Line 16: choose the model (NQR, NPR, QLR, QMR, S07)."
+  },
+  {
+    "file": "09_kit_packing_list_demo.csv",
+    "row": 17,
+    "entity": "kits",
+    "what": "900 cases for one kit",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Line 17: 900 cases is not a likely number for one kit."
   }
 ]

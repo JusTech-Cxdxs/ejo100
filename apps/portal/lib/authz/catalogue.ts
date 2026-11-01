@@ -43,6 +43,8 @@ export const PERMISSIONS = {
   'plant.vehicle.register': { module: 'Assembly plant', label: 'Register a vehicle in the plant (VIN, model, engine number, SAP numbers)' },
   'plant.pdi.perform': { module: 'Assembly plant', label: 'Carry out pre-delivery inspections (PDI)' },
   'plant.pdi.approve': { module: 'Assembly plant', label: 'Approve or reject a PDI result — never one they inspected (the SAP usage decision)' },
+  'plant.kit.receive': { module: 'Assembly plant', label: 'Record arriving shipments and kits, check them against the packing list, and raise shortages and damage' },
+  'plant.kit.release': { module: 'Assembly plant', label: 'Release a kit to the line, hold it or reject it — never one they checked (the SAP usage decision)' },
   'vehicles.label.print': { module: 'Workshop', label: 'Print a vehicle’s label (QR code and VIN barcode), traveller sheet and PDI certificate' },
   'workshop.job_card.view': { module: 'Workshop', label: 'View Job Cards and Vehicle Services' },
   'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
@@ -198,12 +200,17 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Runs the plant: every vehicle in it, registers vehicles, approves PDI results (never their own).
   'plant-manager': {
     'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'plant.pdi.approve': B, 'vehicles.label.print': B,
+    'plant.kit.receive': B, 'plant.kit.release': B,
     'warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'schedule.view': 'OWN',
   },
   // Leads the PDI bay: inspects, and approves colleagues' inspections (never their own).
   'pdi-supervisor': { 'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'plant.pdi.approve': B, 'vehicles.label.print': B, 'schedule.view': 'OWN' },
   // Inspects vehicles before delivery: the checklist, fault codes, readings and rework.
   'pdi-inspector': { 'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'vehicles.label.print': B, 'schedule.view': 'OWN' },
+  // Leads quality at the plant: releases, holds or rejects arriving kits (never one they checked).
+  'quality-supervisor': { 'plant.view': B, 'plant.kit.receive': B, 'plant.kit.release': B, 'vehicles.label.print': B, 'dataexchange.export.run': B, 'schedule.view': 'OWN' },
+  // Receives kits: records the shipment, opens each kit, checks it against the packing list, raises shortages and damage.
+  'kit-inspector': { 'plant.view': B, 'plant.kit.receive': B, 'schedule.view': 'OWN' },
   // ── People & security ────────────────────────────────────────────
   'department-head': { 'security.pass.approve': 'DEPARTMENT', 'schedule.view': 'OWN' },
   'chief-security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B, 'security.incident.manage': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B },
@@ -335,11 +342,11 @@ export const ROLE_LABELS: Record<string, string> = {
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
   'branch-assistant': 'Branch Assistant (IT support)',
   'customer-care': 'Customer Care', 'customer-care-lead': 'Customer Care Lead', executive: 'Executive (director / general manager)', 'it-administrator': 'IT Administrator',
-  'plant-manager': 'Plant Manager', 'pdi-supervisor': 'PDI Supervisor', 'pdi-inspector': 'PDI Inspector',
+  'plant-manager': 'Plant Manager', 'pdi-supervisor': 'PDI Supervisor', 'pdi-inspector': 'PDI Inspector', 'quality-supervisor': 'Quality Supervisor', 'kit-inspector': 'Kit Inspector',
 };
 
 /** The role a person is shown with (their most senior one), e.g. "Justice Enefola (Manager)". */
-const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'plant-manager', 'warranty-hod', 'department-head', 'pdi-supervisor', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'pdi-inspector', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
+const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'plant-manager', 'warranty-hod', 'department-head', 'quality-supervisor', 'pdi-supervisor', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'pdi-inspector', 'kit-inspector', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
 export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string | null {
   if (isSuperAdmin) return 'Master Administrator';
   const best = ROLE_SENIORITY.find((s) => slugs.includes(s)) ?? slugs[0];
@@ -388,7 +395,9 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'customer-care': 'The support department. Works the Support centre for their branch: customers\' emails, website and portal hand-overs, complaints and colleagues\' Get help requests — answers, uses Enyo\'s drafts, hands over and resolves. Can look up customers, jobs and warranties to answer, but changes nothing there and cannot open the Support centre\'s set-up.',
   'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
   executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Branch decisions stay with the managers who own them; the Executive approves what is escalated (IT and administrator passes) and their own passes on the spot. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
-  'plant-manager': 'Runs the assembly plant: every vehicle in it from kit to yard, registers vehicles with their SAP numbers, and approves pre-delivery inspections (never one they did). Prints vehicle labels and PDI certificates.',
+  'plant-manager': 'Runs the assembly plant: every vehicle in it from kit to yard, registers vehicles with their SAP numbers, releases arriving kits to the line and approves pre-delivery inspections (never one they checked). Prints vehicle labels and PDI certificates.',
+  'quality-supervisor': 'Leads quality at the plant: checks arriving kits and releases colleagues\' kits to the line, holds them or rejects them (never one they checked), and follows shortages and damage to their supplier claims.',
+  'kit-inspector': 'Receives kits at the plant: records each shipment, opens every kit and checks it against the packing list — cases, seals, identity, body and parts — and raises shortages, damage, wrong parts and excess.',
   'pdi-supervisor': 'Leads the PDI bay: carries out pre-delivery inspections and approves colleagues\' results — accepted, or rejected back to rework (never their own).',
   'pdi-inspector': 'Carries out pre-delivery inspections on a tablet: every checklist item, the diagnostic scan and fault codes, the readings, and rechecks after rework. Prints the vehicle label.',
   'it-administrator': 'Group IT. Adds people and gives them roles, manages settings, structure and system health, reads the audit trail and the error log, looks after Enyo (AI) and sends system notices (broadcasts), for the whole organisation. Does none of the business transactions (no jobs, approvals, payments or stock). Cannot change a role they hold, or give the Administrator role.',
@@ -399,7 +408,7 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
 export const APPROVAL_PERMISSIONS: PermissionKey[] = [
   'workshop.job.supervise', 'workshop.estimate.approve', 'workshop.estimate.final_approve', 'workshop.close.approve', 'store.prs.approve_hod',
   'store.prs.release', 'procurement.epr.review', 'procurement.epr.approve', 'procurement.epr.disburse', 'warranty.claim.approve', 'security.pass.approve',
-  'plant.pdi.approve',
+  'plant.pdi.approve', 'plant.kit.release',
 ];
 
 /** Store pages that show purchase costs and margins (goods receipts, pricing

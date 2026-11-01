@@ -210,6 +210,12 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   PlantVehicle: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER' },
   PdiInspection: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (quality and warranty evidence)', ai: 'AUTHORISED_USER' },
   PdiItem: { tenancy: 'VIA_PARENT', owner: 'inspectionId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its inspection', ai: 'AUTHORISED_USER' },
+  // D2 Assembly plant: shipments of kits, each kit's arrival checks, and its shortages and damage.
+  // Quality and supplier-claim evidence: kept for the life of the vehicle; a kit recorded by mistake is cancelled, never deleted.
+  PlantShipment: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicles it brought (receiving and customs evidence)', ai: 'AUTHORISED_USER' },
+  PlantKit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER' },
+  PlantKitCheck: { tenancy: 'VIA_PARENT', owner: 'kitId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its kit', ai: 'AUTHORISED_USER' },
+  PlantKitIssue: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (supplier claims)', ai: 'AUTHORISED_USER' },
   ImportMappingProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },
   MailStyleSample: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: '90 days, at most 200 per person; removed when they withdraw consent or disconnect their mailbox', ai: 'AUTHORISED_USER' },
   IntegrityAlert: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL', 'FINANCIAL', 'AUDIT'], lifecycle: 'STATE_MACHINE', retention: '7 years (internal-control evidence); reviewed alerts are never deleted', ai: 'AUTHORISED_USER' },

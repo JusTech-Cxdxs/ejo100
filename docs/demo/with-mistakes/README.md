@@ -75,3 +75,12 @@ and invoices, the parts catalogue before opening stock).
 | 122 | No date | Date is required. | Rejected (not loaded) | the check (this row alone) |
 | 123 | Register "Paint shop" is not Production, QC or PDI | “Paint shop” is not Production, QC or PDI. | Rejected (not loaded) | the check (this row alone) |
 
+## 09_kit_packing_list_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 14 | A part name where the VIN should be | Line 14: “BRAKE PAD SET” is not a VIN or frame number. | Rejected (not loaded) | the check (this row alone) |
+| 15 | VIN JAANLR85EL7210001 twice | Line 15: JAANLR85EL7210001 is already on line 2. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 16 | A model the plant does not build (D-MAX) | Line 16: choose the model (NQR, NPR, QLR, QMR, S07). | Rejected (not loaded) | the check (this row alone) |
+| 17 | 900 cases for one kit | Line 17: 900 cases is not a likely number for one kit. | Rejected (not loaded) | the check (this row alone) |
+

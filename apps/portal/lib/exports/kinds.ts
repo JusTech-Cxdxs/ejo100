@@ -615,6 +615,88 @@ const plantPdis: ExportKind = {
   },
 };
 
+const kitWhere = async (ctx: Ctx, p: Params): Promise<Prisma.PlantKitWhereInput> => {
+  const q = p.q?.trim().slice(0, 60);
+  const status = ['ARRIVED', 'INSPECTING', 'SUBMITTED', 'ON_HOLD', 'RELEASED', 'REJECTED', 'CANCELLED'].includes(String(p.status)) ? p.status : undefined;
+  return {
+    organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PlantKitWhereInput), ...(status ? { status } : {}),
+    ...(p.status === 'issues' ? { issues: { some: { status: { in: ['OPEN', 'CLAIMED'] } } } } : {}),
+    ...(q ? { OR: [{ vinKey: { contains: q.toUpperCase().replace(/[\s.\-_/]/g, '') } }, { number: { contains: q.toUpperCase() } }, { lotNumber: { contains: q, mode: 'insensitive' } }, { engineNumber: { contains: q, mode: 'insensitive' } }, { modelCode: { contains: q, mode: 'insensitive' } }, { shipment: { number: { contains: q.toUpperCase() } } }] } : {}),
+  };
+};
+const plantKits: ExportKind = {
+  key: 'plant-kits', label: 'Kits arriving at the plant', view: ['plant.view'], sensitive: false, page: '/plant/kits',
+  columns: [
+    { header: 'Kit', type: 'code', width: 16, get: (r) => r.number },
+    { header: 'VIN / frame number', type: 'code', width: 20, get: (r) => r.vin },
+    { header: 'Engine number', type: 'code', width: 14, get: (r) => r.engineNumber },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.modelCode },
+    { header: 'Kit type', type: 'code', width: 6, get: (r) => r.kitType },
+    { header: 'Lot', type: 'code', width: 12, get: (r) => r.lotNumber },
+    { header: 'Status', type: 'text', width: 14, get: (r) => words(r.status) },
+    { header: 'Released with shortages', type: 'bool', width: 8, get: (r) => (r.status === 'RELEASED' ? r.releasedWithShortages : null) },
+    { header: 'Cases expected', type: 'int', width: 7, get: (r) => r.casesExpected },
+    { header: 'Cases received', type: 'int', width: 7, get: (r) => r.casesReceived },
+    { header: 'Checks Not OK', type: 'int', width: 7, get: (r) => r.checks.filter((c: { result: string | null }) => c.result === 'NOT_OK').length },
+    { header: 'Open issues', type: 'int', width: 7, get: (r) => r.issues.filter((i: { status: string }) => i.status !== 'RESOLVED').length },
+    { header: 'Issues stopping the line', type: 'int', width: 7, get: (r) => r.issues.filter((i: { status: string; stopsLine: boolean }) => i.status !== 'RESOLVED' && i.stopsLine).length },
+    { header: 'Shipment', type: 'code', width: 16, get: (r) => r.shipment.number },
+    { header: 'Supplier', type: 'text', width: 20, get: (r) => r.shipment.supplier },
+    { header: 'Bill of lading', type: 'code', width: 14, get: (r) => r.shipment.billOfLading },
+    { header: 'Arrived', type: 'date', width: 11, get: (r) => r.shipment.arrivedAt },
+    { header: 'Plant', type: 'text', width: 14, get: (r) => r.branch.name },
+    { header: 'SAP plant (WERKS)', type: 'code', width: 8, get: (r) => r.branch.sapPlant },
+    { header: 'SAP purchase order (EBELN)', type: 'code', width: 12, get: (r) => r.shipment.sapPurchaseOrder },
+    { header: 'SAP inbound delivery (VBELN)', type: 'code', width: 12, get: (r) => r.shipment.sapInboundDelivery },
+    { header: 'SAP inspection lot (PRUEFLOS)', type: 'code', width: 14, get: (r) => r.sapInspectionLot },
+    { header: 'SAP material document (MBLNR)', type: 'code', width: 12, get: (r) => r.sapMaterialDocument },
+    { header: 'SAP usage decision', type: 'code', width: 8, get: (r) => r.sapUsageDecision },
+    { header: 'Inspector', type: 'text', width: 18, get: (r) => r.inspector },
+    { header: 'Decided by', type: 'text', width: 18, get: (r) => r.decider },
+    { header: 'Decided', type: 'datetime', width: 16, get: (r) => r.decidedAt },
+    { header: 'Decision note', type: 'text', width: 30, get: (r) => r.decisionNote },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/kits/${r.id}`) },
+  ],
+  async *rows(ctx, p, from) {
+    const where = await kitWhere(ctx, p);
+    for await (const { rows: b, next } of blocks((c) => prisma.plantKit.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { shipment: true, branch: { select: { name: true, sapPlant: true } }, checks: { select: { result: true } }, issues: { select: { status: true, stopsLine: true } } } }), from)) {
+      const ids = [...new Set(b.flatMap((r) => [r.inspectorId, r.decidedById]).filter((x): x is string => Boolean(x)))];
+      const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+      yield { next, rows: b.map((r) => ({ ...r, inspector: r.inspectorId ? names.get(r.inspectorId) ?? null : null, decider: r.decidedById ? names.get(r.decidedById) ?? null : null })) };
+    }
+  },
+};
+const plantKitIssues: ExportKind = {
+  key: 'plant-kit-issues', label: 'Kit shortages and damage (for supplier claims)', view: ['plant.view'], sensitive: false, page: '/plant/kits',
+  columns: [
+    { header: 'Kit', type: 'code', width: 16, get: (r) => r.kit.number },
+    { header: 'VIN / frame number', type: 'code', width: 20, get: (r) => r.kit.vin },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.kit.modelCode },
+    { header: 'Lot', type: 'code', width: 12, get: (r) => r.kit.lotNumber },
+    { header: 'Kind', type: 'text', width: 10, get: (r) => words(r.kind) },
+    { header: 'Part number', type: 'code', width: 16, get: (r) => r.partNumber },
+    { header: 'Description', type: 'text', width: 30, get: (r) => r.description },
+    { header: 'Case', type: 'code', width: 10, get: (r) => r.caseNumber },
+    { header: 'Quantity', type: 'int', width: 7, get: (r) => r.quantity },
+    { header: 'Stops the line', type: 'bool', width: 7, get: (r) => r.stopsLine },
+    { header: 'Status', type: 'text', width: 12, get: (r) => words(r.status) },
+    { header: 'Claim reference', type: 'code', width: 14, get: (r) => r.claimReference },
+    { header: 'Resolution', type: 'text', width: 24, get: (r) => r.resolution },
+    { header: 'Raised', type: 'datetime', width: 16, get: (r) => r.raisedAt },
+    { header: 'Resolved', type: 'datetime', width: 16, get: (r) => r.resolvedAt },
+    { header: 'Shipment', type: 'code', width: 16, get: (r) => r.kit.shipment.number },
+    { header: 'Supplier', type: 'text', width: 20, get: (r) => r.kit.shipment.supplier },
+    { header: 'Bill of lading', type: 'code', width: 14, get: (r) => r.kit.shipment.billOfLading },
+    { header: 'SAP purchase order (EBELN)', type: 'code', width: 12, get: (r) => r.kit.shipment.sapPurchaseOrder },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/kits/${r.kit.id}`) },
+  ],
+  async *rows(ctx, p, from) {
+    const open = p.status === 'issues';
+    const where: Prisma.PlantKitIssueWhereInput = { organisationId: ctx.organisationId ?? '__none__', kit: (await reachWhere('plant.view')) as Prisma.PlantKitWhereInput, ...(open ? { status: { in: ['OPEN', 'CLAIMED'] } } : {}) };
+    yield* blocks((c) => prisma.plantKitIssue.findMany({ where, orderBy: [{ raisedAt: 'desc' }, { id: 'desc' }], ...page(c), include: { kit: { select: { id: true, number: true, vin: true, modelCode: true, lotNumber: true, shipment: { select: { number: true, supplier: true, billOfLading: true, sapPurchaseOrder: true } } } } } }), from);
+  },
+};
+
 // ── Headquarters ──────────────────────────────────────────────────────
 
 const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
@@ -641,7 +723,7 @@ const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
 };
 
 export const EXPORT_KINDS: Record<string, ExportKind> = Object.fromEntries(
-  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, headquarters].map((k) => [k.key, k]),
+  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, plantKits, plantKitIssues, headquarters].map((k) => [k.key, k]),
 );
 
 /** May this person export this list (open it, export, and — for contact details or payments — export those)? */
