@@ -8,6 +8,7 @@ import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
 import { groupRank, numberFilters, planSearch, referenceUrl, sapNumberQuery, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
+import { isChassisLike, normaliseVin, vehiclePagePath } from '@/lib/vin';
 import { fenceStaffHelp } from '@/lib/support/reach';
 
 export type SearchHit = { label: string; sub?: string; href: string };
@@ -205,7 +206,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     find(allowed('dataexchange.export.run') && { ...sameOrg, ...(allowed('audit.view') ? {} : { createdById: user.id }) }, { numbers: [['EXP', 'number']], text: ['summary'] },
       (w) => prisma.exportJob.findMany({ where: W<Prisma.ExportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, format: true } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
-      (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })),
+      (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
       (w) => prisma.customer.findMany({ where: W<Prisma.CustomerWhereInput>(w), take, select: { id: true, fullName: true, phone: true } })),
     find(storeReach, { text: ['name'], codes: ['partNumber', 'barcode'] },
@@ -260,7 +261,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
     ref('IMP', 'Imports', imports.map((r) => ({ label: r.number, sub: dot(r.fileName, words(r.status)), href: referenceUrl('IMP', r.id) }))),
     ref('EXP', 'Exports', exportJobs.map((r) => ({ label: r.number, sub: dot(words(r.kind.replace(/-/g, ' ')), r.format.toUpperCase()), href: referenceUrl('EXP', r.id) }))),
-    { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.customer?.fullName), href: `/workshop/vehicles/${r.id}/edit` })) },
+    // A vehicle with a VIN opens its one page (kit to latest visit); one without opens its workshop record.
+    { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.chassisNumber, r.customer?.fullName), href: r.chassisNumber && isChassisLike(r.chassisNumber) ? vehiclePagePath(r.chassisNumber) : `/workshop/vehicles/${r.id}/edit` })) },
     // The customer's 360° page (CRM), or the Workshop customer list for people without the CRM.
     { group: 'Customers', hits: customers.map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },
     { group: 'Parts', hits: parts.filter((r) => opens(['store.view'], r.branchId)).map((r) => ({ label: r.partNumber ?? r.name, sub: r.partNumber ? r.name : undefined, href: `/inventory/parts/${r.id}` })) },
@@ -275,11 +277,27 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   // Numbers SAP (or the old system) gave records: every match, labelled with its kind and year.
   const sap = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), opens });
   if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
+  // A VIN typed or scanned (a handheld scanner types it): that vehicle first — also before it is sold (plant registers only).
+  const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view']));
+  if (vin.length) groups.splice(1, 0, { group: 'Vehicle (VIN)', hits: vin });
   return groups
-    .map((g, i) => ({ g, i, rank: g.group === 'SAP numbers' ? -50 : groupRank(plan, g.group) }))
+    .map((g, i) => ({ g, i, rank: g.group === 'Vehicle (VIN)' ? -60 : g.group === 'SAP numbers' ? -50 : groupRank(plan, g.group) }))
     .filter(({ g }) => g.hits.length > 0)
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
     .map(({ g }) => g);
+}
+
+/** The vehicle with exactly this VIN (or chassis number, 11 characters or more), inside the person's organisation. */
+async function vinHits(q: string, mineOrg: Where, mayOpen: boolean): Promise<SearchHit[]> {
+  const v = normaliseVin(q);
+  if (!mayOpen || v.length < 11 || !isChassisLike(v)) return [];
+  const [vehicle, record] = await Promise.all([
+    prisma.customerVehicle.findFirst({ where: { chassisNumber: { equals: v, mode: 'insensitive' }, customer: mineOrg as Prisma.CustomerWhereInput }, select: { make: true, model: true, plateNumber: true } }),
+    prisma.vehicleHistoryRecord.findFirst({ where: { ...(mineOrg as { organisationId?: string }), vinKey: v, voidedAt: null }, orderBy: { eventDate: 'desc' }, select: { model: true, kind: true } }),
+  ]).catch(() => [null, null] as const);
+  if (!vehicle && !record) return [];
+  const what = vehicle ? [vehicle.make, vehicle.model].filter(Boolean).join(' ') : record?.model;
+  return [{ label: `VIN ${v}`, sub: [what, vehicle?.plateNumber, vehicle ? null : 'not sold yet'].filter(Boolean).join(' · ') || undefined, href: vehiclePagePath(v) }];
 }
 
 /**

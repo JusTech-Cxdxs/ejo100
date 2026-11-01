@@ -38,6 +38,7 @@ export const PERMISSIONS = {
   'analytics.warranty.view': { module: 'Analytics', label: 'View Warranty Analytics' },
   // Workshop
   'workshop.view': { module: 'Workshop', label: 'Open the Workshop' },
+  'vehicles.label.print': { module: 'Workshop', label: 'Print a vehicle’s label (QR code and VIN barcode), traveller sheet and PDI certificate' },
   'workshop.job_card.view': { module: 'Workshop', label: 'View Job Cards and Vehicle Services' },
   'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
   'workshop.customer.manage': { module: 'Workshop', label: 'Register customers and vehicles (front desk)' },
@@ -121,7 +122,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   administrator: {
     'admin.organisation.manage': A, 'admin.structure.manage': A, 'admin.users.manage': A, 'admin.roles.manage': A, 'admin.settings.manage': A, 'website.news.manage': A,
     'audit.view': A, 'analytics.business.view': A, 'analytics.inventory.view': A, 'analytics.warranty.view': A, 'notifications.broadcast.send': A,
-    'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN',
+    'workshop.view': A, 'workshop.job_card.view': A, 'store.view': A, 'warranty.view': A, 'security.view': A, 'schedule.view': 'OWN', 'vehicles.label.print': A,
     'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
     // Bringing existing records in (SAP, old spreadsheets): prepares and approves — never both on the same import.
     'dataexchange.import.run': A, 'dataexchange.import.approve': A,
@@ -129,7 +130,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
-    'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
+    'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B, 'vehicles.label.print': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
     'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B, 'support.tickets.manage': B,
     'dataexchange.import.run': B, 'dataexchange.export.run': B,
@@ -138,13 +139,13 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Front desk: the customer relationship — customers, vehicles, opening
   // Job Cards and Vehicle Services, telling customers, receiving visitors.
   receptionist: {
-    ...VIEW_WORKSHOP, 'workshop.job_card.create': B, 'workshop.customer.manage': B, 'workshop.customer.notify': B, 'workshop.close.request': MINE,
+    ...VIEW_WORKSHOP, 'workshop.job_card.create': B, 'workshop.customer.manage': B, 'workshop.customer.notify': B, 'workshop.close.request': MINE, 'vehicles.label.print': B,
     'crm.view': B, 'crm.manage': B, 'support.tickets.manage': B,
     'security.view': B, 'security.reception.operate': B, 'schedule.view': 'OWN',
   },
   // Accepts the job, assigns the technician, prepares and APPROVES the estimate.
   'workshop-supervisor': {
-    ...VIEW_WORKSHOP, 'store.view': B, 'crm.view': B,
+    ...VIEW_WORKSHOP, 'store.view': B, 'crm.view': B, 'vehicles.label.print': B,
     'workshop.job.supervise': MINE, 'workshop.technician.assign': MINE, 'workshop.estimate.edit': MINE, 'workshop.estimate.approve': MINE,
     'workshop.inspection.perform': MINE, 'workshop.job.work': MINE, 'workshop.close.request': MINE, 'sourcing.request': MINE,
   },
@@ -157,7 +158,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Approves for the branch (passes, road tests, contractors included) but does
   // not run the gate: no Security desk registers.
   'workshop-manager': {
-    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B,
+    ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'vehicles.label.print': B,
     'workshop.estimate.final_approve': B, 'workshop.close.approve': B, 'store.prs.approve_hod': B, 'procurement.epr.approve': B,
     'warranty.manage': B, 'warranty.claim.approve': B, 'security.pass.approve': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
@@ -185,8 +186,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'store-officer': { 'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B, 'analytics.inventory.view': B },
   // ── Warranty ─────────────────────────────────────────────────────
   // Warranty sets part warranties and follows parts back to their receipts — read-only Store.
-  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B },
-  'warranty-officer': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'analytics.warranty.view': B },
+  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'vehicles.label.print': B },
+  'warranty-officer': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'analytics.warranty.view': B, 'vehicles.label.print': B },
   // ── People & security ────────────────────────────────────────────
   'department-head': { 'security.pass.approve': 'DEPARTMENT', 'schedule.view': 'OWN' },
   'chief-security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B, 'security.incident.manage': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B },

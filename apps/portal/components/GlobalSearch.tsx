@@ -6,6 +6,7 @@ import type { SearchGroup } from '@/lib/actions/search';
 import { Icon, type IconName } from '@/components/ui/Icon';
 import { matchRanges, REFERENCE_PREFIXES } from '@/lib/search-plan';
 import { pluralize } from '@/lib/utils/pluralize';
+import { isVin, vehiclePagePath } from '@/lib/vin';
 
 /** Each result group's icon (the same icons the menu and pages use). */
 const GROUP_ICON: Record<string, IconName> = {
@@ -114,6 +115,8 @@ export function GlobalSearch() {
     if (e.key === 'Escape') { if (q) setQ(''); else { setOpen(false); setSheet(false); e.currentTarget.blur(); } }
     else if (e.key === 'ArrowDown') { e.preventDefault(); setOpen(true); setActive((a) => Math.min(flat.length - 1, a + 1)); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => Math.max(0, a - 1)); }
+    // A full VIN (typed, or a handheld scanner's VIN + Enter, often before results arrive): straight to that vehicle.
+    else if (e.key === 'Enter' && isVin(q)) { e.preventDefault(); go(vehiclePagePath(q)); }
     else if (e.key === 'Enter' && flat[active]) { e.preventDefault(); go(flat[active]!.href); }
   };
 
