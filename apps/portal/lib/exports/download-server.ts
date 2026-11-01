@@ -14,6 +14,7 @@
  *  • One part at a time per person (a double click, a second tab).
  *  • Every part is in the audit trail with its rows and size.
  */
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { prisma } from '@ejo/database';
 import { getPrincipal, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -113,14 +114,22 @@ export async function partStream(c: ClaimedPart): Promise<{ body: ReadableStream
     ['What is in it', `${c.kind.note ?? 'Every matching record you may see today, in the list’s order.'} Times are Lagos time; money is in naira (NGN), as numbers; record numbers are text, with SAP’s leading zeros kept.`],
     ['The list in EJO', `${portalBaseUrl().replace(/\/$/, '')}${c.kind.page}`],
   ];
+  // The file is written after this request has handed back its response, as the browser reads it.
+  // Every later read (the list's own reader asks who is signed in, block by block) runs in this
+  // request's context — the downloader's session, branch lens and reach — never outside it.
+  const request = AsyncLocalStorage.snapshot();
+  function inThisRequest<R>(rows: AsyncGenerator<R>): AsyncIterable<R> {
+    return { [Symbol.asyncIterator]: () => ({ next: () => request(() => rows.next()), return: () => request(() => rows.return(undefined)) }) };
+  }
   const body = exportStream({
     format: c.job.format,
     sheetName: c.kind.label,
     columns: c.kind.columns,
-    rows: limited(),
+    rows: inThisRequest(limited()),
     about,
     aboutAfter: () => (complete ? [] : [['More to come', `This is part ${c.part}. The list is longer than one download: open ${c.job.number} in EJO (Data Exchange → Exports) and download part ${c.part + 1}, which carries on from here.`]]),
-    onDone: async ({ rows, bytes }) => {
+    onDone: (stats) => request(async () => {
+      const { rows, bytes } = stats;
       const resume = complete ? null : next;
       const done = new Date();
       const dl = await prisma.exportDownload.update({
@@ -130,7 +139,7 @@ export async function partStream(c: ClaimedPart): Promise<{ body: ReadableStream
       });
       if (complete) await prisma.exportJob.updateMany({ where: { id: c.job.id, rowCount: null }, data: { rowCount: dl.rowCount, bytes: dl.bytes } });
       await writeAuditLog({ userId: c.userId, action: 'data_exchange.exported', entityType: 'ExportJob', entityId: c.job.id, metadata: { number: c.job.number, list: c.kind.label, format: c.job.format, part: c.part, rows, bytes, complete, filters: c.job.summary } });
-    },
+    }),
   });
   // Part 1 is named for its part only when a part 2 follows (known once it is written, so: from part 2 on, and in the About sheet).
   const suffix = c.part > 1 ? `-part${c.part}` : '';

@@ -191,6 +191,10 @@ test('every Export button names a real list; the file is built at download, for 
   assert.match(route, /'Cache-Control': 'no-store'/);
   const server = read('lib/exports/download-server.ts');
   assert.match(server, /refuseDuringAssist/);
+  // The file is written after the response has started: every read stays in the downloader's request (their session).
+  assert.match(server, /AsyncLocalStorage\.snapshot\(\)/);
+  assert.match(server, /rows: inThisRequest\(limited\(\)\)/);
+  assert.match(server, /onDone: \(stats\) => request\(/);
   assert.match(server, /expiresAt\.getTime\(\) <= Date\.now\(\)/);
   assert.match(server, /already downloaded this export/);
   assert.match(server, /updateMany\(\{ where: \{ id: existing\.id, finishedAt: null, startedAt: existing\.startedAt, parts: existing\.parts \}/, 'one part at a time: compare and set');

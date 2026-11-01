@@ -42,6 +42,8 @@ test('set up: a customer and seven suppliers of our own', async () => {
   orgId = await orgOf(who('administrator').email);
   const adminId = (await db().user.findUniqueOrThrow({ where: { email: who('administrator').email }, select: { id: true } })).id;
   await db().customer.create({ data: { organisationId: orgId, fullName: CUSTOMER, phone: `0803${String(Date.now()).slice(-7)}`, email: `export-${T.toLowerCase()}@example.test` } });
+  const storeBranch = (await db().user.findUniqueOrThrow({ where: { email: who('store-manager').email }, select: { branchId: true } })).branchId!;
+  for (let i = 1; i <= 3; i++) await db().part.create({ data: { branchId: storeBranch, createdById: adminId, name: `Export part ${T} ${i}`, partNumber: `EXP-${T}-${i}`, baseUnitOfMeasure: 'EA', updatedAt: new Date() } });
   for (let i = 1; i <= 7; i++) await db().supplier.create({ data: { organisationId: orgId, createdById: adminId, name: `${SUPPLIER} ${i}`, email: `s${i}-${T.toLowerCase()}@example.test` } });
 });
 
@@ -75,6 +77,19 @@ test('Customers → Excel: the filtered list, an About sheet first, real cells, 
   await expect(page.getByText('You have downloaded this export: 1 row.')).toBeVisible();
   await open(page, '/data-exchange/exports');
   await expect(page.getByRole('link', { name: job.number })).toBeVisible();
+});
+
+test('CSV of lists whose reader checks who is signed in, block by block (Customers, Parts)', async ({ page }) => {
+  // CSV writes its header first, so every read happens after the response has started: still as this person.
+  await as(page, 'administrator');
+  await open(page, `/crm?q=${encodeURIComponent(CUSTOMER)}`);
+  const customers = csvRows((await exportFromButton(page, 'CSV')).file.toString('utf8'));
+  expect(customers.filter((l) => !l.startsWith('"#') && l.includes(CUSTOMER))).toHaveLength(1);
+  await as(page, 'store-manager');
+  await open(page, `/inventory/parts?q=${encodeURIComponent(`EXP-${T}-`)}`);
+  const parts = csvRows((await exportFromButton(page, 'CSV')).file.toString('utf8'));
+  const header = parts.findIndex((l) => l.startsWith('"Part number"'));
+  expect(parts.slice(header + 1).map((l) => l.split('","')[0]!.slice(1))).toEqual([1, 2, 3].map((i) => `EXP-${T}-${i}`));
 });
 
 test('a long list comes in parts: each a complete file, carrying on exactly where the last stopped', async ({ page }) => {
