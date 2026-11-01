@@ -21,6 +21,7 @@ import { UnitOfMeasureInput } from '@/components/UnitOfMeasureInput';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, PageHeader } from '@/components/ui';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
+import { ExportAction } from '@/components/ExportAction';
 
 const TRACKING_TYPE_LABEL: Record<string, string> = {
   QUANTITY: 'Quantity',
@@ -54,6 +55,7 @@ export default async function InventoryPartsPage({
         back={{ href: "/inventory", label: "Back to Inventory" }}
         title="Parts Catalog"
         description={<><OrgTrail area="Store" /></>}
+        actions={<ExportAction kind="parts" params={sp} />}
       />
 
       {error ? (

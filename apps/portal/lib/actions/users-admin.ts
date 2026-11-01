@@ -36,7 +36,7 @@ async function actorOrg() {
 const ADMIN_ROLE_SLUGS = ['administrator', 'branch-administrator'];
 
 /** Users of the person's organisation (search by name, email or employee ID). */
-export type UserFilters = { status?: string; branchId?: string; roleId?: string };
+export type UserFilters = { status?: string; branchId?: string; roleId?: string; /** Every matching person (an export), not the first 300. */ all?: boolean };
 export type UserCounts = { total: number; active: number; off: number; withoutId: number };
 
 export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): Promise<{ users: AdminUserRow[]; roles: AssignableRole[]; isPlatformTeam: boolean; me: string; counts: UserCounts }> {
@@ -54,8 +54,8 @@ export async function listUsersForAdmin(q?: string, filters: UserFilters = {}): 
     prisma.user.findMany({
       // The platform team is invisible to organisations.
       where: { ...scope, ...status, ...branch, ...role, ...(term ? { OR: [{ fullName: { contains: term, mode: 'insensitive' } }, { email: { contains: term, mode: 'insensitive' } }, { employeeId: { contains: term, mode: 'insensitive' } }] } : {}) },
-      orderBy: { fullName: 'asc' },
-      take: 300,
+      orderBy: [{ fullName: 'asc' }, { id: 'asc' }],
+      take: filters.all ? 20_000 : 300,
       select: { id: true, fullName: true, email: true, employeeId: true, isActive: true, branch: { select: { name: true } }, department: { select: { name: true } }, roles: { select: { role: { select: { id: true, name: true, isSuperAdmin: true } } } } },
     }),
     prisma.role.findMany({ where: { ...(organisationId ? { organisationId } : {}), ...(branchOnly ? { slug: { notIn: ADMIN_ROLE_SLUGS } } : {}) }, orderBy: { name: 'asc' }, select: { id: true, name: true, slug: true, isSuperAdmin: true } }),

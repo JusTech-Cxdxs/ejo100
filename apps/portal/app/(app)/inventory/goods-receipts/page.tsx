@@ -8,6 +8,7 @@ import { LoadingLink } from '@/components/LoadingLink';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { pluralize } from '@/lib/utils/pluralize';
 import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 /** Every delivery received into the Store (the goods receipt side of the stock ledger). */
 export default async function GoodsReceiptsPage({
@@ -27,7 +28,7 @@ export default async function GoodsReceiptsPage({
         back={{ href: "/inventory", label: "Back to Inventory" }}
         title="Goods Receipts"
         description={<><OrgTrail area="Store" /></>}
-        actions={canRecord ? <HeaderAction href="/inventory/goods-receipts/new">Record Goods Receipt</HeaderAction> : null}
+        actions={<><ExportAction kind="goods-receipts" label="Export receipt lines" />{canRecord ? <HeaderAction href="/inventory/goods-receipts/new">Record Goods Receipt</HeaderAction> : null}</>}
       />
 
       {error ? (

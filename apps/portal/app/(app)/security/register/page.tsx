@@ -8,6 +8,7 @@ import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 const TYPES = [['', 'Everything'], ['VISIT', 'Visits'], ['EXIT_PASS', 'Exit passes'], ['ROAD_TEST', 'Road tests'], ['VEHICLE_EXIT', 'Vehicle exits'], ['DELIVERY', 'Deliveries'], ['CONTRACTOR', 'Contractors'], ['INCIDENT', 'Incidents']] as const;
 const TYPE_LABEL: Record<string, string> = { VISIT: 'Visit', EXIT_PASS: 'Exit pass', ROAD_TEST: 'Road test', VEHICLE_EXIT: 'Vehicle exit', DELIVERY: 'Delivery', CONTRACTOR: 'Contractor', INCIDENT: 'Incident' };
@@ -25,6 +26,7 @@ export default async function SecurityRegisterPage({ searchParams }: { searchPar
         icon="list"
         title="Security register"
         description={<>Every visit (VIS / VP), exit pass (EP), road test (RT), vehicle exit (VX), delivery (DLV), contractor pass (CTR) and incident (INC) — search by any number, name or plate.</>}
+        actions={<ExportAction kind="security-register" params={{ q, type: t || undefined }} />}
       />
       <SecurityNav active="/security/register" />
       <form className="mb-4 flex flex-wrap gap-2">

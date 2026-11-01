@@ -7,6 +7,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { LoadingLink } from '@/components/LoadingLink';
 import { OrgTrail } from '@/components/OrgTrail';
 import { EmptyState, PageHeader, ResponsiveTable } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,7 +21,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
   const href = (n: number) => `/inventory/suppliers?${new URLSearchParams({ ...(q ? { q } : {}), ...origin, page: String(n) }).toString()}`;
   return (
     <div className="w-full p-4 sm:p-8">
-      <PageHeader icon="truck" back={{ href: '/inventory', label: 'Back to Inventory' }} title="Suppliers" description={<>Shared by every branch. Brought in from SAP through Data Exchange; goods receipts link to them by name. <OrgTrail area="Store" /></>} />
+      <PageHeader icon="truck" back={{ href: '/inventory', label: 'Back to Inventory' }} title="Suppliers" description={<>Shared by every branch. Brought in from SAP through Data Exchange; goods receipts link to them by name. <OrgTrail area="Store" /></>} actions={<ExportAction kind="suppliers" params={sp} />} />
       <form className="mb-6 flex gap-2" action="/inventory/suppliers">
         <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Search by name, supplier number or email…" className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
         <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Search</button>

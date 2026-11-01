@@ -384,8 +384,9 @@ which fits comfortably. On the organisation's paid plan this is routine.
   week" is one filter. Job Cards, services and warranties are always made in
   EJO, so they have no source to filter by.
 - **Day by day.** *Data Exchange → Day by day* is a calendar of imports
-  started, loaded, confirmed by Finance, undone, released and cancelled; a day
-  lists them, each opening its import.
+  started, loaded, confirmed by Finance, undone, released and cancelled, and
+  of lists exported (§9c); a day lists them, each opening its import or
+  export.
 - **With or without the history.** Headquarters, the business analytics and
   the CRM list have a switch: *With SAP history* (the default) or *EJO only*
   (the invoices from before EJO left out of spend, visits, top customers and
@@ -422,6 +423,60 @@ approved and loaded (about 0.6 KB a row for a material master; the
 
 Cancelling an import removes its staged file at once (nothing was loaded
 from it).
+
+## 9c. Exports: any list to Excel or CSV
+
+Every list has an **Export** button — Customers, Vehicles, Parts, Stock and
+value, Suppliers, Goods receipt lines, Job Cards, Vehicle Services,
+Warranties, a customer's SAP invoices, Imports, Exports, People and roles,
+the Audit trail, the Security register and Headquarters. Choose **Excel
+(.xlsx)** or **CSV**.
+
+- **Exactly the list.** The file holds every record that matches the list's
+  filters and search (not just the page on screen), in the list's order —
+  for the person downloading it: their organisation, branch and permissions
+  today, the branch lens included. The Security register is the exception
+  the file itself states: it holds what the register shows (the most recent
+  several hundred of each kind); export the audit trail for a full period.
+- **Built when downloaded, never stored.** Pressing Export records an
+  export, **EXP-2026-000012** — which list, which filters, who, when — and
+  the download starts at once. No copy of the data is kept anywhere; the file
+  is built as it downloads.
+- **24 hours, once per person.** The link works for 24 hours. Each person who
+  may export that list can download it once; after that the link says so, and
+  a fresh export gives a fresh file. A link shared with someone who may not
+  export that list is refused (and the refusal is in the audit trail).
+- **A long list comes in parts.** A download stops at a clean row boundary
+  after about 40 seconds (or 2,000,000 rows) and says so: *More to come* in
+  the file's About sheet, and **Download part 2** on the button and on the
+  export's page. Each part is a complete file and carries on exactly where
+  the last one stopped. In Excel, more than 1,048,575 rows continue on a
+  numbered second sheet. One part downloads at a time per person.
+- **Written to be used.** An *About this file* sheet comes first (the CSV
+  has the same lines at the top, each starting with `#`): the list, the
+  organisation, the export number, the filters, who exported and who
+  downloaded it, when, and what is in it. Then a bold, frozen header row;
+  real dates (dd/mm/yyyy, Lagos time); money as numbers with a *Currency*
+  column (NGN); record numbers as text, so SAP's leading zeros stay; *Yes* /
+  *No*; and a link back to each record. CSV is UTF-8 with a byte-order mark,
+  so Excel opens ₦ and Nigerian names correctly.
+- **Nothing runs as a formula.** Text that starts with `=`, `+`, `-` or `@`
+  gets a leading apostrophe in CSV; Excel cells are always plain text.
+- **Who may export.** *Export lists* (`dataexchange.export.run`) — the
+  Administrator, Branch administrator, Workshop manager, Finance, Store
+  manager, Customer care lead, Executive, Group IT, Warranty HOD and Chief
+  security officer. Lists with **contact details or payments** — customers,
+  SAP invoices and the audit trail (sign-in addresses) — also need *Export
+  contact details and payments* (`dataexchange.export.sensitive`): the
+  Administrator, Workshop manager, Finance and Customer care lead. Technicians,
+  officers and the front desk export nothing. Exporting is refused during an
+  assisted session, and a person may start 60 exports an hour.
+- **Exports, tracked.** *Data Exchange → Exports* (or *Exports* in the menu)
+  lists your exports — everyone's in the organisation for those who read the
+  audit trail — with the filters, who downloaded each one, how many rows and
+  how big. Search finds an export by its number. Every export and every part
+  downloaded is in the audit trail (*data_exchange.exported*, with rows and
+  size).
 
 ## 10. For the database administrator
 

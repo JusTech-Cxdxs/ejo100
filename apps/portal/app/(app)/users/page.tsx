@@ -7,6 +7,7 @@ import { FilterSelect } from '@/components/FilterSelect';
 import { Avatar } from '@/components/Avatar';
 import { redirect } from 'next/navigation';
 import { PageTitle } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 const chip = 'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-medium';
 const field = 'w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]';
@@ -69,9 +70,12 @@ export default async function UsersPage({ searchParams }: { searchParams: Promis
           <PageTitle icon="users">Users</PageTitle>
           <p className="mt-1 max-w-3xl text-sm text-[var(--ejo-text-muted)]">Everyone in your organisation{placement.branchLocked ? ' branch' : ''}, the branch and department they work in, and the roles that decide what they can see and do. People are emailed whenever their access changes; every change is in the audit trail.{isPlatformTeam ? ' As the platform team you can also grant the Master Administrator role.' : ''}</p>
         </div>
-        <a href="/users/new" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
-          <span aria-hidden="true" className="text-base leading-none">+</span> Add staff member
-        </a>
+        <span className="flex flex-wrap items-start gap-2">
+          <ExportAction kind="users" params={sp} />
+          <a href="/users/new" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:opacity-95">
+            <span aria-hidden="true" className="text-base leading-none">+</span> Add staff member
+          </a>
+        </span>
       </div>
 
       {notice ? <NoticeBox n={notice} /> : null}

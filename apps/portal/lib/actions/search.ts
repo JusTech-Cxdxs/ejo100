@@ -161,7 +161,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -201,6 +201,9 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     // Imports (Data Exchange): the people who prepare or approve them, in their own organisation.
     find((allowed('dataexchange.import.run') || allowed('dataexchange.import.approve')) && sameOrg, { numbers: [['IMP', 'number']], text: ['fileName'] },
       (w) => prisma.importJob.findMany({ where: W<Prisma.ImportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, fileName: true, status: true } })),
+    // Exports (Data Exchange): those who export lists, in their own organisation — their own, or everyone's for those who read the audit trail.
+    find(allowed('dataexchange.export.run') && { ...sameOrg, ...(allowed('audit.view') ? {} : { createdById: user.id }) }, { numbers: [['EXP', 'number']], text: ['summary'] },
+      (w) => prisma.exportJob.findMany({ where: W<Prisma.ExportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, format: true } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
@@ -256,6 +259,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('BC', 'Broadcasts', broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: referenceUrl('BC', r.id) }))),
     ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
     ref('IMP', 'Imports', imports.map((r) => ({ label: r.number, sub: dot(r.fileName, words(r.status)), href: referenceUrl('IMP', r.id) }))),
+    ref('EXP', 'Exports', exportJobs.map((r) => ({ label: r.number, sub: dot(words(r.kind.replace(/-/g, ' ')), r.format.toUpperCase()), href: referenceUrl('EXP', r.id) }))),
     { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.customer?.fullName), href: `/workshop/vehicles/${r.id}/edit` })) },
     // The customer's 360° page (CRM), or the Workshop customer list for people without the CRM.
     { group: 'Customers', hits: customers.map((r) => ({ label: r.fullName, sub: r.phone ?? undefined, href: canCrm ? `/crm/customers/${r.id}` : `/workshop/customers?q=${encodeURIComponent(r.fullName)}` })) },

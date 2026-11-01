@@ -22,6 +22,7 @@ import { Chip, Empty, Kpi, NoticeBox, Section, type Notice } from '@/components/
 import { SpendChart } from '@/components/crm/LazyCrmCharts';
 import { EditCustomerForm } from '@/components/crm/EditCustomerForm';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
+import { ExportAction } from '@/components/ExportAction';
 
 export const metadata = { title: 'Customer' };
 
@@ -230,7 +231,7 @@ export default async function Customer360Page({ params, searchParams }: { params
           </Section>
         ) : null}
         {tab === 'jobs' && data.sapInvoices.length ? (
-          <Section icon="receipt" title={`From SAP, before EJO (${data.sapInvoices.length})`} subtitle={`Invoices brought in from SAP: read-only history, already settled there. ${naira(money.fromSap)} in all — counted in lifetime spend, visits and last visit.`} className="mt-6">
+          <Section icon="receipt" title={`From SAP, before EJO (${data.sapInvoices.length})`} subtitle={`Invoices brought in from SAP: read-only history, already settled there. ${naira(money.fromSap)} in all — counted in lifetime spend, visits and last visit.`} className="mt-6" action={<ExportAction kind="sap-invoices" params={{ customerId: id }} label="Export" />}>
             <SapInvoiceList rows={data.sapInvoices} />
           </Section>
         ) : null}

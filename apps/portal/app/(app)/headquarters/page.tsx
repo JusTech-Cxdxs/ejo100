@@ -10,6 +10,7 @@ import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
 import { Icon, PageHeader, SectionCard, StatTile, StatusChip } from '@/components/ui';
 import { formatDateTime, formatRelative } from '@/lib/utils/format-date';
 import { pluralize } from '@/lib/utils/pluralize';
+import { ExportAction } from '@/components/ExportAction';
 
 export const metadata = { title: 'Headquarters' };
 export const dynamic = 'force-dynamic';
@@ -114,7 +115,7 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
         actions={(
           <div className="flex flex-wrap gap-2">
             <AskEnyoButton variant="solid" send speak icon="speaker" label="Brief me" question={`Give me a spoken briefing on ${hq.lensBranch ?? (hq.scope === 'branch' ? 'my branch' : 'the whole organisation, branch by branch')} this month (use branch_briefing, then stock_alerts and warranty_watch): the one-line verdict, money and what makes it, the workshop — Job Cards and Vehicle Services — decisions waiting, inventory, warranty, the team, customers and support, and the three things I should do first.`} />
-            <a href={`/headquarters/export?period=${hq.period.key}${history ? "" : "&history=exclude"}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={15} />Export (CSV)</a>
+            <ExportAction kind="headquarters" params={{ period: hq.period.key, history: history ? undefined : 'exclude' }} />
             {hq.canBroadcast ? <LoadingLink href="/notifications/broadcasts/new" className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 text-sm font-semibold text-white hover:brightness-110"><Icon name="megaphone" size={15} />Send a notice</LoadingLink> : null}
           </div>
         )}

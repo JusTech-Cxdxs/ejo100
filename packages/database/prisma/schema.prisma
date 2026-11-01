@@ -128,6 +128,7 @@ model Organisation {
   suppliers  Supplier[]
   historicalInvoices    HistoricalInvoice[]
   vehicleHistoryRecords VehicleHistoryRecord[]
+  exportJobs ExportJob[]
 }
 
 model BusinessUnit {
@@ -4459,5 +4460,63 @@ model VehicleHistoryRecord {
   @@index([organisationId, vinKey])
   @@index([importJobId])
   @@map("vehicle_history_records")
+}
+
+// A4 Data Exchange: one export of a list (Excel or CSV), as the person saw it
+// — the list, its filters and search — recorded before any data leaves. The
+// file is built as it downloads, from these filters and the person's own
+// reach at that moment, so nothing is stored but this record. The link works
+// for 24 hours, once per person (ExportDownload), for people who may open the
+// list; every download is in the audit trail with its row count and size.
+model ExportJob {
+  id             String    @id @default(cuid())
+  organisationId String
+  // EXP-2026-000123
+  number         String    @unique
+  // Which list: customers, vehicles, parts, stock, job-cards…
+  kind           String
+  // xlsx | csv
+  format         String
+  // The list's filters, search and sort as the person had them.
+  params         Json
+  // What the filters said, in words (for the About sheet and the history).
+  summary        String?
+  // Customers' contact details or payments in it (needs the sensitive permission).
+  sensitive      Boolean   @default(false)
+  // Rows and bytes of the last download (the file is rebuilt each time).
+  rowCount       Int?
+  bytes          Int?
+  createdById    String
+  createdAt      DateTime  @default(now())
+  expiresAt      DateTime
+
+  organisation Organisation     @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  downloads    ExportDownload[]
+
+  @@index([organisationId, createdAt])
+  @@index([createdById, createdAt])
+  @@map("export_jobs")
+}
+
+model ExportDownload {
+  id          String    @id @default(cuid())
+  exportJobId String
+  userId      String
+  /// When the latest part started (a large export comes in parts, each a complete file).
+  startedAt   DateTime  @default(now())
+  /// The whole export has been downloaded: the link no longer works for this person.
+  finishedAt  DateTime?
+  /// Parts written so far, and where the next part starts (null: from the beginning).
+  parts       Int       @default(0)
+  resumeFrom  String?
+  /// When the latest part finished (a part is downloading while startedAt is later than this).
+  partFinishedAt DateTime?
+  rowCount    Int       @default(0)
+  bytes       Int       @default(0)
+
+  exportJob ExportJob @relation(fields: [exportJobId], references: [id], onDelete: Cascade)
+
+  @@unique([exportJobId, userId])
+  @@map("export_downloads")
 }
 
