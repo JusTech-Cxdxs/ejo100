@@ -21,6 +21,21 @@ export function detectDelimiter(firstLine: string): ',' | ';' | '\t' | '|' {
   return counts[0]![1] > 0 ? counts[0]![0] : ',';
 }
 
+/** A "#" note above the header (an EJO export's About lines): "# List: Customers". */
+const NOTE = /^\s*"?#/;
+
+/** The first complete line that is not a "#" note, or null while none has arrived yet. */
+function firstDataLine(text: string): string | null {
+  const lines = text.split(/\r\n|\r|\n/);
+  for (const l of lines.slice(0, -1)) if (!NOTE.test(l)) return l;
+  return null;
+}
+
+/** A row that is a "#" note (only the first cell, starting with #) — skipped above the header, so an EJO export reads back in. */
+export function isNoteRow(cells: unknown[]): boolean {
+  return String(cells[0] ?? '').trimStart().startsWith('#') && cells.slice(1).every((c) => String(c ?? '').trim() === '');
+}
+
 export class CsvReader {
   private field = '';
   private row: string[] = [];
@@ -42,14 +57,15 @@ export class CsvReader {
     if (!this.started) {
       if (s.charCodeAt(0) === 0xfeff) s = s.slice(1); // byte-order mark
       if (!this.delimiter) {
-        const nl = s.search(/\r|\n/);
-        if (nl < 0 && s.length < 64 * 1024) {
-          // Wait for the first full line before deciding the separator.
-          this.field += s;
+        const buf = this.field + s;
+        const line = firstDataLine(buf);
+        if (line === null && buf.length < 64 * 1024) {
+          // Wait for the first full line (after any "#" notes) before deciding the separator.
+          this.field = buf;
           return out;
         }
-        this.delimiter = detectDelimiter((this.field + s).slice(0, nl < 0 ? undefined : nl + this.field.length));
-        s = this.field + s;
+        this.delimiter = detectDelimiter(line ?? buf.split(/\r\n|\r|\n/)[0]!);
+        s = buf;
         this.field = '';
       }
       this.started = true;
@@ -91,7 +107,7 @@ export class CsvReader {
   end(): string[][] {
     if (!this.started && this.field) {
       this.started = true;
-      this.delimiter = detectDelimiter(this.field);
+      this.delimiter = detectDelimiter(firstDataLine(`${this.field}\n`) ?? this.field);
       const s = this.field;
       this.field = '';
       const rows = this.push(s);

@@ -6,7 +6,12 @@ invented demo data (no real customer is in these files). It grows with each
 release; each section says which release it needs.
 
 **Demo files** are in [`docs/demo/`](demo/). Regenerate them (same content
-every time) with `npx tsx apps/portal/scripts/demo-files.ts`.
+every time) with `npx tsx apps/portal/scripts/demo-files.ts`. They tell one
+consistent story — each vehicle built, QC'd and through PDI before its first
+service, services in mileage order, the model year the year it was built,
+every customer a different person — so the vehicle page and the customer
+360 never show an impossible history; only the planted mistakes break it
+(a test checks this).
 
 **People you need** (create them under Users if they do not exist): one
 person who prepares imports (Group IT administrator or Administrator) and a
@@ -224,6 +229,20 @@ someone in **Finance**. Sections 1 and 2 loaded first.
 6. **Data Exchange → Exports**: every export, its filters, who downloaded it,
    rows and size. Type the **EXP-** number in search: it opens. *Day by day*
    shows today's exports beside the imports.
+7. **A file for SAP's team.** Customers → *Source: Created in EJO* →
+   **Export → CSV, SAP field names**. Open it: line 1 is
+   *KUNNR, NAME1, KTOKD, SMTP_ADDR, TELF1…*, KUNNR is empty (SAP does not
+   have these customers yet), days are YYYYMMDD, and ZZ_EJO_ID is the EJO
+   record. *"This is the list for your SAP team to create; EJO never writes
+   into SAP. When SAP gives them numbers, the next customers file from SAP
+   fills them in."* Do the same on Parts (MATNR, MAKTX, MEINS…) and on a
+   customer's SAP invoices (VBELN 0090001001, KUNAG 0001000101: SAP's own
+   form, zeros included).
+8. **It comes straight back in.** Data Exchange → *Customers* → drop the
+   Excel file you exported in step 1, as it is: the *About this file* sheet
+   is passed over, every column matches itself, and after the check every
+   row shows as *Already a customer* — recognised by its SAP number, never
+   added twice. Cancel it.
 
 ## 9. One label per vehicle: scan it, open its whole life
 

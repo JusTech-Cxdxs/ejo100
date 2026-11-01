@@ -485,6 +485,61 @@ the Audit trail, the Security register and Headquarters. Choose **Excel
   downloaded is in the audit trail (*data_exchange.exported*, with rows and
   size).
 
+### Exports come back in (round trip)
+
+An export of a list that Data Exchange also imports — customers, vehicles,
+parts, suppliers, a customer's SAP invoices — can be uploaded again as it
+is: the importer passes over the *About this file* sheet and the CSV's `#`
+lines, and every column name an export writes is one the importer
+recognises (*Customer number (SAP or old system)*, *Supplier number (SAP or
+old system)*, *Invoice number*, *Customer number (SAP)*…). Files exported
+before these names were settled (*SAP / old-system number*, *Supplier number
+(SAP)*, *Invoice number (SAP)*, *Customer SAP number*) are recognised too. A
+leading apostrophe (how a CSV keeps `+234…` from running as a formula) is
+not part of the value. Records already in EJO are recognised by their
+numbers and never added twice; updating them from an edited file, with a
+preview of each change, is the next step (A4b). *Stock and value* is a
+report, not an opening balance: it is not imported again.
+
+### SAP field names: a file for the SAP team
+
+On **Customers, Vehicles, Parts, Stock and value, Suppliers** and **a
+customer's SAP invoices**, the Export menu also offers **Excel, SAP field
+names** and **CSV, SAP field names**. Same records, same filters and
+permissions; the columns are SAP's:
+
+| List | Columns |
+| --- | --- |
+| Customers | KUNNR, NAME1, KTOKD, SMTP_ADDR, TELF1, TELF2, STRAS, STCD1, ERDAT, ZZ_EJO_ID |
+| Vehicles | KUNNR, LICENSE_NUM, VHVIN, EQUNR, ENGINE_NO, MAKE, MODEL, MODEL_YEAR, MILEAGE, ZZ_EJO_ID |
+| Parts | MATNR, MAKTX, MATKL, MEINS, XCHPF, EAN11, KBETR, WAERS, MINBE, EISBE, ZZ_EJO_ID |
+| Suppliers | LIFNR, NAME1, TELF1, SMTP_ADDR, STRAS, STCD1, ZZ_EJO_ID |
+| Stock and value | MATNR, MAKTX, MEINS, LABST, SALK3, VERPR, WAERS |
+| SAP invoices | VBELN, GJAHR, BUKRS, FKART, FKDAT, KUNAG, VHVIN, DMBTR, WAERS, ARKTX |
+
+- Only columns SAP has a field for: no links, no EJO-only figures.
+- Days as SAP flat files write them, **YYYYMMDD**; flags **X** or empty;
+  customer, supplier and billing numbers with SAP's leading zeros
+  (**0001000101**).
+- In CSV, **line 1 is the header** (no `#` lines), as SAP's load tools
+  expect; the Excel file keeps its *About this file* sheet. The file name
+  ends in **-SAP**.
+- **ZZ_EJO_ID** (SAP's customer namespace) is the EJO record, so a file SAP
+  sends back can be matched to it.
+- **A customer created in EJO that SAP does not have yet has an empty
+  KUNNR**: filter Customers by *Source: Created in EJO* and export with SAP
+  field names — that is the list for SAP's team to create. When they do, the
+  numbers come back in the next customers file from SAP.
+- **What this is not.** SAP's team loads such a file with their own tools
+  (Migration Cockpit, LSMW or a program of theirs), under their own checks.
+  EJO never writes into SAP's database. Daily postings from EJO to SAP —
+  parts issued, workshop invoices, payments — are a different file with an
+  agreed layout, a checksum and a status per line (C1, next).
+- **Not kept separately yet.** EJO keeps a customer's city in the address
+  line and the state only for long addresses, so SAP's ORT01 and REGIO are
+  not separate columns: STRAS carries "street, city". Keeping city and state
+  as their own fields is listed in section 11.
+
 ## 10. For the database administrator
 
 | Change | Script |
@@ -510,3 +565,8 @@ fresh schema. Run them in order (A0, A1, A2, A3, then the staged-files and searc
    history to bring in.
 4. Who signs off the migration totals (Store, Finance, Workshop) and the
    cut-over date for open jobs.
+5. How SAP's team wants EJO-created customers handed over: the file with
+   SAP field names (section 9c) as it is, or their Migration Cockpit
+   template filled from it; and whether city (ORT01) and region (REGIO)
+   should then be kept as separate fields in EJO (today: city in the
+   address line).

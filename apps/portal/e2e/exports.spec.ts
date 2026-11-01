@@ -24,12 +24,13 @@ async function orgOf(email: string): Promise<string> {
   return (await db().user.findUniqueOrThrow({ where: { email }, select: { organisationId: true } })).organisationId!;
 }
 /** Starts an export from the list's own Export button; returns the export's id and the downloaded file. */
-async function exportFromButton(page: Page, format: 'Excel (.xlsx)' | 'CSV'): Promise<{ id: string; file: Buffer; name: string }> {
+async function exportFromButton(page: Page, format: 'Excel (.xlsx)' | 'CSV' | 'Excel, SAP field names' | 'CSV, SAP field names'): Promise<{ id: string; file: Buffer; name: string }> {
   const button = page.getByRole('button', { name: /^Export/ }).first();
   await expect(button).toHaveCount(1);
   await button.click();
   const download = page.waitForEvent('download');
-  await page.getByRole('menuitem', { name: new RegExp(format.replace(/[().]/g, '\\$&')) }).click();
+  // "CSV" is not "CSV, SAP field names": the name, then not a comma.
+  await page.getByRole('menuitem', { name: new RegExp(`^${format.replace(/[().]/g, '\\$&')}(?!,)`) }).click();
   const d = await download;
   const link = page.getByRole('status').getByRole('link', { name: /^EXP-\d{4}-\d{6}$/ });
   await expect(link).toBeVisible();
@@ -92,13 +93,29 @@ test('CSV of lists whose reader checks who is signed in, block by block (Custome
   expect(parts.slice(header + 1).map((l) => l.split('","')[0]!.slice(1))).toEqual([1, 2, 3].map((i) => `EXP-${T}-${i}`));
 });
 
+test('Customers → CSV with SAP field names: line 1 is the header (KUNNR, NAME1…), for the SAP team', async ({ page }) => {
+  await as(page, 'administrator');
+  await open(page, `/crm?q=${encodeURIComponent(CUSTOMER)}`);
+  const { id, file, name } = await exportFromButton(page, 'CSV, SAP field names');
+  expect(name).toMatch(/^EJO-customers-\d{4}-\d{2}-\d{2}-EXP-\d{4}-\d{6}-SAP\.csv$/);
+  const lines = csvRows(file.toString('utf8'));
+  expect(lines[0]).toMatch(/^"KUNNR","NAME1","KTOKD","SMTP_ADDR","TELF1"/);
+  expect(lines.some((l) => l.startsWith('"#'))).toBe(false);
+  // A customer created in EJO has no SAP number yet: KUNNR is empty, for SAP's team to create it.
+  const ours = lines.find((l) => l.includes(CUSTOMER))!;
+  expect(ours.startsWith('"",')).toBe(true);
+  expect(ours).toContain(`export-${T.toLowerCase()}@example.test`);
+  const job = await db().exportJob.findUniqueOrThrow({ where: { id } });
+  expect(job.summary).toContain('Column names: SAP field names');
+});
+
 test('a long list comes in parts: each a complete file, carrying on exactly where the last stopped', async ({ page }) => {
   await as(page, 'store-manager');
   await open(page, `/inventory/suppliers?q=${encodeURIComponent(SUPPLIER)}`);
   const first = await exportFromButton(page, 'CSV');
   const part1 = csvRows(first.file.toString('utf8'));
   expect(part1[0]).toBe('"# List: Suppliers"');
-  const header = part1.findIndex((l) => l.startsWith('"Supplier number (SAP)"'));
+  const header = part1.findIndex((l) => l.startsWith('"Supplier number (SAP or old system)"'));
   const names1 = part1.slice(header + 1).map((l) => l.split('","')[1]);
   expect(names1).toEqual([1, 2, 3, 4, 5, 6].map((i) => `${SUPPLIER} ${i}`));
   // The button offers the next part.
@@ -109,7 +126,7 @@ test('a long list comes in parts: each a complete file, carrying on exactly wher
   expect(second.headers()['content-disposition']).toMatch(/-part2\.csv"/);
   const part2 = csvRows(await second.text());
   expect(part2.some((l) => l.startsWith('"# Part: 2'))).toBe(true);
-  const names2 = part2.slice(part2.findIndex((l) => l.startsWith('"Supplier number (SAP)"')) + 1).map((l) => l.split('","')[1]);
+  const names2 = part2.slice(part2.findIndex((l) => l.startsWith('"Supplier number (SAP or old system)"')) + 1).map((l) => l.split('","')[1]);
   expect(names2).toEqual([`${SUPPLIER} 7`]);
   const dl = await db().exportDownload.findFirstOrThrow({ where: { exportJobId: first.id } });
   expect(dl).toMatchObject({ parts: 2, rowCount: 7, resumeFrom: null });

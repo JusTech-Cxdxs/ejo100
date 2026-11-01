@@ -17,7 +17,7 @@ const LABELS: Record<string, string> = {
   q: 'Search', type: 'Vehicle category', tag: 'Tag', status: 'Status', open: 'Open jobs', portal: 'Customer portal', gaps: 'Missing details', sort: 'Sorted by',
   outcome: 'Outcome', filter: 'Showing', period: 'Period', history: 'History from before EJO', year: 'Fiscal year', customerId: 'Customer',
   lead: 'Lead time (days)', service: 'Service level', from: 'From', to: 'To', kind: 'Kind', userId: 'Person', show: 'Showing people', branch: 'Branch', role: 'Role',
-  source: 'Source', imp: 'Import', enteredFrom: 'Entered EJO from', enteredTo: 'Entered EJO to', originalFrom: 'Original date from', originalTo: 'Original date to',
+  source: 'Source', imp: 'Import', layout: 'Column names', enteredFrom: 'Entered EJO from', enteredTo: 'Entered EJO to', originalFrom: 'Original date from', originalTo: 'Original date to',
 };
 /** Paging and page-only flags never travel with an export (the file holds every matching record). */
 const DROP = new Set(['page', 'error', 'binned', 'focus', 'prefill', 'tab', 'cursor', 'add', 'id']);
@@ -45,6 +45,7 @@ const VALUE_WORDS: Record<string, Record<string, string>> = {
   history: { exclude: 'Left out (EJO only)', include: 'Included' },
   source: Object.fromEntries(SOURCE_OPTIONS.map((o) => [o.key, o.label])),
   service: { '0.9': '90%', '0.95': '95%', '0.975': '97.5%', '0.99': '99%' },
+  layout: { sap: 'SAP field names', ejo: 'EJO (plain English)' },
 };
 
 /** "Search: Ade · Source: Imported from SAP" — or "Everything in the list". */

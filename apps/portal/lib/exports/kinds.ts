@@ -95,17 +95,19 @@ async function importNumbers(ids: (string | null)[]): Promise<Map<string, string
 
 // ── Customers ─────────────────────────────────────────────────────────
 
-type CustomerRow = Awaited<ReturnType<typeof getCrmHub>>['rows'][number] & { imp: string | null };
+type CustomerRow = Awaited<ReturnType<typeof getCrmHub>>['rows'][number] & { imp: string | null; companyName: string | null; taxId: string | null };
 const customers: ExportKind<CustomerRow> = {
   key: 'customers', label: 'Customers', view: ['crm.view'], sensitive: true, page: '/crm',
   columns: [
-    { header: 'SAP / old-system number', type: 'code', width: 16, get: (r) => r.externalId },
+    { header: 'Customer number (SAP or old system)', type: 'code', width: 16, get: (r) => r.externalId },
     { header: 'Name', type: 'text', width: 28, get: (r) => r.fullName },
     { header: 'Type', type: 'text', width: 12, get: (r) => (r.customerType === 'ORGANIZATION' ? 'Organisation' : 'Individual') },
+    { header: 'Company name', type: 'text', width: 24, get: (r) => r.companyName },
     { header: 'Phone', type: 'code', width: 16, get: (r) => r.phone },
     { header: 'Second phone', type: 'code', width: 16, get: (r) => r.altPhone },
     { header: 'Email', type: 'text', width: 26, get: (r) => r.email },
     { header: 'Address', type: 'text', width: 30, get: (r) => r.address },
+    { header: 'Tax ID', type: 'code', width: 14, get: (r) => r.taxId },
     { header: 'Tags', type: 'text', width: 16, get: (r) => r.tags.join(', ') },
     { header: 'Customer since', type: 'day', width: 12, get: (r) => r.customerSince ?? null },
     { header: 'Entered EJO', type: 'date', width: 12, get: (r) => r.createdAt },
@@ -118,12 +120,17 @@ const customers: ExportKind<CustomerRow> = {
     { header: 'Currency', type: 'text', width: 8, get: () => 'NGN' },
     { header: 'Last visit', type: 'date', width: 12, get: (r) => r.lastVisit },
     { header: 'Customer portal', type: 'bool', width: 10, get: (r) => r.hasPortalAccount && r.isActive },
+    { header: 'EJO record', type: 'code', width: 14, get: (r) => r.id },
     { header: 'Link', type: 'link', width: 40, get: (r) => link(`/crm/customers/${r.id}`) },
   ],
   async *rows(_ctx, p, from) {
     const hub = await getCrmHub(p as CrmHubParams, { all: true });
     const imp = await importNumbers(hub.rows.map((r) => r.importJobId));
-    yield* slices(hub.rows.map((r) => ({ ...r, imp: r.importJobId ? imp.get(r.importJobId) ?? null : null })), from);
+    // The company record (name, tax ID) a block at a time, so a long list never asks for every customer at once.
+    for (const block of slices(hub.rows, from)) {
+      const companies = new Map((await prisma.customerCompany.findMany({ where: { customerId: { in: block.rows.map((r) => r.id) } }, select: { customerId: true, companyName: true, taxId: true } })).map((c) => [c.customerId, c]));
+      yield { next: block.next, rows: block.rows.map((r) => ({ ...r, imp: r.importJobId ? imp.get(r.importJobId) ?? null : null, companyName: companies.get(r.id)?.companyName ?? null, taxId: companies.get(r.id)?.taxId ?? null })) };
+    }
   },
 };
 
@@ -132,19 +139,22 @@ const customers: ExportKind<CustomerRow> = {
 const vehicles: ExportKind = {
   key: 'vehicles', label: 'Vehicles', view: ['workshop.view'], sensitive: false, page: '/workshop/vehicles',
   columns: [
+    { header: 'Customer number (SAP or old system)', type: 'code', width: 16, get: (r) => r.customer?.externalId },
     { header: 'Plate', type: 'code', width: 12, get: (r) => r.plateNumber },
     { header: 'Chassis number (VIN)', type: 'code', width: 20, get: (r) => r.chassisNumber },
-    { header: 'SAP / old-system number', type: 'code', width: 14, get: (r) => r.externalId },
+    { header: 'Vehicle number (SAP or old system)', type: 'code', width: 14, get: (r) => r.externalId },
     { header: 'Engine number', type: 'code', width: 14, get: (r) => r.engineNumber },
+    { header: 'Engine type', type: 'text', width: 10, get: (r) => r.engineType },
     { header: 'Make', type: 'text', width: 10, get: (r) => r.make },
     { header: 'Model', type: 'text', width: 12, get: (r) => r.model },
     { header: 'Year', type: 'int', width: 6, get: (r) => r.year },
     { header: 'Category', type: 'text', width: 11, get: (r) => (r.vehicleType === 'COMMERCIAL' ? 'Commercial' : r.vehicleType === 'PASSENGER' ? 'Passenger' : '') },
     { header: 'Mileage (km)', type: 'int', width: 10, get: (r) => r.mileage },
-    { header: 'Customer', type: 'text', width: 24, get: (r) => r.customer?.fullName },
+    { header: 'Customer name', type: 'text', width: 24, get: (r) => r.customer?.fullName },
     { header: 'Entered EJO', type: 'date', width: 12, get: (r) => r.createdAt },
     { header: 'Source', type: 'text', width: 12, get: (r) => (r.importJobId ? 'Imported' : 'Created in EJO') },
     { header: 'Import', type: 'code', width: 16, get: (r) => r.imp },
+    { header: 'EJO record', type: 'code', width: 14, get: (r) => r.id },
     { header: 'Link', type: 'link', width: 40, get: (r) => link(`/workshop/vehicles/${r.id}/edit`) },
   ],
   async *rows(ctx, p, from) {
@@ -157,7 +167,7 @@ const vehicles: ExportKind = {
       ...(type ? { vehicleType: type } : {}),
       ...(q ? { OR: [{ plateNumber: { contains: q, mode: 'insensitive' } }, { chassisNumber: { contains: q, mode: 'insensitive' } }, { make: { contains: q, mode: 'insensitive' } }, { model: { contains: q, mode: 'insensitive' } }, { externalId: { in: [q, q.replace(/^0+(?=\w)/, '')] } }] } : {}),
     };
-    for await (const { rows: b, next } of blocks((c) => prisma.customerVehicle.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { customer: { select: { fullName: true } } } }), from)) {
+    for await (const { rows: b, next } of blocks((c) => prisma.customerVehicle.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { customer: { select: { fullName: true, externalId: true } } } }), from)) {
       const imp = await importNumbers(b.map((r) => r.importJobId));
       yield { next, rows: b.map((r) => ({ ...r, imp: r.importJobId ? imp.get(r.importJobId) ?? null : null })) };
     }
@@ -174,16 +184,18 @@ const parts: ExportKind = {
     { header: 'Material group / category', type: 'text', width: 14, get: (r) => r.category },
     { header: 'Base unit', type: 'text', width: 9, get: (r) => r.baseUnitOfMeasure },
     { header: 'Tracking', type: 'text', width: 9, get: (r) => words(r.trackingType) },
+    { header: 'Batch managed', type: 'bool', width: 8, get: (r) => r.trackingType === 'BATCH' },
     { header: 'Barcode', type: 'code', width: 14, get: (r) => r.barcode },
     { header: 'Selling price', type: 'money', width: 12, get: (r) => n(r.sellingPrice) },
     { header: 'Currency', type: 'text', width: 8, get: () => 'NGN' },
     { header: 'Reorder point', type: 'number', width: 10, get: (r) => n(r.reorderPoint) },
     { header: 'Safety stock', type: 'number', width: 10, get: (r) => n(r.safetyStock) },
     { header: 'On hand', type: 'number', width: 9, get: (r) => n(r.stock?.quantityOnHand) ?? 0 },
-    { header: 'SAP / old-system number', type: 'code', width: 16, get: (r) => r.externalId },
+    { header: 'Number in SAP or the old system', type: 'code', width: 16, get: (r) => r.externalId },
     { header: 'Entered EJO', type: 'date', width: 12, get: (r) => r.createdAt },
     { header: 'Source', type: 'text', width: 12, get: (r) => (r.importJobId ? 'Imported' : 'Created in EJO') },
     { header: 'Import', type: 'code', width: 16, get: (r) => r.imp },
+    { header: 'EJO record', type: 'code', width: 14, get: (r) => r.id },
     { header: 'Link', type: 'link', width: 40, get: (r) => link(`/inventory/parts/${r.id}`) },
   ],
   async *rows(ctx, p, from) {
@@ -235,7 +247,7 @@ const stock: ExportKind<StockRow> = {
 const suppliers: ExportKind = {
   key: 'suppliers', label: 'Suppliers', view: ['store.view'], sensitive: false, page: '/inventory/suppliers',
   columns: [
-    { header: 'Supplier number (SAP)', type: 'code', width: 14, get: (r) => r.externalId },
+    { header: 'Supplier number (SAP or old system)', type: 'code', width: 14, get: (r) => r.externalId },
     { header: 'Name', type: 'text', width: 30, get: (r) => r.name },
     { header: 'Contact person', type: 'text', width: 18, get: (r) => r.contactName },
     { header: 'Phone', type: 'code', width: 16, get: (r) => r.phone },
@@ -245,6 +257,7 @@ const suppliers: ExportKind = {
     { header: 'Active', type: 'bool', width: 7, get: (r) => r.isActive },
     { header: 'Entered EJO', type: 'date', width: 12, get: (r) => r.createdAt },
     { header: 'Source', type: 'text', width: 12, get: (r) => (r.importJobId ? 'Imported' : 'Created in EJO') },
+    { header: 'EJO record', type: 'code', width: 14, get: (r) => r.id },
   ],
   async *rows(ctx, p, from) {
     const organisationId = ctx.organisationId ?? '__none__';
@@ -381,15 +394,15 @@ const warranties: ExportKind = {
 const sapInvoices: ExportKind = {
   key: 'sap-invoices', label: 'SAP invoice history', view: ['crm.view'], sensitive: true, page: '/crm',
   columns: [
-    { header: 'Invoice number (SAP)', type: 'code', width: 14, get: (r) => r.invoiceNumber },
+    { header: 'Invoice number', type: 'code', width: 14, get: (r) => r.invoiceNumber },
     { header: 'Fiscal year', type: 'int', width: 8, get: (r) => r.fiscalYear },
     { header: 'Company code', type: 'code', width: 8, get: (r) => r.companyCode },
     { header: 'Document type', type: 'code', width: 8, get: (r) => r.documentType },
     { header: 'Invoice date', type: 'day', width: 12, get: (r) => r.invoiceDate },
-    { header: 'Customer', type: 'text', width: 24, get: (r) => r.customerName },
-    { header: 'Customer SAP number', type: 'code', width: 14, get: (r) => r.customerExt },
+    { header: 'Customer name', type: 'text', width: 24, get: (r) => r.customerName },
+    { header: 'Customer number (SAP)', type: 'code', width: 14, get: (r) => r.customerExt },
     { header: 'Chassis number (VIN)', type: 'code', width: 20, get: (r) => r.vin },
-    { header: 'Amount', type: 'money', width: 13, get: (r) => n(r.amount) },
+    { header: 'Amount (incl. tax)', type: 'money', width: 13, get: (r) => n(r.amount) },
     { header: 'Currency', type: 'text', width: 8, get: () => 'NGN' },
     { header: 'Description', type: 'text', width: 30, get: (r) => r.description },
     { header: 'Import', type: 'code', width: 16, get: (r) => r.imp },

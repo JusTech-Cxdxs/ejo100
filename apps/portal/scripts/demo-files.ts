@@ -4,6 +4,16 @@
  * mistakes for the check to catch. Deterministic (the same files every run),
  * invented names only — no real customer data.
  *
+ * One consistent story, so the vehicle page, the customer 360 and the
+ * analytics never show an impossible history: every customer is a different
+ * person (no two share an email — EJO treats a shared email as the same
+ * customer); each vehicle is built and QC'd, then passes PDI, before its
+ * first service, and its model year is the year it was built; services are
+ * numbered 10,000 km, 20,000 km… in date order and the mileage is past the
+ * last one; a customer's "customer since" is never after their first
+ * invoice; a PDI report number carries the year of its PDI. Only the
+ * deliberate mistakes break these rules.
+ *
  *   npx tsx apps/portal/scripts/demo-files.ts        → docs/demo/
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -21,16 +31,89 @@ const CITIES = ['Isolo', 'Ikeja', 'Victoria Island', 'Yaba', 'Surulere', 'Apapa'
 const FLEETS = ['Dangana Haulage', 'Lagoon Logistics', 'Eko Cold Chain', 'Unity Couriers', 'Harbour Freight'];
 
 const kunnr = (n: number) => `000${1000100 + n}`; // SAP keeps leading zeros
+const vin = (n: number) => `JAANLR85EL7${String(100000 + n).slice(-6)}`;
+const addDays = (d: Date, n: number) => new Date(d.getTime() + n * 86_400_000);
+const iso = (d: Date) => d.toISOString().slice(0, 10);
+const pad = (n: number) => String(n).padStart(2, '0');
+/** SAP's display day 08.04.2021 (null for the planted day that does not exist). */
+function sapDay(s: string): Date | null {
+  const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s);
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[3]!, +m[2]! - 1, +m[1]!));
+  return d.getUTCDate() === +m[1]! ? d : null;
+}
 const phone = (n: number) => `080${3 + (n % 5)} ${String(200 + n).padStart(3, '0')} ${String(4000 + n * 7).slice(-4)}`;
+
+// ── Invoice history from SAP (billing documents, before EJO 100) ────────
+// Two to six invoices a customer between 2020 and September 2026, on their vehicle's VIN, net + tax as SAP's billing
+// header has them (NETWR, MWSBK), a few credit notes (G2, trailing minus). Same content every run.
+const SERVICES = ['Service 10,000 km', 'Service 20,000 km', 'Service 40,000 km', 'Brake pads and discs', 'Clutch kit replaced', 'Injector cleaning', 'Gearbox overhaul', 'Suspension bushes', 'A/C regas and filter', 'Tyres (6) and alignment'];
+const inv: string[][] = [];
+let invNo = 90001000;
+for (let i = 1; i <= 30; i += 1) {
+  const count = 2 + (i % 5);
+  for (let k = 0; k < count; k += 1) {
+    invNo += 1;
+    const y = 2020 + ((i + k * 2) % 7); // 2020 – 2026: the cut-over is recent, so this year has SAP invoices too
+    const m = y === 2026 ? 1 + ((i * 3 + k * 5) % 9) : 1 + ((i * 3 + k * 5) % 12); // never later than September 2026
+    const d = 1 + ((i * 7 + k * 11) % 27);
+    const net = 45000 + ((i * 7919 + k * 104729) % 120) * 7500; // ₦45,000 – ₦937,500
+    const tax = Math.round(net * 0.075 * 100) / 100;
+    inv.push([String(invNo).padStart(10, '0'), `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`, kunnr(i), net.toFixed(2), tax.toFixed(2), 'NGN', vin(i), 'F2', SERVICES[(i + k) % SERVICES.length]!]);
+  }
+  if (i % 7 === 0) { invNo += 1; inv.push([String(invNo).padStart(10, '0'), `15.06.${2022 + (i % 3)}`, kunnr(i), '25000.00-', '1875.00-', 'NGN', '', 'G2', 'Credit note: goodwill discount']); }
+}
+// Deliberate mistakes: an unknown customer, a dollar invoice, no invoice number, a date that is not a date, the same invoice twice.
+inv.push(['0090009001', '10.10.2024', '0009999999', '150000.00', '11250.00', 'NGN', '', 'F2', 'Unknown customer']);
+inv.push(['0090009002', '11.10.2024', kunnr(3), '2000.00', '0.00', 'USD', '', 'F2', 'Export spare parts']);
+inv.push(['', '12.10.2024', kunnr(4), '80000.00', '6000.00', 'NGN', '', 'F2', 'No invoice number']);
+inv.push(['0090009003', '31.06.2024', kunnr(5), '80000.00', '6000.00', 'NGN', '', 'F2', 'No such day']);
+inv.push([inv[0]![0]!, inv[0]![1]!, inv[0]![2]!, inv[0]![3]!, inv[0]![4]!, 'NGN', inv[0]![6]!, 'F2', 'Exported twice']);
+// SAP numbers documents per company code and fiscal year: the same number comes back in a later year (both load, labelled "· 2025" and "· 2026").
+inv.push(['0090005000', '20.03.2025', kunnr(2), '64000.00', '4800.00', 'NGN', vin(2), 'F2', 'Wheel alignment']);
+inv.push(['0090005000', '18.02.2026', kunnr(2), '71000.00', '5325.00', 'NGN', vin(2), 'F2', 'Service 30,000 km']);
+// Services are numbered in date order on each vehicle (10,000 km, 20,000 km…): a later service is never at a lower reading.
+const lastServiceKm = new Map<string, number>();
+const byVin = new Map<string, string[][]>();
+for (const r of inv) if (r[6] && sapDay(r[1]!)) byVin.set(r[6], [...(byVin.get(r[6]) ?? []), r]);
+for (const [v, rows] of byVin) {
+  let n = 0;
+  for (const r of [...rows].sort((a, b) => sapDay(a[1]!)!.getTime() - sapDay(b[1]!)!.getTime() || a[0]!.localeCompare(b[0]!))) {
+    if (/^Service [\d,]+ km$/.test(r[8]!)) { n += 1; r[8] = `Service ${(n * 10000).toLocaleString('en-US')} km`; lastServiceKm.set(v, n * 10000); }
+  }
+}
+/** Each vehicle's and each customer's first invoice: the plant built the vehicle before it, the customer was a customer before it. */
+const firstInvoiceOfVin = new Map<string, Date>();
+const firstInvoiceOf = new Map<string, Date>();
+for (const r of inv) {
+  const d = sapDay(r[1]!);
+  if (!d) continue;
+  if (r[6] && (!firstInvoiceOfVin.has(r[6]) || d < firstInvoiceOfVin.get(r[6])!)) firstInvoiceOfVin.set(r[6], d);
+  if (!firstInvoiceOf.has(r[2]!) || d < firstInvoiceOf.get(r[2]!)!) firstInvoiceOf.set(r[2]!, d);
+}
+/** The plant's dates for vehicle i: chassis, trim, then QC (the line's last day), then PDI a few days later — all before its first service. */
+function buildOf(i: number): { start: Date; qc: Date; pdi: Date } {
+  const first = firstInvoiceOfVin.get(vin(i)) ?? new Date(Date.UTC(2026, 8, 1));
+  const qc = addDays(first, -(45 + ((i * 7) % 46)));
+  return { start: addDays(qc, -2), qc, pdi: addDays(qc, 2 + (i % 4)) };
+}
+// Company code 1000 and the fiscal year (here the calendar year) on every line, as a billing extract has them.
+const withRange = inv.map((r) => [...r, '1000', (r[1]!.match(/(\d{4})$/) ?? ['', ''])[1]!]);
+writeFileSync(join(OUT, '06_SAP_invoice_history_demo.csv'), toCsv(['VBELN', 'FKDAT', 'KUNAG', 'NETWR', 'MWSBK', 'WAERK', 'VHVIN', 'FKART', 'ARKTX', 'BUKRS', 'GJAHR'], withRange));
 
 // ── Customers (SAP customer master layout) ─────────────────────────────
 const custHeader = ['KUNNR', 'NAME1', 'NAME2', 'KTOKD', 'SMTP_ADDR', 'TELF1', 'TELF2', 'STRAS', 'ORT01', 'REGIO', 'STCD1', 'ERDAT'];
 const cust: string[][] = [];
 for (let i = 1; i <= 30; i += 1) {
   const fleet = i % 6 === 0 ? FLEETS[(i / 6 - 1) % FLEETS.length]! : null;
-  const name = fleet ?? `${FIRST[i % FIRST.length]} ${LAST[(i * 3) % LAST.length]}`;
+  // The surname shifts each time the first names come round again, so no two customers share a name (or an email).
+  const name = fleet ?? `${FIRST[i % FIRST.length]} ${LAST[(i * 3 + Math.floor(i / FIRST.length)) % LAST.length]}`;
   const email = i % 4 === 0 ? '' : `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@example.ng`; // a quarter have no email, as in SAP
-  cust.push([kunnr(i), name, fleet ? 'Ltd' : '', fleet ? 'Company' : 'Individual', email, phone(i), '', STREETS[i % STREETS.length]!, CITIES[i % CITIES.length]!, 'LA', fleet ? `${10000000 + i}-0001` : '', `20${String(12 + (i % 12)).padStart(2, '0')}-0${1 + (i % 9)}-1${i % 9}`]);
+  const since = `20${String(12 + (i % 12)).padStart(2, '0')}-0${1 + (i % 9)}-1${i % 9}`;
+  // Customer since: never after the first invoice (a month before it, when the planned date would be).
+  const first = firstInvoiceOf.get(kunnr(i));
+  const erdat = first && since > iso(first) ? iso(addDays(first, -30)) : since;
+  cust.push([kunnr(i), name, fleet ? 'Ltd' : '', fleet ? 'Company' : 'Individual', email, phone(i), '', STREETS[i % STREETS.length]!, CITIES[i % CITIES.length]!, 'LA', fleet ? `${10000000 + i}-0001` : '', erdat]);
 }
 // Deliberate mistakes for the check: a missing name, a broken email, the same customer number twice.
 cust.push([kunnr(31), '', '', 'Individual', '', phone(31), '', 'Ikeja', 'Ikeja', 'LA', '', '2020-01-10']);
@@ -40,11 +123,13 @@ writeFileSync(join(OUT, '01_SAP_customers_demo.csv'), toCsv(custHeader, cust));
 
 // ── Vehicles (Excel workbook) ──────────────────────────────────────────
 const MODELS: [string, string, string, number][] = [['Isuzu', 'NQR 71', 'Commercial', 2024], ['Isuzu', 'NPR 71', 'Commercial', 2023], ['Isuzu', 'QLR 55', 'Commercial', 2025], ['Isuzu', 'QMR 55', 'Commercial', 2024], ['Soueast', 'S07', 'Passenger', 2025]];
-const vin = (n: number) => `JAANLR85EL7${String(100000 + n).slice(-6)}`;
 const vehRows: (string | number)[][] = [['Customer number', 'VIN', 'Plate', 'Engine number', 'Make', 'Model', 'Category', 'Year', 'Mileage']];
 for (let i = 1; i <= 30; i += 1) {
-  const [make, model, cat, year] = MODELS[i % MODELS.length]!;
-  vehRows.push([kunnr(i), vin(i), `LND ${100 + i} ${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(66 + (i % 24))}`, make === 'Isuzu' ? `4JJ1-${500000 + i}` : `F4J16-${700000 + i}`, make, model, cat, year, 1500 * i]);
+  const [make, model, cat] = MODELS[i % MODELS.length]!;
+  // Model year: the year it was built. Mileage: past its last service.
+  const year = buildOf(i).start.getUTCFullYear();
+  const mileage = (lastServiceKm.get(vin(i)) ?? 5000) + 1500 + (i % 5) * 700;
+  vehRows.push([kunnr(i), vin(i), `LND ${100 + i} ${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(66 + (i % 24))}`, make === 'Isuzu' ? `4JJ1-${500000 + i}` : `F4J16-${700000 + i}`, make, model, cat, year, mileage]);
 }
 // Deliberate mistakes: the same VIN twice, a vehicle with no VIN and no plate, an unknown customer.
 vehRows.push([kunnr(7), vin(3), '', '', 'Isuzu', 'NPR 71', 'Commercial', 2023, 900]);
@@ -114,48 +199,18 @@ stock.push([partRow(9)[0]!, '6', 'ST', '', '', '', '', '0001']);
 stock.push([partRow(14)[0]!, '208', 'L', '873600.00', '4200', '1', '', '0001']);
 writeFileSync(join(OUT, '04_SAP_opening_stock_demo.csv'), toCsv(['MATNR', 'LABST', 'MEINS', 'SALK3', 'VERPR', 'PEINH', 'CHARG', 'LGORT'], stock));
 
-// ── Invoice history from SAP (billing documents, before EJO 100) ────────
-// Two to six invoices a customer between 2020 and September 2026, on their vehicle's VIN, net + tax as SAP's billing
-// header has them (NETWR, MWSBK), a few credit notes (G2, trailing minus). Same content every run.
-const SERVICES = ['Service 10,000 km', 'Service 20,000 km', 'Service 40,000 km', 'Brake pads and discs', 'Clutch kit replaced', 'Injector cleaning', 'Gearbox overhaul', 'Suspension bushes', 'A/C regas and filter', 'Tyres (6) and alignment'];
-const inv: string[][] = [];
-let invNo = 90001000;
-for (let i = 1; i <= 30; i += 1) {
-  const count = 2 + (i % 5);
-  for (let k = 0; k < count; k += 1) {
-    invNo += 1;
-    const y = 2020 + ((i + k * 2) % 7); // 2020 – 2026: the cut-over is recent, so this year has SAP invoices too
-    const m = y === 2026 ? 1 + ((i * 3 + k * 5) % 9) : 1 + ((i * 3 + k * 5) % 12); // never later than September 2026
-    const d = 1 + ((i * 7 + k * 11) % 27);
-    const net = 45000 + ((i * 7919 + k * 104729) % 120) * 7500; // ₦45,000 – ₦937,500
-    const tax = Math.round(net * 0.075 * 100) / 100;
-    inv.push([String(invNo).padStart(10, '0'), `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`, kunnr(i), net.toFixed(2), tax.toFixed(2), 'NGN', vin(i), 'F2', SERVICES[(i + k) % SERVICES.length]!]);
-  }
-  if (i % 7 === 0) { invNo += 1; inv.push([String(invNo).padStart(10, '0'), `15.06.${2022 + (i % 3)}`, kunnr(i), '25000.00-', '1875.00-', 'NGN', '', 'G2', 'Credit note: goodwill discount']); }
-}
-// Deliberate mistakes: an unknown customer, a dollar invoice, no invoice number, a date that is not a date, the same invoice twice.
-inv.push(['0090009001', '10.10.2024', '0009999999', '150000.00', '11250.00', 'NGN', '', 'F2', 'Unknown customer']);
-inv.push(['0090009002', '11.10.2024', kunnr(3), '2000.00', '0.00', 'USD', '', 'F2', 'Export spare parts']);
-inv.push(['', '12.10.2024', kunnr(4), '80000.00', '6000.00', 'NGN', '', 'F2', 'No invoice number']);
-inv.push(['0090009003', '31.06.2024', kunnr(5), '80000.00', '6000.00', 'NGN', '', 'F2', 'No such day']);
-inv.push([inv[0]![0]!, inv[0]![1]!, inv[0]![2]!, inv[0]![3]!, inv[0]![4]!, 'NGN', inv[0]![6]!, 'F2', 'Exported twice']);
-// SAP numbers documents per company code and fiscal year: the same number comes back in a later year (both load, labelled "· 2025" and "· 2026").
-inv.push(['0090005000', '20.03.2025', kunnr(2), '64000.00', '4800.00', 'NGN', vin(2), 'F2', 'Wheel alignment']);
-inv.push(['0090005000', '18.02.2026', kunnr(2), '71000.00', '5325.00', 'NGN', vin(2), 'F2', 'Service 30,000 km']);
-// Company code 1000 and the fiscal year (here the calendar year) on every line, as a billing extract has them.
-const withRange = inv.map((r) => [...r, '1000', (r[1]!.match(/(\d{4})$/) ?? ['', ''])[1]!]);
-writeFileSync(join(OUT, '06_SAP_invoice_history_demo.csv'), toCsv(['VBELN', 'FKDAT', 'KUNAG', 'NETWR', 'MWSBK', 'WAERK', 'VHVIN', 'FKART', 'ARKTX', 'BUKRS', 'GJAHR'], withRange));
-
 // ── The plant's registers (Excel, as kept on the line today) ────────────
 // PDI register: one workbook, no "register" column (chosen when importing). Two steps per vehicle.
 const INSPECTORS = ['A. Bello', 'C. Okoro', 'F. Adebayo', 'M. Yusuf'];
 const pdi: (string | number)[][] = [['VIN', 'Model', 'PDI date', 'Step', 'Result', 'Inspected by', 'Report no', 'Remarks']];
 for (let i = 1; i <= 30; i += 1) {
   const [, model] = MODELS[i % MODELS.length]!;
-  const date = `${String(1 + (i % 27)).padStart(2, '0')}/${String(1 + (i % 12)).padStart(2, '0')}/${2023 + (i % 3)}`;
+  const d = buildOf(i).pdi;
+  const date = `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
   const insp = INSPECTORS[i % INSPECTORS.length]!;
-  pdi.push([vin(i), model, date, 'Final inspection', i % 9 === 0 ? 'NG' : 'OK', insp, `PDI-${2023 + (i % 3)}-${String(i).padStart(4, '0')}`, i % 9 === 0 ? 'Door seal leaking; rectified and re-inspected' : '']);
-  pdi.push([vin(i), model, date, 'Road test', 'OK', insp, `PDI-${2023 + (i % 3)}-${String(i).padStart(4, '0')}`, '']);
+  const report = `PDI-${d.getUTCFullYear()}-${String(i).padStart(4, '0')}`;
+  pdi.push([vin(i), model, date, 'Final inspection', i % 9 === 0 ? 'NG' : 'OK', insp, report, i % 9 === 0 ? 'Door seal leaking; rectified and re-inspected' : '']);
+  pdi.push([vin(i), model, date, 'Road test', 'OK', insp, report, '']);
 }
 pdi.push(['', 'NQR 71', '02/02/2024', 'Road test', 'OK', 'A. Bello', 'PDI-2024-9999', 'No VIN written']);
 writeFileSync(join(OUT, '07_PDI_register_demo.xlsx'), writeXlsx([{ name: 'PDI register', header: true, rows: pdi, widths: [22, 10, 12, 16, 8, 14, 14, 40] }]));
@@ -164,12 +219,12 @@ writeFileSync(join(OUT, '07_PDI_register_demo.xlsx'), writeXlsx([{ name: 'PDI re
 const prod: string[][] = [];
 for (let i = 1; i <= 30; i += 1) {
   const [, model] = MODELS[i % MODELS.length]!;
-  const y = 2023 + (i % 3);
-  const mo = String(1 + (i % 12)).padStart(2, '0');
-  prod.push(['Production', vin(i), model, `${y}${mo}05`, 'Chassis and frame', 'Pass', 'Line 1', '']);
-  prod.push(['Production', vin(i), model, `${y}${mo}06`, 'Trim and final assembly', 'Pass', 'Line 1', '']);
-  prod.push(['QC', vin(i), model, `${y}${mo}07`, 'Water test', i % 11 === 0 ? 'Rework' : 'Pass', INSPECTORS[(i + 1) % INSPECTORS.length]!, i % 11 === 0 ? 'Windscreen seal resealed' : '']);
-  prod.push(['QC', vin(i), model, `${y}${mo}07`, 'Final QC gate', 'Pass', INSPECTORS[(i + 2) % INSPECTORS.length]!, '']);
+  const { start, qc } = buildOf(i);
+  const day = (d: Date) => iso(d).replace(/-/g, ''); // SAP's 20240205
+  prod.push(['Production', vin(i), model, day(start), 'Chassis and frame', 'Pass', 'Line 1', '']);
+  prod.push(['Production', vin(i), model, day(addDays(start, 1)), 'Trim and final assembly', 'Pass', 'Line 1', '']);
+  prod.push(['QC', vin(i), model, day(qc), 'Water test', i % 11 === 0 ? 'Rework' : 'Pass', INSPECTORS[(i + 1) % INSPECTORS.length]!, i % 11 === 0 ? 'Windscreen seal resealed' : '']);
+  prod.push(['QC', vin(i), model, day(qc), 'Final QC gate', 'Pass', INSPECTORS[(i + 2) % INSPECTORS.length]!, '']);
 }
 writeFileSync(join(OUT, '08_production_QC_register_demo.csv'), toCsv(['Register', 'VIN', 'Model', 'Date', 'Station', 'Result', 'Inspected by', 'Remarks'], prod));
 
