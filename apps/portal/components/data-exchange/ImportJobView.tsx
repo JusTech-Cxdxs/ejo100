@@ -3,11 +3,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  approveImport, cancelImport, checkImportBatch, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, signOffImportTotals, submitImportForApproval, undoImportBatch,
+  approveImport, cancelImport, checkImportBatch, releaseImportRows, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, signOffImportTotals, submitImportForApproval, undoImportBatch,
   type ImportJobDetail,
 } from '@/lib/actions/data-exchange';
 import { ENTITIES, mappingFromProfile, type Mapping } from '@/lib/data-exchange/fields';
-import { IMPORT_STEPS, importStatus } from '@/lib/data-exchange/status';
+import { IMPORT_STEPS, bytesText, importStatus } from '@/lib/data-exchange/status';
 import { Icon, SectionCard, StatusChip } from '@/components/ui';
 
 const nf = (n: number) => n.toLocaleString('en-NG');
@@ -348,10 +348,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
       {job.status === 'UNDONE' ? (
         <div className="space-y-3">
           <p className="text-sm text-[var(--ejo-text-muted)]">{def.history ? `The ${def.plural} this import loaded are voided: they no longer count anywhere, and are kept. Reopen to check and load the file again, which restores them.` : job.entity === 'stock' ? 'This opening stock was reversed: its receipts were removed and stock on hand went back down. The file is still here.' : <>The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.</>}{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p>
-          {job.me.canRun ? <button type="button" className={secondary} disabled={pending} onClick={() => act(() => reopenUndoneImport(job.id))}><Icon name="restore" size={14} /> Reopen: check and load this file again</button> : null}
+          {job.me.canRun && !job.staged.releasedAt ? <button type="button" className={secondary} disabled={pending} onClick={() => act(() => reopenUndoneImport(job.id))}><Icon name="restore" size={14} /> Reopen: check and load this file again</button> : null}
+          {job.staged.releasedAt ? <p className="text-xs text-[var(--ejo-text-muted)]">Its staged file was released, so to load it again, start a new import with the same file.</p> : null}
         </div>
       ) : null}
-      {job.status === 'CANCELLED' ? <p className="text-sm text-[var(--ejo-text-muted)]">This import was cancelled. Nothing from it was loaded.</p> : null}
+      {job.status === 'CANCELLED' ? <p className="text-sm text-[var(--ejo-text-muted)]">This import was cancelled. Nothing from it was loaded. Its staged file was removed.</p> : null}
+      {job.status !== 'UPLOADING' && job.status !== 'CANCELLED' ? <StagedFile job={job} pending={pending} act={act} /> : null}
       <p className="sr-only"><StatusChip label={st.label} tone={st.tone} /></p>
     </div>
   );
@@ -477,3 +479,28 @@ function MappingEditor({ job, onSaved }: { job: ImportJobDetail; onSaved: () => 
     </SectionCard>
   );
 }
+
+/** The staged copy of the file: its size, and its release (automatic after the organisation's period, or now by an approver). */
+function StagedFile({ job, pending, act }: { job: ImportJobDetail; pending: boolean; act: (fn: () => Promise<unknown>) => void }) {
+  const s = job.staged;
+  const when = (d: Date) => new Date(d).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium' });
+  return (
+    <section aria-labelledby="staged-file" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-4 text-sm">
+      <h2 id="staged-file" className="font-semibold text-[var(--ejo-text)]">Staged file <span className="ml-1 font-normal tabular-nums text-[var(--ejo-text-muted)]">{bytesText(s.bytes)}</span></h2>
+      {s.releasedAt ? (
+        <p className="mt-1 text-[var(--ejo-text-muted)]">Released {when(s.releasedAt)} by {s.releasedBy}. The summary, every row’s outcome (in “Every row and its outcome”), the rejected rows, possible duplicates and what undo needs are kept; the rest of the file’s cells were cleared.</p>
+      ) : s.releasable ? (
+        <>
+          <p className="mt-1 text-[var(--ejo-text-muted)]">{s.dueAt ? `Released automatically on ${when(s.dueAt)} (${s.days} days after it finished).` : 'Kept until someone releases it (no set period).'} Releasing keeps the summary, every row’s outcome, rejected rows, possible duplicates and what undo needs; after it, the file cannot be checked again here.</p>
+          {job.me.canApprove ? (
+            <button type="button" disabled={pending} onClick={() => { if (window.confirm(`Release the staged file of ${job.number} now? ${bytesText(s.bytes)} is freed except what the report, the rejected rows and undo need.`)) act(() => releaseImportRows(job.id)); }}
+              className="mt-3 inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)] disabled:opacity-50"><Icon name="trash" size={14} /> Release it now</button>
+          ) : null}
+        </>
+      ) : (
+        <p className="mt-1 text-[var(--ejo-text-muted)]">Kept while the import is in progress. {s.why && s.why !== 'Only a finished import’s file is released.' ? s.why : `Once it is finished it is released after ${s.days === 0 ? 'no set period' : `${s.days} days`}.`}</p>
+      )}
+    </section>
+  );
+}
+

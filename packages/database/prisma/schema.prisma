@@ -106,6 +106,9 @@ model Organisation {
   // prediction is made without it.
   primaryServiceIntervalKm   Int?
   primaryServiceIntervalDays Int?
+  // Data Exchange: days after an import is finished (and its totals signed
+  // off) before the staged copy of its file is released. Null = 30; 0 = never.
+  importStagingDays Int?
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -4262,6 +4265,12 @@ model ImportJob {
   signedOffAt    DateTime?
   // v-A3 registers: the register the whole file is (PRODUCTION | QC | PDI) when it has no column for it.
   defaultKind    String?
+  // The staged copy of the file: bytes it takes (measured), and when it was
+  // released (the summary, the report's outcomes, rejected rows and what undo
+  // needs are kept; the rest of the file's cells are cleared).
+  stagedBytes     Int?
+  rowsReleasedAt  DateTime?
+  rowsReleasedById String?
   error          String?
   createdById    String
   submittedAt    DateTime?

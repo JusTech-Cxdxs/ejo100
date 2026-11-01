@@ -34,3 +34,13 @@ export const ROW_OUTCOME: Record<string, string> = {
   UNDONE: 'Undone (moved to the Recycle bin)',
   KEPT: 'Kept (work was recorded on it during the undo)',
 };
+
+/** 1,536 → "1.5 KB"; 4,300,000 → "4.1 MB" (binary units, as storage plans count them). */
+export function bytesText(n: number | null | undefined): string {
+  if (n === null || n === undefined || !Number.isFinite(n)) return '—';
+  if (n < 1024) return `${n} B`;
+  const units = ['KB', 'MB', 'GB', 'TB'];
+  let v = n / 1024; let i = 0;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i += 1; }
+  return `${v >= 100 ? Math.round(v) : Math.round(v * 10) / 10} ${units[i]}`;
+}

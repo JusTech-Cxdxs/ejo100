@@ -31,7 +31,8 @@ Every import goes through the same six steps, in the portal at
 
 Every step is in the audit trail (*Data exchange …* entries) with who, when
 and the counts. The staged copy of the file is kept with its import; it is
-deleted at once if the import is cancelled.
+deleted at once if the import is cancelled, and released once the import is
+finished (section 9a).
 
 ## 2. Who does what
 
@@ -352,6 +353,38 @@ which fits comfortably. On the organisation's paid plan this is routine.
   the server), the goods-receipt part picker (25 matches as you type) and the
   low-stock list (bounded) do not grow with the catalogue.
 
+## 9a. Staged files: space and release
+
+Each import keeps a copy of its file — every row — while it is checked,
+approved and loaded (about 0.6 KB a row for a material master; the
+800,000-row run took 513 MB). Once it is no longer needed it is
+**released**:
+
+- **When:** a set number of days after the import **finished** — counted
+  from Finance's confirmation for opening stock and invoice history, never
+  before it. **30 days** by default; an administrator changes it on the
+  Data Exchange page (*Release a finished import’s file after … days*; 0 keeps
+  every file for ever). The daily run at 8:00 releases what is due and is
+  listed on the scheduled-jobs page (*Imported files released*).
+- **Early:** an approver of that kind of record presses **Release it now** on
+  the import.
+- **What is kept:** the import's summary and counts; **every row's outcome**
+  (status, the record it made, its notes) — so *Every row and its outcome*
+  still downloads; the **rejected and duplicate rows** whole (the *to fix in
+  Excel* file still downloads); **possible duplicates** whole (to follow up);
+  and rows whose filled-in fields an **undo** would empty again. Undo keeps
+  working after a release.
+- **What goes:** the cells of every other row. A released import cannot be
+  **reopened** — start a new import with the same file instead (it is
+  recognised, and nothing is added twice).
+- **Space:** the Data Exchange page shows the space all staged files take
+  now and each import's own (*Staged file*); the import page shows its size,
+  when it will be released, and who released it. Every release is in the
+  audit trail with the space before and after.
+
+Cancelling an import removes its staged file at once (nothing was loaded
+from it).
+
 ## 10. For the database administrator
 
 | Change | Script |
@@ -360,10 +393,11 @@ which fits comfortably. On the organisation's paid plan this is routine.
 | A1 — import tables; "made by this import" on customers and vehicles | `scripts/predeploy/0004-data-exchange.sql` (deploy) · `scripts/v-a1-data-exchange.sql` (manual) |
 | A2 — suppliers; opening-balance receipts; parts made by an import; Finance sign-off | `scripts/predeploy/0005-parts-stock-suppliers.sql` (deploy) · `scripts/v-a2-parts-stock-suppliers.sql` (manual) |
 | A3 — customer since; invoice history; production / QC / PDI registers | `scripts/predeploy/0006-sap-history.sql` (deploy) · `scripts/v-a3-sap-history.sql` (manual) |
+| Staged files — release period, size, release record | `scripts/predeploy/0007-import-staging-release.sql` (deploy) · `scripts/v-a4a-import-staging-release.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a
-fresh schema. Run them in order (A0, A1, A2, A3).
+fresh schema. Run them in order (A0, A1, A2, A3, then the staged-files script).
 
 ## 11. Open questions for the organisation (not guessed in code)
 
