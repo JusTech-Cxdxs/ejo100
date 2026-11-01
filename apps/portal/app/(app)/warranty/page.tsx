@@ -9,15 +9,8 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { EmptyState, HeaderAction, Icon, PageHeader, StatusChip, type IconName } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 
-type Filter = 'all' | 'covered' | 'expiring' | 'pending' | 'expired' | 'inactive' | 'asset' | 'part' | 'reminder';
-
-const FILTER_STATES: Record<Exclude<Filter, 'all' | 'asset' | 'part' | 'reminder'>, WarrantyCoverageState[]> = {
-  covered: ['COVERED', 'EXPIRING_SOON'],
-  expiring: ['EXPIRING_SOON'],
-  pending: ['PENDING_VERIFICATION'],
-  expired: ['EXPIRED'],
-  inactive: ['SUSPENDED', 'VOID', 'TRANSFERRED'],
-};
+import { parseWarrantyFilter, warrantyMatchesFilter, type WarrantyListFilter as Filter } from '@/lib/warranty-list';
+import { ExportAction } from '@/components/ExportAction';
 
 /**
  * Warranty register — every warranty number the organisation has issued:
@@ -30,14 +23,12 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
   const { q, filter: rawFilter } = await searchParams;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
-  const filter: Filter = (['covered', 'expiring', 'pending', 'expired', 'inactive', 'asset', 'part', 'reminder'] as const).includes(rawFilter as never) ? (rawFilter as Filter) : 'all';
+  const filter: Filter = parseWarrantyFilter(rawFilter);
   const [warranties, reminderDueIds, canAnalytics] = await Promise.all([listWarranties(q), listWarrantyIdsWithReminderDue(), allows('analytics.warranty.view')]);
   const reminderDue = new Set(reminderDueIds);
   const rows = warranties.map((w: (typeof warranties)[number]) => ({ w, cov: warrantyCoverage(w, w.vehicle?.mileage ?? null) }));
   const count = (states: WarrantyCoverageState[]) => rows.filter((r) => states.includes(r.cov.state)).length;
-  const shown = rows.filter((r) =>
-    filter === 'all' ? true : filter === 'reminder' ? reminderDue.has(r.w.id) : filter === 'asset' ? r.w.kind === 'ASSET' : filter === 'part' ? r.w.kind === 'PART' : FILTER_STATES[filter].includes(r.cov.state),
-  );
+  const shown = rows.filter((r) => warrantyMatchesFilter(filter, { kind: r.w.kind, state: r.cov.state, reminderDue: reminderDue.has(r.w.id) }));
   const card = (key: Filter, label: string, value: number, tone: string, icon: IconName) => (
     <LoadingLink
       href={`/warranty?${[key === 'all' ? null : `filter=${key}`, q ? `q=${encodeURIComponent(q)}` : null].filter(Boolean).join('&')}`}
@@ -61,6 +52,7 @@ export default async function WarrantyRegisterPage({ searchParams }: { searchPar
         description={<>Every warranty number issued — vehicles registered by the warranty team, and parts warranted automatically the moment
             they are released to a customer&apos;s Job Card or Vehicle Service. Coverage is worked out live from dates and odometer.</>}
         actions={<>
+          <ExportAction kind="warranties" params={{ q, filter: rawFilter }} />
           <HeaderAction href="/warranty/register">Register vehicle warranty</HeaderAction>
           <HeaderAction href="/warranty/claims" icon="file" variant="secondary">Claims</HeaderAction>
           {canAnalytics ? <HeaderAction href="/warranty/analytics" icon="chart" variant="secondary">Analytics</HeaderAction> : null}

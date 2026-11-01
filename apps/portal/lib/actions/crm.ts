@@ -123,7 +123,8 @@ function hubStatsSql(organisationId: string | null, branchId: string | null, yea
 
 export type CrmHubParams = { q?: string; type?: string; tag?: string; status?: string; open?: string; portal?: string; gaps?: string; sort?: string; page?: string; history?: string } & Partial<Record<(typeof SOURCE_PARAMS)[number], string>>;
 
-export async function getCrmHub(params: CrmHubParams = {}) {
+/** The hub: KPIs, and the filtered list a page at a time (`opts.all`: every matching row, for an export). */
+export async function getCrmHub(params: CrmHubParams = {}, opts: { all?: boolean } = {}) {
   await authorize('crm.view', undefined, 'getCrmHub');
   const p = await getPrincipal();
   const fence = await orgWhere();
@@ -201,7 +202,7 @@ export async function getCrmHub(params: CrmHubParams = {}) {
   const [canManage, canRegister] = await Promise.all([allows('crm.manage'), allows('workshop.customer.manage')]);
   return {
     kpis, topSpenders, tags,
-    rows: page.items, page: page.page, pages: page.pages, matching: page.total,
+    rows: opts.all ? filtered : page.items, page: page.page, pages: page.pages, matching: page.total,
     scope: branchId ? { branchOnly: true as const, branchName: branch?.name ?? 'your branch' } : { branchOnly: false as const, branchName: null },
     canManage, canRegister: canRegister || canManage, isPlatformTeam: p.isSuperAdmin,
   };

@@ -1103,7 +1103,13 @@ export async function importRowsPage(jobId: string, kind: 'rejects' | 'possible'
 
 // ── Timeline ────────────────────────────────────────────────────────────
 
-export type ExchangeEvent = { at: Date; kind: 'started' | 'loaded' | 'confirmed' | 'undone' | 'released' | 'cancelled'; importId: string; number: string; entity: EntityKey; fileName: string; rows: number; by: string | null };
+export type ExchangeEvent = {
+  at: Date; kind: 'started' | 'loaded' | 'confirmed' | 'undone' | 'released' | 'cancelled' | 'exported';
+  /** The import or export, and its page. */
+  id: string; number: string; href: string;
+  /** "Customers · kna1.csv · 1,204 rows", or "Parts · Excel · Search: brake". */
+  what: string; by: string | null;
+};
 
 /**
  * One Lagos calendar month of Data Exchange activity, day by day: imports
@@ -1131,13 +1137,26 @@ export async function getDataExchangeTimeline(month?: string): Promise<{ month: 
   const inside = (d: Date | null | undefined): d is Date => Boolean(d && +d >= +from && +d < +to);
   const events: ExchangeEvent[] = [];
   for (const j of jobs) {
-    const base = { importId: j.id, number: j.number, entity: asEntity(j.entity), fileName: j.fileName, rows: j.fileRows };
+    const base = { id: j.id, number: j.number, href: `/data-exchange/imports/${j.id}`, what: `${ENTITIES[asEntity(j.entity)].label} · ${j.fileName} · ${j.fileRows.toLocaleString('en-NG')} rows` };
     if (inside(j.createdAt)) events.push({ ...base, at: j.createdAt, kind: 'started', by: names.get(j.createdById) ?? null });
     if (inside(j.completedAt)) events.push({ ...base, at: j.completedAt, kind: 'loaded', by: j.approvedById ? names.get(j.approvedById) ?? null : null });
     if (inside(j.signedOffAt)) events.push({ ...base, at: j.signedOffAt, kind: 'confirmed', by: j.signedOffById ? names.get(j.signedOffById) ?? null : null });
     if (inside(j.undoneAt)) events.push({ ...base, at: j.undoneAt, kind: 'undone', by: j.undoneById ? names.get(j.undoneById) ?? null : null });
     if (inside(j.rowsReleasedAt)) events.push({ ...base, at: j.rowsReleasedAt, kind: 'released', by: j.rowsReleasedById ? names.get(j.rowsReleasedById) ?? null : 'the daily clean-up' });
     if (j.status === 'CANCELLED' && inside(j.updatedAt)) events.push({ ...base, at: j.updatedAt, kind: 'cancelled', by: null });
+  }
+  // Exports in the month: the person's own, or everyone's for those who read the audit trail.
+  const me = await getPrincipal();
+  const everyone = await allows('audit.view');
+  const exports = await prisma.exportJob.findMany({
+    where: { organisationId, createdAt: range, ...(everyone ? {} : { createdById: me.userId }) },
+    take: 2000,
+    select: { id: true, number: true, kind: true, format: true, summary: true, rowCount: true, createdAt: true, createdById: true },
+  });
+  const exporters = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(exports.map((x) => x.createdById))] } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+  for (const x of exports) {
+    const list = x.kind.replace(/-/g, ' ').replace(/^./, (c) => c.toUpperCase());
+    events.push({ id: x.id, number: x.number, href: `/data-exchange/exports/${x.id}`, at: x.createdAt, kind: 'exported', what: [list, x.format === 'csv' ? 'CSV' : 'Excel', x.summary, x.rowCount !== null ? `${x.rowCount.toLocaleString('en-NG')} rows` : null].filter(Boolean).join(' · '), by: exporters.get(x.createdById) ?? null });
   }
   events.sort((a, b) => +a.at - +b.at);
   return { month: m, events };

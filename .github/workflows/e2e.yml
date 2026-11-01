@@ -66,6 +66,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       # One retry in CI (a flaky test is reported as a warning, never hidden).
       E2E_RETRIES: '1'
+      # Exports in tiny blocks and parts (lib/exports): a handful of rows arrive in several parts, so
+      # e2e/exports.spec.ts proves each part carries on exactly where the last stopped. Test-only.
+      EXPORT_BLOCK_ROWS: '2'
+      EXPORT_PART_MAX_ROWS: '5'
       # Enyo talks to a stand-in model server in CI (packages/enyo/testing/mock-llm.mjs):
       # tests drive it with markers, so permissions and hand-overs are checked end to end.
       ENYO_LLM_BASE_URL: 'http://localhost:4010/v1'

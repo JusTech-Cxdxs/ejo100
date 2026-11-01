@@ -201,6 +201,10 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   Supplier: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'RECYCLE_BIN', retention: 'Life of the contract', ai: 'AUTHORISED_USER', recycleBin: true },
   HistoricalInvoice: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: '7 years (financial records); an undone import voids its rows (kept, restored by reloading the file)', ai: 'AUTHORISED_USER' },
   VehicleHistoryRecord: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicle (quality and warranty evidence); an undone import voids its rows', ai: 'AUTHORISED_USER' },
+  // v-A4: an export of a list (which list, which filters, who, when) and who downloaded it. No copy of the data is
+  // stored: the file is built at download time for the person downloading it.
+  ExportJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract (the record of what left EJO, never deleted); the link itself stops working after 24 hours', ai: 'NEVER' },
+  ExportDownload: { tenancy: 'VIA_PARENT', owner: 'exportJobId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its export', ai: 'NEVER' },
   ImportMappingProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },
   MailStyleSample: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: '90 days, at most 200 per person; removed when they withdraw consent or disconnect their mailbox', ai: 'AUTHORISED_USER' },
   IntegrityAlert: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL', 'FINANCIAL', 'AUDIT'], lifecycle: 'STATE_MACHINE', retention: '7 years (internal-control evidence); reviewed alerts are never deleted', ai: 'AUTHORISED_USER' },

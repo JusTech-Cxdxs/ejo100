@@ -29,6 +29,8 @@ export const PERMISSIONS = {
   'enyo.manage': { module: 'Administration', label: 'Manage Enyo (AI): switch features on or off, see what it is learning and how accurate it is' },
   'dataexchange.import.run': { module: 'Data Exchange', label: 'Bring records in from SAP or spreadsheets: upload a file, match its columns and check it (loading it needs a second person’s approval)' },
   'dataexchange.import.approve': { module: 'Data Exchange', label: 'Approve an import someone else prepared, load it, send it back, and undo a finished import' },
+  'dataexchange.export.run': { module: 'Data Exchange', label: 'Export the lists they can open to Excel or CSV (what they see, with their filters; every export is recorded)' },
+  'dataexchange.export.sensitive': { module: 'Data Exchange', label: 'Export files with customers’ contact details or payments' },
   'integrity.review': { module: 'Administration', label: 'Review integrity alerts (unusual money, parts, warranty, gate and sign-in activity) and Speak up reports — never alerts about themselves' },
   // Analytics
   'analytics.business.view': { module: 'Analytics', label: 'View Business Analytics (sales, cost, profit, cash)' },
@@ -123,13 +125,14 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'crm.view': A, 'crm.manage': A, 'admin.recycle_bin.manage': A, 'enyo.manage': A, 'support.tickets.manage': A, 'support.manage': A, 'integrity.review': A,
     // Bringing existing records in (SAP, old spreadsheets): prepares and approves — never both on the same import.
     'dataexchange.import.run': A, 'dataexchange.import.approve': A,
+    'dataexchange.export.run': A, 'dataexchange.export.sensitive': A,
   },
   // One branch: its people and their roles, and oversight of that branch.
   'branch-administrator': {
     'admin.users.manage': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.view': B, 'security.view': B,
     'analytics.business.view': B, 'analytics.inventory.view': B, 'analytics.warranty.view': B, 'schedule.view': 'OWN',
     'crm.view': B, 'crm.manage': B, 'admin.recycle_bin.manage': B, 'support.tickets.manage': B,
-    'dataexchange.import.run': B,
+    'dataexchange.import.run': B, 'dataexchange.export.run': B,
   },
   // ── Workshop ─────────────────────────────────────────────────────
   // Front desk: the customer relationship — customers, vehicles, opening
@@ -161,6 +164,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'crm.view': B, 'crm.manage': B, 'support.tickets.manage': B,
     // The branch's customer records are the Manager's to approve when they come in from SAP or a spreadsheet.
     'dataexchange.import.approve': B,
+    'dataexchange.export.run': B, 'dataexchange.export.sensitive': B,
   },
   // ── Finance ──────────────────────────────────────────────────────
   // Money only: payments, refunds, outside-purchase review and cash.
@@ -168,6 +172,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     ...VIEW_WORKSHOP, 'store.view': B,
     'workshop.payment.record': B, 'workshop.refund.record': B, 'procurement.epr.review': B, 'procurement.epr.disburse': B,
     'analytics.business.view': B, 'analytics.inventory.view': B,
+    'dataexchange.export.run': B, 'dataexchange.export.sensitive': B,
   },
   // ── Store ────────────────────────────────────────────────────────
   'store-manager': {
@@ -175,15 +180,16 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'analytics.inventory.view': B, 'security.pass.approve': 'DEPARTMENT',
     // The branch's parts, opening stock and suppliers coming in from SAP are the Store Manager's to approve.
     'dataexchange.import.approve': B,
+    'dataexchange.export.run': B,
   },
   'store-officer': { 'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B, 'analytics.inventory.view': B },
   // ── Warranty ─────────────────────────────────────────────────────
   // Warranty sets part warranties and follows parts back to their receipts — read-only Store.
-  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT' },
+  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B },
   'warranty-officer': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'analytics.warranty.view': B },
   // ── People & security ────────────────────────────────────────────
   'department-head': { 'security.pass.approve': 'DEPARTMENT', 'schedule.view': 'OWN' },
-  'chief-security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B, 'security.incident.manage': B, 'security.pass.approve': 'DEPARTMENT' },
+  'chief-security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B, 'security.incident.manage': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B },
   'security-officer': { 'security.view': B, 'security.gate.operate': B, 'security.reception.operate': B },
   // ── Scheduling & communication ───────────────────────────────────
   'calendar-user': { 'schedule.view': 'OWN' },
@@ -206,6 +212,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'analytics.warranty.view': A, 'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT',
     // Keeping customer records right includes approving customer imports.
     'dataexchange.import.approve': A,
+    'dataexchange.export.run': A, 'dataexchange.export.sensitive': A,
   },
   // ── Leadership & IT ──────────────────────────────────────────────
   // A director or general manager: sees how the whole business is doing —
@@ -217,6 +224,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'schedule.view': 'OWN', 'security.pass.approve': 'DEPARTMENT', 'website.news.manage': A,
     // Leadership speaks to the organisation: notices to staff (and customers).
     'notifications.broadcast.send': A,
+    'dataexchange.export.run': A,
   },
   // Group IT: people and their roles, settings and system health, the audit
   // trail and error log, and Enyo (AI), across the organisation — but none of
@@ -227,6 +235,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'enyo.manage': A, 'schedule.view': 'OWN', 'website.news.manage': A,
     // Migrations from SAP and old systems: IT prepares the file; the business approves what goes in.
     'dataexchange.import.run': A,
+    // Exports of what they can open (users, roles, the audit trail) — never customers' contact details or payments.
+    'dataexchange.export.run': A,
     // System notices: planned downtime, a security warning, a password reminder.
     'notifications.broadcast.send': A,
   },

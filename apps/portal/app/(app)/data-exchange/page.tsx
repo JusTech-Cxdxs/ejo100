@@ -1,11 +1,12 @@
 import Link from 'next/link';
-import { guardAnyPage } from '@/lib/authz/server';
+import { allows, guardAnyPage } from '@/lib/authz/server';
 import { listImportJobs } from '@/lib/actions/data-exchange';
 import { ENTITIES, ENTITY_KEYS } from '@/lib/data-exchange/fields';
 import { IMPORT_STEPS, bytesText, importStatus } from '@/lib/data-exchange/status';
 import { StagingSettings } from '@/components/data-exchange/StagingSettings';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
-import { EmptyState, Icon, PageHeader, ResponsiveTable, SectionCard, StatusChip } from '@/components/ui';
+import { EmptyState, HeaderAction, Icon, PageHeader, ResponsiveTable, SectionCard, StatusChip } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,7 @@ const nf = (n: number) => n.toLocaleString('en-NG');
 /** Data Exchange: bring existing records in from SAP and spreadsheets — checked, approved by a second person, reversible. */
 export default async function DataExchangePage({ searchParams }: { searchParams: Promise<{ before?: string }> }) {
   await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve'], '/data-exchange');
+  const canExport = await allows('dataexchange.export.run');
   const { before } = await searchParams;
   const { jobs, canRun, staging } = await listImportJobs({ take: 30, before });
   return (
@@ -23,7 +25,8 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         icon="layers"
         eyebrow="Data Exchange"
         title="Bring in existing records"
-        description="Customers, vehicles, suppliers, parts and opening stock from SAP or your spreadsheets, without retyping. Every file is checked first, the department that owns the records approves it, it loads in batches, and it can be undone."
+        description="Customers, vehicles, suppliers, parts and opening stock from SAP or your spreadsheets, without retyping. Every file is checked first, the department that owns the records approves it, it loads in batches, and it can be undone. Every list in EJO exports to Excel or CSV the same careful way."
+        actions={canExport ? <HeaderAction href="/data-exchange/exports" icon="download" variant="secondary">Exports</HeaderAction> : undefined}
       />
 
       <ol className="grid grid-cols-2 gap-2 sm:grid-cols-6">
@@ -59,7 +62,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
       </SectionCard>
 
       <SectionCard icon="history" title="Imports" description="Newest first. Open one to see its check, approval, load and report." flush
-        actions={<Link href="/data-exchange/timeline" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Day by day →</Link>}>
+        actions={<span className="flex flex-wrap items-center gap-3"><ExportAction kind="imports" label="Export the list" /><Link href="/data-exchange/timeline" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Day by day →</Link></span>}>
         {jobs.length === 0 ? (
           <div className="p-4"><EmptyState icon="inbox" title="No imports yet" compact>Download a template above, or start with your SAP export: its columns are matched automatically.</EmptyState></div>
         ) : (

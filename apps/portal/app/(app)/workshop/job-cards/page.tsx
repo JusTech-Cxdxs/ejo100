@@ -20,6 +20,7 @@ import { BackLink, PageHeader, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 import { parseJobCardPrefill } from '@/lib/enyo/prefill';
 import { checkJobCardPrefill } from '@/lib/enyo/prefill-server';
+import { ExportAction } from '@/components/ExportAction';
 
 const STATUS_LABEL: Record<string, string> = {
   CHECKED_IN: 'Checked In',
@@ -68,6 +69,7 @@ export default async function WorkshopJobCardsPage({
         icon="clipboard"
         title="Job Cards"
         description={<><OrgTrail area="Workshop" /></>}
+        actions={<ExportAction kind="job-cards" params={sp} />}
       />
 
       <CategoryFilterTabs basePath="/workshop/job-cards" currentType={vehicleType} preserveParams={{ q }} />

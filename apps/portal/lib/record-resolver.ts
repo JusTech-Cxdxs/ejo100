@@ -118,6 +118,8 @@ export async function resolveReferenceNumbers(texts: (string | null | undefined)
   q('GRN', async (n) => { for (const r of await prisma.goodsReceipt.findMany({ where: { referenceNumber: { in: n } }, select: { id: true, referenceNumber: true } })) out.set(r.referenceNumber, referenceUrl('GRN', r.id)); });
   q('RF', async (n) => { for (const r of await prisma.refund.findMany({ where: { referenceNumber: { in: n } }, select: { referenceNumber: true, jobCardId: true, vehicleServiceId: true } })) { const u = r.jobCardId ? jcUrl(r.jobCardId) : r.vehicleServiceId ? svUrl(r.vehicleServiceId) : null; if (u) out.set(r.referenceNumber, u); } });
   q('WR', async (n) => { for (const r of await prisma.warranty.findMany({ where: { warrantyNumber: { in: n } }, select: { id: true, warrantyNumber: true } })) out.set(r.warrantyNumber, referenceUrl('WR', r.id)); });
+  q('IMP', async (n) => { for (const r of await prisma.importJob.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('IMP', r.id)); });
+  q('EXP', async (n) => { for (const r of await prisma.exportJob.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('EXP', r.id)); });
   q('WC', async (n) => { for (const r of await prisma.warrantyClaim.findMany({ where: { claimNumber: { in: n } }, select: { id: true, claimNumber: true } })) out.set(r.claimNumber, referenceUrl('WC', r.id)); });
   await Promise.all(jobs);
   return out;

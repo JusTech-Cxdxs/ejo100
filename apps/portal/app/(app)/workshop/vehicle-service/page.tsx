@@ -25,6 +25,7 @@ import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { ExportAction } from '@/components/ExportAction';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -84,7 +85,7 @@ export default async function VehicleServicePage({
     <div className="p-8">
       <BackLink href="/workshop" label="Back to Workshop" className="mb-4" />
       <div className="mb-2 flex items-center justify-between">
-        <PageTitle icon="droplet">Vehicle Service</PageTitle>
+        <span className="flex flex-wrap items-center gap-3"><PageTitle icon="droplet">Vehicle Service</PageTitle><ExportAction kind="vehicle-services" params={{ q, type, outcome: rawOutcome }} align="left" /></span>
         {isMasterAdmin && organisation ? (
           editInterval === 'true' ? (
             <form action={updatePrimaryServiceIntervalFormAction} className="flex flex-wrap items-end gap-2">

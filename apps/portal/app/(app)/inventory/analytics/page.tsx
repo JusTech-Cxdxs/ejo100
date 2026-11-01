@@ -11,6 +11,7 @@ import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
 import { coverText, type StockStatus } from '@/lib/inventory-analytics';
 import { PageHeader, HeaderAction, StatTile, PriorityActions, BarRow, EmptyState, Icon, CHART, type IconName, type Tone } from '@/components/ui';
+import { ExportAction } from '@/components/ExportAction';
 
 const naira = (n: number | null) => (n === null ? '—' : `₦${Math.round(n).toLocaleString('en-NG')}`);
 const pct = (n: number | null) => (n === null ? '—' : `${n.toFixed(1)}%`);
@@ -106,6 +107,7 @@ export default async function InventoryAnalyticsPage({ searchParams }: { searchP
         description={<>Stock health, reorder levels, demand and profitability, worked out from stock movements: costs from each goods
             receipt and the prices charged on Job Cards and Vehicle Services. Each figure says how it is calculated.</>}
         actions={<>
+          <ExportAction kind="stock" params={params} label="Export stock and value" />
           <HeaderAction href="/inventory/pricing" icon="tag" variant="secondary">Pricing Command Center</HeaderAction>
           <HeaderAction href="/inventory/parts" icon="package" variant="secondary">Parts catalogue</HeaderAction>
         </>}

@@ -1,7 +1,6 @@
 import Link from 'next/link';
 import { guardAnyPage } from '@/lib/authz/server';
 import { getDataExchangeTimeline, type ExchangeEvent } from '@/lib/actions/data-exchange';
-import { ENTITIES } from '@/lib/data-exchange/fields';
 import { EmptyState, PageHeader, SectionCard } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
@@ -13,6 +12,7 @@ const KIND: Record<ExchangeEvent['kind'], { label: string; dot: string }> = {
   undone: { label: 'Undone', dot: 'bg-[var(--ejo-warning)]' },
   released: { label: 'Staged file released', dot: 'bg-[var(--ejo-text-muted)]' },
   cancelled: { label: 'Cancelled', dot: 'bg-[var(--ejo-error)]' },
+  exported: { label: 'Exported', dot: 'bg-[var(--ejo-text)]' },
 };
 const lagosDay = (d: Date) => new Date(+d + 3_600_000).toISOString().slice(0, 10);
 const time = (d: Date) => d.toLocaleTimeString('en-NG', { timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit' });
@@ -35,7 +35,7 @@ export default async function DataExchangeTimelinePage({ searchParams }: { searc
   const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-NG', { month: 'long', year: 'numeric', timeZone: 'UTC' });
   return (
     <div className="w-full space-y-6 p-4 sm:p-8">
-      <PageHeader icon="calendar" back={{ href: '/data-exchange', label: 'Back to Data Exchange' }} title="Data Exchange, day by day" description="Every import started, loaded, confirmed by Finance, undone or released, by day (Lagos time). Choose a day to see its list; each opens its import. Exports and the daily SAP files appear here too once they are in use." />
+      <PageHeader icon="calendar" back={{ href: '/data-exchange', label: 'Back to Data Exchange' }} title="Data Exchange, day by day" description="Every import started, loaded, confirmed by Finance, undone or released, and every list exported, by day (Lagos time). Choose a day to see its list; each opens its import or export. The daily SAP files will appear here too once they are in use." />
       <SectionCard icon="calendar" title={label} actions={<span className="flex gap-2 text-sm"><Link className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/data-exchange/timeline?month=${prev}`}>← Previous</Link><Link className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/data-exchange/timeline?month=${next}`}>Next →</Link></span>}>
         <div role="grid" aria-label={`Data Exchange activity, ${label}`} className="grid grid-cols-7 gap-1 text-center text-xs">
           {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((d) => <div key={d} role="columnheader" className="py-1 font-medium text-[var(--ejo-text-muted)]">{d}</div>)}
@@ -60,13 +60,13 @@ export default async function DataExchangeTimelinePage({ searchParams }: { searc
         {list.length === 0 ? <div className="p-4"><EmptyState compact icon="inbox" title="Nothing happened in Data Exchange on this day." /></div> : (
           <ol className="divide-y divide-[var(--ejo-border)]">
             {list.map((e, i) => (
-              <li key={`${e.importId}-${e.kind}-${i}`} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
+              <li key={`${e.id}-${e.kind}-${i}`} className="flex flex-wrap items-start justify-between gap-3 px-4 py-3 text-sm">
                 <span className="flex min-w-0 items-start gap-2">
                   <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${KIND[e.kind].dot}`} />
                   <span className="min-w-0">
                     <span className="font-medium text-[var(--ejo-text)]">{KIND[e.kind].label}</span>{' · '}
-                    <Link href={`/data-exchange/imports/${e.importId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{e.number}</Link>
-                    <span className="block break-words text-xs text-[var(--ejo-text-muted)]">{ENTITIES[e.entity].label} · {e.fileName} · {e.rows.toLocaleString('en-NG')} rows{e.by ? ` · ${e.by}` : ''}</span>
+                    <Link href={e.href} className="font-medium text-[var(--ejo-primary)] hover:underline">{e.number}</Link>
+                    <span className="block break-words text-xs text-[var(--ejo-text-muted)]">{e.what}{e.by ? ` · ${e.by}` : ''}</span>
                   </span>
                 </span>
                 <span className="shrink-0 tabular-nums text-xs text-[var(--ejo-text-muted)]">{chosen ? time(e.at) : `${lagosDay(e.at).slice(8)} · ${time(e.at)}`}</span>

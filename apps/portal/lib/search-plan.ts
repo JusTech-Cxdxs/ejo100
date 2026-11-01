@@ -32,6 +32,8 @@ export const REFERENCE_TYPES = [
   { prefix: 'SUP', model: 'SupportTicket', group: 'Support tickets', path: (id: string) => `/crm/support/${id}` },
   // Data Exchange: an import of records from SAP or a spreadsheet.
   { prefix: 'IMP', model: 'ImportJob', group: 'Imports', path: (id: string) => `/data-exchange/imports/${id}` },
+  // Data Exchange: an export of a list to Excel or CSV.
+  { prefix: 'EXP', model: 'ExportJob', group: 'Exports', path: (id: string) => `/data-exchange/exports/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

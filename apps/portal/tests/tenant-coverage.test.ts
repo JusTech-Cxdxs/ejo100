@@ -62,6 +62,8 @@ const READ_FENCES = [
   'newsOrg(',
   // Data Exchange (lib/actions/data-exchange.ts): where { id, organisationId } of the person's own organisation (exchangeOrg).
   'myImportJob(',
+  // Exports (lib/actions/exports.ts): where { id, organisationId } of the person's own organisation (the platform team: any).
+  'myExportJob(',
 ];
 
 /** Reads that need no record fence, with the reason. */

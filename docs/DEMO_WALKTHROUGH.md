@@ -201,8 +201,34 @@ someone in **Finance**. Sections 1 and 2 loaded first.
 6. **Headquarters** and **Analytics**: switch between *With SAP history* and
    *EJO only*; the CRM list has the same switch for spend and top spenders.
 
+## 8. Take any list out to Excel, exactly as filtered (A4)
+
+1. As the **Administrator**, open **Customers**, filter as in section 7
+   (*Imported from SAP*, *Customer since* to 31/12/2018) and press **Export →
+   Excel (.xlsx)**. The file downloads at once: an *About this file* sheet
+   (the filters, who, when), then only the matching customers — every one,
+   not just the first page — with *Customer since* as a real date, spend as
+   numbers with *NGN* beside them, the SAP number with its zeros, and a link
+   back to each customer.
+2. Under the button: **EXP-…** · *downloaded · N rows*. Press the download
+   link again (or open the export and try): *You have already downloaded this
+   export* — each link works once per person, for 24 hours.
+3. **Parts** (the 50,000 materials of section 4) → **Export → CSV**: the
+   whole catalogue in one file. Open it in Excel: ₦ and names display
+   correctly, part numbers keep their zeros.
+4. A customer's page → *Jobs* → *From SAP, before EJO* → **Export**: that
+   customer's SAP invoices, with fiscal year and company code.
+5. Sign in as the **Branch administrator**: Vehicles has **Export**,
+   Customers does not (contact details need the sensitive-export
+   permission). As a **Technician**, no list has Export.
+6. **Data Exchange → Exports**: every export, its filters, who downloaded it,
+   rows and size. Type the **EXP-** number in search: it opens. *Day by day*
+   shows today's exports beside the imports.
+
 ---
 
-*Coming in the next releases (each adds a section here):* export from every
-list (A4), the daily SAP files and reconciliation (C1), PDI with
-certificates (D), and inviting imported customers to the portal (B).
+*Coming in the next releases (each adds a section here):* round-trip updates
+from an exported file with a preview of the changes (A4b), bulk PDFs, a
+customer's data request and scheduled exports (A4c), the daily SAP files and
+reconciliation (C1), PDI with certificates (D), and inviting imported
+customers to the portal (B).

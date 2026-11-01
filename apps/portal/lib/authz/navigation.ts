@@ -61,6 +61,8 @@ export function navigationFor(p: Principal): NavItem[] {
   if (can('website.news.manage')) out.push({ key: 'news', name: 'News & media', href: '/news', status: 'LIVE' });
   // Data Exchange: those who bring existing records in from SAP and spreadsheets, and those who approve it.
   if (can('dataexchange.import.run') || can('dataexchange.import.approve')) out.push({ key: 'data-exchange', name: 'Data Exchange', href: '/data-exchange', status: 'LIVE' });
+  // Exports: everyone else who may export lists finds their files (Data Exchange shows them to its own people).
+  else if (can('dataexchange.export.run')) out.push({ key: 'exports', name: 'Exports', href: '/data-exchange/exports', status: 'LIVE' });
   // The integrity watch: reviewers only.
   if (can('integrity.review')) out.push({ key: 'integrity', name: 'Integrity watch', href: '/integrity', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.

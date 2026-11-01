@@ -8,6 +8,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader, PageTitle } from '@/components/ui';
 import { Icon } from '@/components/ui/Icon';
+import { ExportAction } from '@/components/ExportAction';
 
 const KINDS: [string, string][] = [['all', 'Everything'], ['business', 'Business events'], ['data', 'Data changes'], ['api', 'API requests'], ['system', 'Scheduled jobs']];
 const AREA_DOT: Record<string, string> = { Workshop: 'bg-[var(--ejo-primary)]', Store: 'bg-[var(--ejo-info)]', Warranty: 'bg-[var(--ejo-warning)]', Security: 'bg-[var(--ejo-error)]', Scheduling: 'bg-teal-500', System: 'bg-[var(--ejo-text-muted)]' };
@@ -55,7 +56,8 @@ export default async function AuditLogsPage({ searchParams }: { searchParams: Pr
     <div className="w-full p-4 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <PageTitle icon="history">Audit Logs</PageTitle>
-        <LoadingLink href="/audit-logs/errors" className="inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] transition hover:-translate-y-0.5 hover:bg-[var(--ejo-surface)] motion-reduce:transform-none"><Icon name="alert" size={15} className="text-[var(--ejo-warning)]" />Error log</LoadingLink>
+        <span className="flex flex-wrap items-start gap-2"><ExportAction kind="audit-log" params={{ kind: kind === 'all' ? undefined : kind, q: sp.q, userId: sp.userId, from: sp.from, to: sp.to }} />
+        <LoadingLink href="/audit-logs/errors" className="inline-flex items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-sm font-medium text-[var(--ejo-text)] transition hover:-translate-y-0.5 hover:bg-[var(--ejo-surface)] motion-reduce:transform-none"><Icon name="alert" size={15} className="text-[var(--ejo-warning)]" />Error log</LoadingLink></span>
       </div>
       <p className="mb-4 mt-1 text-sm text-[var(--ejo-text-muted)]">Everything that happened, newest first — business events in plain words, every data change with its before and after, and every API request. Nothing here can be edited or deleted. A reference someone quotes from an error screen is on the Error log.</p>
       <div className="mb-3 flex flex-wrap gap-2">

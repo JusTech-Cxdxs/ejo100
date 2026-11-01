@@ -28,3 +28,7 @@ __pycache__/
 ml/.venv/
 ml-out/
 packages/ui/src/*.js
+
+# Playwright output (e2e results and traces), never committed
+apps/portal/e2e/report/
+apps/portal/test-results/

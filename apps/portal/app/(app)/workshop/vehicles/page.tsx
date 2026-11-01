@@ -19,6 +19,7 @@ import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { PageHeader } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { ExportAction } from '@/components/ExportAction';
 
 export default async function WorkshopVehiclesPage({
   searchParams,
@@ -41,6 +42,7 @@ export default async function WorkshopVehiclesPage({
         back={{ href: "/workshop", label: "Back to Workshop" }}
         title="Vehicles"
         description={<><OrgTrail area="Workshop" /></>}
+        actions={<ExportAction kind="vehicles" params={sp} />}
       />
 
       {status === 'vehicle_created' ? (

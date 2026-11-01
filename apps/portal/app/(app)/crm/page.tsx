@@ -13,6 +13,7 @@ import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { CrmIcon } from '@/components/crm/CrmIcon';
 import { Chip, Empty, Kpi, NoticeBox, Section, type Notice } from '@/components/crm/ui';
 import { RegisterCustomerForm } from '@/components/crm/RegisterCustomerForm';
+import { ExportAction } from '@/components/ExportAction';
 
 export const metadata = { title: 'Customers' };
 
@@ -60,6 +61,7 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            <ExportAction kind="customers" params={sp} />
             {canBroadcast ? (
               <Link href="/notifications/broadcasts/new?for=customers" className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 py-2 text-sm font-medium text-[var(--ejo-text)] hover:border-[var(--ejo-primary)]/50">
                 <CrmIcon name="broadcast" size={16} /> Message customers
