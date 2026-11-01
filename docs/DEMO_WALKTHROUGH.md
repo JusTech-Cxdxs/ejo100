@@ -102,6 +102,12 @@ someone in **Finance**.
    - lubricants come in as **batch-tracked**, with *1 Drum = 208 Litre*;
    - Group IT cannot approve: only the Store Manager (or an administrator).
    Approve and load as the Store Manager and watch rows a second.
+   - Before you start, **Data Exchange → Database space** shows the
+     database against its plan (500 MB on the free plan) and about how many
+     more parts fit. The 50,000 parts take about 85 MB. A file that would
+     not fit, such as a full 800,000-material master on the free plan, is
+     refused before it is sent for approval, with how many still fit
+     ([FREE_PLAN.md](FREE_PLAN.md)).
    (For a quick first try, `correct/03a_SAP_parts_200.csv` holds 200. Its
    `with-mistakes/` copy adds **no part number**, **no description**, **a
    part number twice** and **a negative price**, which loads without the
