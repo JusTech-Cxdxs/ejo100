@@ -114,6 +114,60 @@ stock.push([partRow(9)[0]!, '6', 'ST', '', '', '', '', '0001']);
 stock.push([partRow(14)[0]!, '208', 'L', '873600.00', '4200', '1', '', '0001']);
 writeFileSync(join(OUT, '04_SAP_opening_stock_demo.csv'), toCsv(['MATNR', 'LABST', 'MEINS', 'SALK3', 'VERPR', 'PEINH', 'CHARG', 'LGORT'], stock));
 
+// ── Invoice history from SAP (billing documents, before EJO 100) ────────
+// Two to six invoices a customer between 2020 and September 2026, on their vehicle's VIN, net + tax as SAP's billing
+// header has them (NETWR, MWSBK), a few credit notes (G2, trailing minus). Same content every run.
+const SERVICES = ['Service 10,000 km', 'Service 20,000 km', 'Service 40,000 km', 'Brake pads and discs', 'Clutch kit replaced', 'Injector cleaning', 'Gearbox overhaul', 'Suspension bushes', 'A/C regas and filter', 'Tyres (6) and alignment'];
+const inv: string[][] = [];
+let invNo = 90001000;
+for (let i = 1; i <= 30; i += 1) {
+  const count = 2 + (i % 5);
+  for (let k = 0; k < count; k += 1) {
+    invNo += 1;
+    const y = 2020 + ((i + k * 2) % 7); // 2020 – 2026: the cut-over is recent, so this year has SAP invoices too
+    const m = y === 2026 ? 1 + ((i * 3 + k * 5) % 9) : 1 + ((i * 3 + k * 5) % 12); // never later than September 2026
+    const d = 1 + ((i * 7 + k * 11) % 27);
+    const net = 45000 + ((i * 7919 + k * 104729) % 120) * 7500; // ₦45,000 – ₦937,500
+    const tax = Math.round(net * 0.075 * 100) / 100;
+    inv.push([String(invNo).padStart(10, '0'), `${String(d).padStart(2, '0')}.${String(m).padStart(2, '0')}.${y}`, kunnr(i), net.toFixed(2), tax.toFixed(2), 'NGN', vin(i), 'F2', SERVICES[(i + k) % SERVICES.length]!]);
+  }
+  if (i % 7 === 0) { invNo += 1; inv.push([String(invNo).padStart(10, '0'), `15.06.${2022 + (i % 3)}`, kunnr(i), '25000.00-', '1875.00-', 'NGN', '', 'G2', 'Credit note: goodwill discount']); }
+}
+// Deliberate mistakes: an unknown customer, a dollar invoice, no invoice number, a date that is not a date, the same invoice twice.
+inv.push(['0090009001', '10.10.2024', '0009999999', '150000.00', '11250.00', 'NGN', '', 'F2', 'Unknown customer']);
+inv.push(['0090009002', '11.10.2024', kunnr(3), '2000.00', '0.00', 'USD', '', 'F2', 'Export spare parts']);
+inv.push(['', '12.10.2024', kunnr(4), '80000.00', '6000.00', 'NGN', '', 'F2', 'No invoice number']);
+inv.push(['0090009003', '31.06.2024', kunnr(5), '80000.00', '6000.00', 'NGN', '', 'F2', 'No such day']);
+inv.push([inv[0]![0]!, inv[0]![1]!, inv[0]![2]!, inv[0]![3]!, inv[0]![4]!, 'NGN', inv[0]![6]!, 'F2', 'Exported twice']);
+writeFileSync(join(OUT, '06_SAP_invoice_history_demo.csv'), toCsv(['VBELN', 'FKDAT', 'KUNAG', 'NETWR', 'MWSBK', 'WAERK', 'VHVIN', 'FKART', 'ARKTX'], inv));
+
+// ── The plant's registers (Excel, as kept on the line today) ────────────
+// PDI register: one workbook, no "register" column (chosen when importing). Two steps per vehicle.
+const INSPECTORS = ['A. Bello', 'C. Okoro', 'F. Adebayo', 'M. Yusuf'];
+const pdi: (string | number)[][] = [['VIN', 'Model', 'PDI date', 'Step', 'Result', 'Inspected by', 'Report no', 'Remarks']];
+for (let i = 1; i <= 30; i += 1) {
+  const [, model] = MODELS[i % MODELS.length]!;
+  const date = `${String(1 + (i % 27)).padStart(2, '0')}/${String(1 + (i % 12)).padStart(2, '0')}/${2023 + (i % 3)}`;
+  const insp = INSPECTORS[i % INSPECTORS.length]!;
+  pdi.push([vin(i), model, date, 'Final inspection', i % 9 === 0 ? 'NG' : 'OK', insp, `PDI-${2023 + (i % 3)}-${String(i).padStart(4, '0')}`, i % 9 === 0 ? 'Door seal leaking; rectified and re-inspected' : '']);
+  pdi.push([vin(i), model, date, 'Road test', 'OK', insp, `PDI-${2023 + (i % 3)}-${String(i).padStart(4, '0')}`, '']);
+}
+pdi.push(['', 'NQR 71', '02/02/2024', 'Road test', 'OK', 'A. Bello', 'PDI-2024-9999', 'No VIN written']);
+writeFileSync(join(OUT, '07_PDI_register_demo.xlsx'), writeXlsx([{ name: 'PDI register', header: true, rows: pdi, widths: [22, 10, 12, 16, 8, 14, 14, 40] }]));
+
+// Production and QC register: one sheet with a "Register" column (line stations, then the QC gates).
+const prod: string[][] = [];
+for (let i = 1; i <= 30; i += 1) {
+  const [, model] = MODELS[i % MODELS.length]!;
+  const y = 2023 + (i % 3);
+  const mo = String(1 + (i % 12)).padStart(2, '0');
+  prod.push(['Production', vin(i), model, `${y}${mo}05`, 'Chassis and frame', 'Pass', 'Line 1', '']);
+  prod.push(['Production', vin(i), model, `${y}${mo}06`, 'Trim and final assembly', 'Pass', 'Line 1', '']);
+  prod.push(['QC', vin(i), model, `${y}${mo}07`, 'Water test', i % 11 === 0 ? 'Rework' : 'Pass', INSPECTORS[(i + 1) % INSPECTORS.length]!, i % 11 === 0 ? 'Windscreen seal resealed' : '']);
+  prod.push(['QC', vin(i), model, `${y}${mo}07`, 'Final QC gate', 'Pass', INSPECTORS[(i + 2) % INSPECTORS.length]!, '']);
+}
+writeFileSync(join(OUT, '08_production_QC_register_demo.csv'), toCsv(['Register', 'VIN', 'Model', 'Date', 'Station', 'Result', 'Inspected by', 'Remarks'], prod));
+
 // The 800,000-row file for the measured speed run (not committed): PERF_PARTS=800000 PERF_OUT=/some/dir
 if (process.env.PERF_PARTS && process.env.PERF_OUT) {
   writeParts(Number(process.env.PERF_PARTS), join(process.env.PERF_OUT, `SAP_parts_${process.env.PERF_PARTS}.csv`));

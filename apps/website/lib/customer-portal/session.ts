@@ -16,6 +16,8 @@ export type SignedInCustomer = {
   notifyByEmail: boolean;
   customerType: string;
   createdAt: Date;
+  /** When they became a customer of the business (SAP, v-A3), else createdAt. */
+  customerSince: Date;
   companyName: string | null;
 };
 
@@ -38,7 +40,7 @@ export const lookupCustomer = cache(async (): Promise<Lookup> => {
     where: { id: session.user.id },
     select: {
       id: true, organisationId: true, fullName: true, email: true, phone: true, altPhone: true, address: true,
-      notifyByEmail: true, customerType: true, createdAt: true, isActive: true,
+      notifyByEmail: true, customerType: true, createdAt: true, customerSince: true, isActive: true,
       customerCompany: { select: { companyName: true } },
     },
   });
@@ -52,6 +54,8 @@ export const lookupCustomer = cache(async (): Promise<Lookup> => {
     customer: {
       id: c.id, organisationId: c.organisationId, fullName: c.fullName, email: c.email, phone: c.phone, altPhone: c.altPhone,
       address: c.address, notifyByEmail: c.notifyByEmail, customerType: String(c.customerType), createdAt: c.createdAt,
+      // When they became a customer of the business (from SAP for long-standing customers), else when the account was made.
+      customerSince: c.customerSince ?? c.createdAt,
       companyName: c.customerCompany?.companyName ?? null,
     },
   };

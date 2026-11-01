@@ -130,5 +130,34 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
     settlements: claims.map((c: (typeof claims)[number]) => ({ at: c.settledAt as Date, amount: num(c.settledAmount) })),
     from, to, now,
   });
-  return { ...analytics, periodKey: key, periodLabel: label };
+  // Invoices from SAP before EJO 100 (v-A3): read-only history, reported beside EJO's own figures (never mixed into
+  // sales, margins or projections, which are EJO's) and added to the top customers, marked.
+  const day = (d: Date) => new Date(`${lagosYmd(d)}T00:00:00.000Z`);
+  const prevFrom = new Date(+from - (+to - +from));
+  const fence = await orgWhere();
+  const sapRows = fence.organisationId
+    ? await prisma.historicalInvoice.groupBy({
+        by: ['customerId'],
+        where: { organisationId: fence.organisationId, voidedAt: null, invoiceDate: { gte: day(from), lt: day(to) }, ...(reach.branchId ? { branchId: reach.branchId } : {}) },
+        _sum: { amount: true }, _count: { _all: true },
+      })
+    : [];
+  const sapPrev = fence.organisationId
+    ? await prisma.historicalInvoice.aggregate({ where: { organisationId: fence.organisationId, voidedAt: null, invoiceDate: { gte: day(prevFrom), lt: day(from) }, ...(reach.branchId ? { branchId: reach.branchId } : {}) }, _sum: { amount: true } })
+    : null;
+  const sapTotal = sapRows.reduce((t, r) => t + num(r._sum.amount), 0);
+  const sapHistory = { invoices: sapRows.reduce((t, r) => t + r._count._all, 0), amount: Math.round(sapTotal * 100) / 100, previous: Math.round(num(sapPrev?._sum.amount) * 100) / 100 };
+  let topCustomers: { id: string | null; name: string; value: number; fromSap?: number }[] = analytics.diagnostic.topCustomers;
+  if (sapRows.length) {
+    const by = new Map(topCustomers.map((c) => [c.id ?? c.name, { ...c, fromSap: 0 }]));
+    const names = new Map((await prisma.customer.findMany({ where: { id: { in: sapRows.map((r) => r.customerId) } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName]));
+    for (const r of sapRows) {
+      const amount = num(r._sum.amount);
+      const e = by.get(r.customerId) ?? { id: r.customerId, name: names.get(r.customerId) ?? 'Customer', value: 0, fromSap: 0 };
+      e.value = Math.round((e.value + amount) * 100) / 100; e.fromSap = Math.round((e.fromSap + amount) * 100) / 100;
+      by.set(r.customerId, e);
+    }
+    topCustomers = [...by.values()].sort((a, b) => b.value - a.value).slice(0, 8);
+  }
+  return { ...analytics, diagnostic: { ...analytics.diagnostic, topCustomers }, sapHistory, periodKey: key, periodLabel: label };
 }

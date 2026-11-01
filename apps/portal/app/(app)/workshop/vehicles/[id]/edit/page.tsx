@@ -2,7 +2,8 @@ import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { actorLabel } from '@/lib/assist/rules';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
-import { listPartsFittedToVehicle, getVehicleCoveredValue } from '@/lib/actions/vehicle-history';
+import { listPartsFittedToVehicle, getVehicleCoveredValue, getVehicleHistoryBeforeEjo } from '@/lib/actions/vehicle-history';
+import { naira as nairaText } from '@/lib/crm';
 import { computeVehicleIntelligence } from '@/lib/vehicle-intelligence';
 import { VehicleIntelligenceCard } from '@/components/VehicleIntelligenceCard';
 import { warrantyCoverage } from '@/lib/warranty-state';
@@ -86,7 +87,7 @@ export default async function VehiclePage({
   const { id } = await params;
   const { error, edit, status } = await searchParams;
   // Everything on this page needs only the vehicle's id — one round, all at once.
-  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, binOffer, serviceHealth, analytics, reminderHistory, coveredValue] = await Promise.all([
+  const [vehicle, vehicleWarranties, partsFitted, lastEdit, auditTrail, binOffer, serviceHealth, analytics, reminderHistory, coveredValue, beforeEjo] = await Promise.all([
     getVehicle(id),
     listWarrantiesFor({ vehicleId: id }),
     listPartsFittedToVehicle(id),
@@ -97,6 +98,7 @@ export default async function VehiclePage({
     getVehicleAnalytics(id),
     getVehicleReminderHistory(id),
     getVehicleCoveredValue(id),
+    getVehicleHistoryBeforeEjo(id),
   ]);
   if (!vehicle) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
@@ -508,6 +510,8 @@ export default async function VehiclePage({
           </dl>
           </div>
 
+          {beforeEjo.checks.length || beforeEjo.invoices.length ? <BeforeEjo data={beforeEjo} /> : null}
+
           <RecycleBinPanel offer={binOffer} entity="CustomerVehicle" id={vehicle.id} />
         </div>
       </div>
@@ -724,3 +728,47 @@ export default async function VehiclePage({
     </div>
   );
 }
+
+const CHECK_KIND: Record<string, string> = { PRODUCTION: 'Production', QC: 'Quality check', PDI: 'Pre-delivery inspection' };
+const RESULT_TONE: Record<string, string> = { PASS: 'text-[var(--ejo-success)]', FAIL: 'text-[var(--ejo-error)]', REWORK: 'text-[var(--ejo-warning-text)]', OPEN: 'text-[var(--ejo-text-muted)]' };
+const RESULT_WORD: Record<string, string> = { PASS: 'Pass', FAIL: 'Fail', REWORK: 'Rework', OPEN: 'Open' };
+const dayText = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+
+/** Before EJO 100: the plant registers (production, QC, PDI) and SAP invoices for this vehicle — read-only history. */
+function BeforeEjo({ data }: { data: Awaited<ReturnType<typeof getVehicleHistoryBeforeEjo>> }) {
+  const sapTotal = data.invoices.reduce((s, i) => s + i.amount, 0);
+  return (
+    <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+      <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Before EJO 100</h2>
+      <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Brought in from the plant registers and SAP. Read-only history.</p>
+      {data.checks.length ? (
+        <>
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Production, QC and PDI</h3>
+          <ol className="mt-2 space-y-2.5 border-l border-[var(--ejo-border)] pl-3">
+            {data.checks.map((c) => (
+              <li key={c.id} className="text-sm">
+                <p className="text-[var(--ejo-text)]"><span className="font-medium">{CHECK_KIND[c.kind] ?? c.kind}</span>{c.stage ? ` · ${c.stage}` : ''}{c.result ? <span className={`ml-1.5 font-semibold ${RESULT_TONE[c.result] ?? ''}`}>{RESULT_WORD[c.result] ?? c.result}</span> : null}</p>
+                <p className="text-xs text-[var(--ejo-text-muted)]">{dayText(c.date)}{c.inspector ? ` · ${c.inspector}` : ''}{c.reference ? ` · ${c.reference}` : ''}{c.model ? ` · ${c.model}` : ''}</p>
+                {c.notes ? <p className="text-xs text-[var(--ejo-text)]">{c.notes}</p> : null}
+              </li>
+            ))}
+          </ol>
+        </>
+      ) : null}
+      {data.invoices.length ? (
+        <>
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Invoices from SAP ({nairaText(sapTotal)})</h3>
+          <ul className="mt-2 divide-y divide-[var(--ejo-border)] text-sm">
+            {data.invoices.map((i) => (
+              <li key={i.id} className="flex items-start justify-between gap-3 py-2">
+                <span className="min-w-0"><span className="text-[var(--ejo-text)]">{i.number}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{dayText(i.date)}{i.customerName ? ` · ${i.customerName}` : ''}{i.description ? ` · ${i.description}` : ''}</span></span>
+                <span className="shrink-0 tabular-nums text-[var(--ejo-text)]">{nairaText(i.amount)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : null}
+    </div>
+  );
+}
+

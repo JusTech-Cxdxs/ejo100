@@ -33,7 +33,7 @@ export default async function ProfilePage() {
             </div>
             <dl className="mt-5 grid grid-cols-2 gap-4">
               <KeyValue label="Account">{me.customerType === 'ORGANIZATION' ? 'Business' : 'Personal'}</KeyValue>
-              <KeyValue label="Customer since">{fmtDate(me.createdAt)}</KeyValue>
+              <KeyValue label="Customer since">{fmtDate(me.customerSince)}</KeyValue>
               {me.companyName ? <KeyValue label="Company">{me.companyName}</KeyValue> : null}
             </dl>
             <p className="mt-5 flex gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-bg)] p-3 text-xs leading-relaxed text-[var(--ejo-text-muted)]">

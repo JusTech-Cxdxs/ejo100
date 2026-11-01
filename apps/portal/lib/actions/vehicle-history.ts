@@ -44,3 +44,41 @@ export async function getVehicleCoveredValue(vehicleId: string): Promise<number>
   });
   return Math.round(lines.reduce((s: number, l: { amount: unknown }) => s + Number(l.amount ?? 0), 0) * 100) / 100;
 }
+
+/**
+ * This vehicle's history from before EJO 100 (v-A3), read-only: its SAP
+ * invoices (linked when imported, or found by its chassis number) and the
+ * plant's production, QC and PDI register entries for its VIN. Staff only:
+ * inspectors' names never reach the customer portal.
+ */
+export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
+  invoices: { id: string; number: string; date: string; amount: number; documentType: string | null; description: string | null; customerName: string | null }[];
+  checks: { id: string; kind: string; date: string; stage: string | null; result: string | null; inspector: string | null; reference: string | null; notes: string | null; model: string | null }[];
+}> {
+  await requireUser();
+  await seeVehicle(vehicleId, 'getVehicleHistoryBeforeEjo');
+  const v = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { chassisNumber: true, customer: { select: { organisationId: true } } } });
+  if (!v) return { invoices: [], checks: [] };
+  const organisationId = v.customer.organisationId;
+  const vinKey = v.chassisNumber ? v.chassisNumber.toUpperCase().replace(/[\s-]/g, '') : null;
+  const [invoices, checks] = await Promise.all([
+    prisma.historicalInvoice.findMany({
+      where: { organisationId, voidedAt: null, OR: [{ vehicleId }, ...(vinKey ? [{ vinKey }] : [])] },
+      orderBy: { invoiceDate: 'desc' }, take: 300,
+      select: { id: true, invoiceNumber: true, invoiceDate: true, amount: true, documentType: true, description: true, customerId: true },
+    }),
+    vinKey
+      ? prisma.vehicleHistoryRecord.findMany({
+          where: { organisationId, voidedAt: null, vinKey },
+          orderBy: [{ eventDate: 'asc' }, { createdAt: 'asc' }], take: 300,
+          select: { id: true, kind: true, eventDate: true, stage: true, result: true, inspector: true, reference: true, notes: true, model: true },
+        })
+      : [],
+  ]);
+  const names = new Map((await prisma.customer.findMany({ where: { organisationId, id: { in: [...new Set(invoices.map((i) => i.customerId))] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName]));
+  const ymd = (d: Date) => d.toISOString().slice(0, 10);
+  return {
+    invoices: invoices.map((i) => ({ id: i.id, number: i.invoiceNumber, date: ymd(i.invoiceDate), amount: Number(i.amount), documentType: i.documentType, description: i.description, customerName: names.get(i.customerId) ?? null })),
+    checks: checks.map((c) => ({ id: c.id, kind: c.kind, date: ymd(c.eventDate), stage: c.stage, result: c.result, inspector: c.inspector, reference: c.reference, notes: c.notes, model: c.model })),
+  };
+}

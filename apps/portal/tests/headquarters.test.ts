@@ -25,7 +25,7 @@ test('periods are Lagos calendar ranges; anything unknown is this month', () => 
 });
 
 test('branch health: action for old decisions or late customers; watch for queues and slow jobs', () => {
-  const base: HqBranch = { id: 'b', name: 'B', staff: 3, opened: 1, finished: 1, collected: 0, inWorkshop: 2, ready: 0, waiting: 0, oldestWaitingHours: null, supportOpen: 0, supportLate: 0, turnaroundHours: 20 };
+  const base: HqBranch = { id: 'b', name: 'B', staff: 3, opened: 1, finished: 1, collected: 0, fromSap: 0, inWorkshop: 2, ready: 0, waiting: 0, oldestWaitingHours: null, supportOpen: 0, supportLate: 0, turnaroundHours: 20 };
   assert.equal(branchHealth(base).tone, 'good');
   assert.equal(branchHealth({ ...base, waiting: 1, oldestWaitingHours: 50 }).tone, 'act');
   assert.equal(branchHealth({ ...base, supportLate: 1 }).tone, 'act');

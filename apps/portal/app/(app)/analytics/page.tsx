@@ -199,9 +199,10 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
           <T as="h2" icon="star">Top customers in the period</T>
           {a.diagnostic.topCustomers.length === 0 ? <p className="flex items-center gap-2 text-sm text-[var(--ejo-text-muted)]"><Icon name="inbox" size={16} />No completed jobs in this period.</p> : (
             <div className="space-y-2">{a.diagnostic.topCustomers.map((m) => (
-              <BarRow key={m.id ?? m.name} label={<CustomerLink id={m.id} name={m.name} canView={canSeeCustomers} />} value={m.value} max={maxCust} note={naira(m.value)} />
+              <BarRow key={m.id ?? m.name} label={<CustomerLink id={m.id} name={m.name} canView={canSeeCustomers} />} value={m.value} max={maxCust} note={'fromSap' in m && m.fromSap ? `${naira(m.value)} · incl. ${naira(m.fromSap)} SAP` : naira(m.value)} />
             ))}</div>
           )}
+          {a.sapHistory.amount ? <p className="mt-2 text-xs text-[var(--ejo-text-muted)]">Includes invoices from SAP before EJO 100 dated in the period ({naira(a.sapHistory.amount)} on {a.sapHistory.invoices} invoices) — history, not in the sales and margins above.</p> : null}
         </div>
       </div>
     </div>

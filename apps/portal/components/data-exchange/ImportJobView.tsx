@@ -12,6 +12,7 @@ import { Icon, SectionCard, StatusChip } from '@/components/ui';
 
 const nf = (n: number) => n.toLocaleString('en-NG');
 const naira = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const day = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-NG', { dateStyle: 'medium' });
 const qf = (n: number) => n.toLocaleString('en-NG', { maximumFractionDigits: 3 });
 const btn = 'inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] px-4 py-2 text-sm font-medium disabled:opacity-50';
 const primary = `${btn} bg-[var(--ejo-primary)] text-white hover:opacity-90`;
@@ -221,6 +222,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare these with the SAP stock report for the same plant and date{job.asOf ? ` (${new Date(job.asOf).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium' })})` : ''} before sending it for approval. It loads as opening-balance goods receipts on that date.</p>
             </div>
           ) : null}
+          {job.entity === 'invoices' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
+              <p className="font-medium">To load as history of {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} invoices · <span className="tabular-nums">{naira(job.totals.check.value)}</span>{job.totals.check.from && job.totals.check.to ? ` · dated ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare these with SAP’s billing or customer line-item report for the same period before sending it for approval. Invoices already in the history are not counted again.</p>
+            </div>
+          ) : null}
           {job.problems.length ? (
             <details className="mt-4" open={job.status === 'VALIDATED'}>
               <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text)]">Rows with a problem or a note (first {job.problems.length})</summary>
@@ -287,14 +294,18 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
             <button type="button" className={secondary} onClick={() => window.print()}><Icon name="printer" size={14} /> Print</button>
           </>}>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <Tile label={`${def.label} added`} value={job.createdRows} tone="text-[var(--ejo-success)]" />
+            <Tile label={def.history ? `${def.plural.replace(/^./, (c) => c.toUpperCase())} loaded` : `${def.label} added`} value={job.createdRows} tone="text-[var(--ejo-success)]" />
             <Tile label="Existing ones filled in" value={job.updatedRows} />
             <Tile label="Not added" value={job.skippedRows} hint="Already there, or a possible duplicate" />
             <Tile label="Rejected in the check" value={job.rejectedRows + job.duplicateRows} tone="text-[var(--ejo-error)]" />
           </div>
-          {job.entity === 'stock' && job.totals?.loaded ? (
+          {def.financeSignOff && job.totals?.loaded ? (
             <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm">
-              <p className="font-medium text-[var(--ejo-text)]">Stock value now in {job.branch?.name ?? 'the branch'}: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> ({qf(job.totals.loaded.quantity)} units on {nf(job.totals.loaded.lines)} lines)</p>
+              {job.entity === 'invoices' ? (
+                <p className="font-medium text-[var(--ejo-text)]">Invoice history now in EJO 100 from this import: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> on {nf(job.totals.loaded.lines)} invoices. It counts in each customer’s spend and last visit, the <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/crm">CRM</a> and <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/headquarters">Headquarters</a>, marked “from SAP, before EJO”.</p>
+              ) : (
+                <p className="font-medium text-[var(--ejo-text)]">Stock value now in {job.branch?.name ?? 'the branch'}: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> ({qf(job.totals.loaded.quantity)} units on {nf(job.totals.loaded.lines)} lines)</p>
+              )}
               {job.totals.check ? (
                 <p className={Math.abs(job.totals.loaded.value - job.totals.check.value) < 0.01 ? 'text-xs text-[var(--ejo-success)]' : 'text-xs text-[var(--ejo-warning)]'}>
                   {Math.abs(job.totals.loaded.value - job.totals.check.value) < 0.01 ? `Matches the checked file exactly (${naira(job.totals.check.value)}).` : `The checked file came to ${naira(job.totals.check.value)}; the difference is lines not added (see the report file).`}
@@ -303,11 +314,11 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               {job.totals.receipts?.length ? <p className="text-xs text-[var(--ejo-text-muted)]">Opening-balance receipts: {job.totals.receipts.slice(0, 12).map((r, i) => <span key={r.id}>{i ? ', ' : ''}<a className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/inventory/goods-receipts/${r.id}`}>{r.number}</a></span>)}{job.totals.receipts.length > 12 ? ` and ${job.totals.receipts.length - 12} more` : ''}. They feed stock value, FIFO costs and the <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/inventory/analytics">inventory analytics</a>.</p> : null}
               <div className="border-t border-[var(--ejo-border)] pt-2">
                 {job.signedOff ? (
-                  <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Value confirmed by {job.signedOff.by} (Finance), {new Date(job.signedOff.at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' })}.</p>
+                  <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> {job.entity === 'invoices' ? 'Totals' : 'Value'} confirmed by {job.signedOff.by} (Finance), {new Date(job.signedOff.at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' })}.</p>
                 ) : job.status === 'COMPLETED' ? (
                   job.me.canSignOff ? (
-                    <button type="button" className={primary} disabled={pending} onClick={() => act(() => signOffImportTotals(job.id))}><Icon name="check" size={14} /> Confirm the value (Finance)</button>
-                  ) : <p className="text-xs text-[var(--ejo-warning)]">Waiting for Finance to confirm the value.</p>
+                    <button type="button" className={primary} disabled={pending} onClick={() => act(() => signOffImportTotals(job.id))}><Icon name="check" size={14} /> {job.entity === 'invoices' ? 'Confirm the totals (Finance)' : 'Confirm the value (Finance)'}</button>
+                  ) : <p className="text-xs text-[var(--ejo-warning)]">Waiting for Finance to confirm the {job.entity === 'invoices' ? 'totals' : 'value'}.</p>
                 ) : null}
               </div>
             </div>
@@ -315,12 +326,14 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
           <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">{nf(job.fileRows)} rows in the file = {nf(job.createdRows)} added + {nf(job.updatedRows)} filled in + {nf(job.skippedRows)} not added + {nf(job.rejectedRows + job.duplicateRows)} rejected{job.fileRows - (job.createdRows + job.updatedRows + job.skippedRows + job.rejectedRows + job.duplicateRows) !== 0 && job.status === 'COMPLETED' ? ' (check the totals)' : '.'}</p>
           {job.status === 'COMPLETED' && job.me.canApprove ? (
             <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-              {job.entity === 'stock' ? (
+              {def.history ? (
+                <p className="text-sm text-[var(--ejo-text-muted)]">Undo takes this history back out: it stops counting on the {job.entity === 'invoices' ? 'customers, their vehicles and in the analytics' : 'vehicles'}. Nothing is deleted — the rows are kept as voided, and loading the file again restores them.</p>
+              ) : job.entity === 'stock' ? (
                 <p className="text-sm text-[var(--ejo-text-muted)]">Reversing takes this opening stock back off the shelves and removes its opening-balance receipts. It is refused once anything has been issued or reserved from it. The file stays here, so it can be checked and loaded again.</p>
               ) : (
                 <p className="text-sm text-[var(--ejo-text-muted)]">Undo moves the {def.plural} this import added to the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> — each can be restored from there — and empties only the fields it filled in. It is refused while any work has been recorded on them since.</p>
               )}
-              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(job.entity === 'stock' ? `Reverse the opening stock of ${job.number}? Stock on hand goes down by what it added.` : `Undo ${job.number}? The ${nf(job.createdRows)} ${def.plural} it added move to the Recycle bin, where they can be restored.`)) void runUndo(); }}><Icon name="restore" size={14} /> {job.entity === 'stock' ? 'Reverse this opening stock' : 'Undo this import'}</button>
+              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(def.history ? `Undo ${job.number}? Its ${nf(job.createdRows)} ${def.plural} stop counting (kept as voided; loading the file again restores them).` : job.entity === 'stock' ? `Reverse the opening stock of ${job.number}? Stock on hand goes down by what it added.` : `Undo ${job.number}? The ${nf(job.createdRows)} ${def.plural} it added move to the Recycle bin, where they can be restored.`)) void runUndo(); }}><Icon name="restore" size={14} /> {job.entity === 'stock' ? 'Reverse this opening stock' : 'Undo this import'}</button>
               {blockers.length ? (
                 <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3 text-sm">
                   <p className="font-medium text-[var(--ejo-text)]">It cannot be undone: work has been recorded on these since.</p>
@@ -334,7 +347,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
 
       {job.status === 'UNDONE' ? (
         <div className="space-y-3">
-          <p className="text-sm text-[var(--ejo-text-muted)]">{job.entity === 'stock' ? 'This opening stock was reversed: its receipts were removed and stock on hand went back down. The file is still here.' : <>The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.</>}{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p>
+          <p className="text-sm text-[var(--ejo-text-muted)]">{def.history ? `The ${def.plural} this import loaded are voided: they no longer count anywhere, and are kept. Reopen to check and load the file again, which restores them.` : job.entity === 'stock' ? 'This opening stock was reversed: its receipts were removed and stock on hand went back down. The file is still here.' : <>The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.</>}{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p>
           {job.me.canRun ? <button type="button" className={secondary} disabled={pending} onClick={() => act(() => reopenUndoneImport(job.id))}><Icon name="restore" size={14} /> Reopen: check and load this file again</button> : null}
         </div>
       ) : null}
@@ -349,6 +362,7 @@ function ApprovePanel({ job, pending, act }: { job: ImportJobDetail; pending: bo
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--ejo-text)]">
+        {job.entity === 'invoices' && job.totals?.check ? <>Approving loads <strong>{nf(job.totals.check.lines)}</strong> SAP invoices worth <strong>{naira(job.totals.check.value)}</strong> as read-only history of {job.branch?.name ?? 'the branch'}; they count in the customers’ spend and the analytics, and Finance then confirms the totals. </> : null}
         {job.entity === 'stock' && job.totals?.check ? <>Approving loads <strong>{naira(job.totals.check.value)}</strong> of opening stock ({nf(job.totals.check.lines)} lines) into {job.branch?.name ?? 'the branch'} as opening-balance receipts; Finance then confirms the value. </> : null}
         Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}{job.branch ? ` of ${job.branch.name}` : ''}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.
       </p>

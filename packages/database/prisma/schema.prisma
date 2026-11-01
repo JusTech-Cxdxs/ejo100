@@ -123,6 +123,8 @@ model Organisation {
   importJobs ImportJob[]
   importMappingProfiles ImportMappingProfile[]
   suppliers  Supplier[]
+  historicalInvoices    HistoricalInvoice[]
+  vehicleHistoryRecords VehicleHistoryRecord[]
 }
 
 model BusinessUnit {
@@ -590,6 +592,11 @@ model Customer {
   externalId     String?
   // The import that created this customer (Data Exchange): "Undo this import" removes exactly these.
   importJobId    String?
+  // v-A3: when they became a customer of the business — from SAP (the business
+  // partner's creation date, ERDAT) or the old system — which can be years
+  // before this record was made (createdAt). Analytics read customerSince when
+  // present, otherwise createdAt.
+  customerSince  DateTime? @db.Date
 
   // Nullable: customers who sign themselves up have no staff creator.
   createdById   String?
@@ -4253,6 +4260,8 @@ model ImportJob {
   // Opening stock (v-A2): Finance confirms the loaded quantity and value (a second sign-off after the Store's approval).
   signedOffById  String?
   signedOffAt    DateTime?
+  // v-A3 registers: the register the whole file is (PRODUCTION | QC | PDI) when it has no column for it.
+  defaultKind    String?
   error          String?
   createdById    String
   submittedAt    DateTime?
@@ -4351,3 +4360,81 @@ model Supplier {
   @@index([importJobId])
   @@map("suppliers")
 }
+
+// v-A3 Data Exchange: invoices from SAP (billing documents or customer line
+// items) from before EJO 100. Read-only history: never edited, never paid or
+// refunded here, never shown to the customer. Counted in the customer's total
+// spend and last visit and in the CRM and Headquarters analytics, always
+// labelled "from SAP, before EJO". The customer (and the vehicle, matched by
+// its VIN) are linked by id without a foreign key, so the history survives a
+// customer moving through the Recycle bin. "Undo" voids rows (voidedAt) and
+// a reload un-voids them: nothing is ever deleted.
+model HistoricalInvoice {
+  id             String    @id @default(cuid())
+  organisationId String
+  // The branch whose sales it was (chosen when the import starts).
+  branchId       String?
+  customerId     String
+  vehicleId      String?
+  // The chassis number as written on the invoice, and in capitals without spaces (to find the vehicle).
+  vin            String?
+  vinKey         String?
+  // SAP billing document (VBELN) or accounting document (BELNR) number.
+  invoiceNumber  String
+  invoiceDate    DateTime  @db.Date
+  // Gross amount in naira (net + tax when both are given); negative for a credit note.
+  amount         Decimal   @db.Decimal(14, 2)
+  // SAP billing type (FKART) or document type (BLART), e.g. F2, G2, DR.
+  documentType   String?
+  description    String?
+  externalSource String    @default("SAP")
+  importJobId    String?
+  voidedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, externalSource, invoiceNumber], map: "historical_invoices_org_source_number_key")
+  @@index([customerId, invoiceDate])
+  @@index([organisationId, invoiceDate])
+  @@index([vehicleId])
+  @@index([vinKey])
+  @@index([importJobId])
+  @@map("historical_invoices")
+}
+
+// v-A3 Data Exchange: the plant's existing production, QC and PDI registers
+// (Excel), one row per vehicle per check. Read-only history shown on the
+// vehicle by its VIN (the vehicle may be a customer's or still in stock).
+// Staff only: inspectors' names are never shown to customers. Undo voids.
+model VehicleHistoryRecord {
+  id             String    @id @default(cuid())
+  organisationId String
+  vin            String
+  vinKey         String
+  model          String?
+  // PRODUCTION | QC | PDI
+  kind           String
+  eventDate      DateTime  @db.Date
+  // Line station, QC gate or PDI step, as the register names it.
+  stage          String?
+  // PASS | FAIL | REWORK | OPEN, or the register's own word.
+  result         String?
+  inspector      String?
+  reference      String?
+  notes          String?
+  // The same check is never loaded twice: kind + VIN + date + stage, as one key.
+  dedupeKey      String
+  externalSource String    @default("REGISTER")
+  importJobId    String?
+  voidedAt       DateTime?
+  createdAt      DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, dedupeKey])
+  @@index([organisationId, vinKey])
+  @@index([importJobId])
+  @@map("vehicle_history_records")
+}
+

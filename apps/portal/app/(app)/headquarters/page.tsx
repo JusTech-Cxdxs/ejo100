@@ -69,7 +69,7 @@ function BranchTable({ rows, period }: { rows: HqRow[]; period: string }) {
               <th scope="row" className="px-4 py-3 font-medium text-[var(--ejo-text)]">{b.name}<span className="block text-xs font-normal text-[var(--ejo-text-muted)]">{pluralize(b.staff, 'person', 'people')}</span></th>
               <td className="px-3 py-3 text-right tabular-nums">{b.opened}</td>
               <td className="px-3 py-3 text-right tabular-nums">{b.finished}</td>
-              <td className="px-3 py-3 text-right tabular-nums">{naira(b.collected)}</td>
+              <td className="px-3 py-3 text-right tabular-nums">{naira(b.collected)}{b.fromSap ? <span className="block text-xs text-[var(--ejo-text-muted)]" title="Invoiced in SAP before EJO 100, dated in this period">+ {naira(b.fromSap)} in SAP</span> : null}</td>
               <td className="px-3 py-3 text-right tabular-nums">{b.inWorkshop}</td>
               <td className={`px-3 py-3 text-right tabular-nums ${b.ready >= 5 ? 'font-semibold text-[var(--ejo-warning-text)]' : ''}`}>{b.ready}</td>
               <td className="px-3 py-3 text-right tabular-nums">{b.waiting}{b.oldestWaitingHours !== null ? <span className={`block text-xs ${b.oldestWaitingHours >= 48 ? 'font-semibold text-[var(--ejo-error)]' : 'text-[var(--ejo-text-muted)]'}`}>oldest {hours(b.oldestWaitingHours)}</span> : null}</td>
@@ -147,12 +147,15 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
           <StatTile icon="activity" label="Month projection" value={naira(a.predictive.monthProjection)} hint={a.predictive.lastMonthSales ? `Last month ${naira(a.predictive.lastMonthSales)}` : 'At the current pace'} href="/analytics" />
         </div>
       ) : null}
+      {a?.sapHistory.amount ? (
+        <p className="flex items-start gap-2 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-4 py-3 text-sm text-[var(--ejo-text)]"><Icon name="history" size={16} className="mt-0.5 shrink-0 text-[var(--ejo-text-muted)]" /><span>Invoiced in SAP before EJO 100, dated in this period: <b className="tabular-nums">{naira(a.sapHistory.amount)}</b> on {pluralize(a.sapHistory.invoices, 'invoice')}{a.sapHistory.previous ? ` (previous period ${naira(a.sapHistory.previous)})` : ''}. History brought in from SAP — counted in each customer’s spend and in the top customers, kept out of EJO’s own sales, margins and projections.</span></p>
+      ) : null}
 
       <SectionCard icon="branch" title="Branches side by side" description={`${hq.period.label}: jobs opened and finished, money collected; now: in the workshop, ready to collect, decisions and customer requests waiting; median turnaround from check-in to check-out.`} flush
         actions={<a href={`/headquarters/export?period=${hq.period.key}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Export</a>}>
         {hq.branches.length ? <BranchTable rows={hq.branches} period={hq.period.label} /> : <p className="p-4 text-sm text-[var(--ejo-text-muted)]">No branches yet — add them on Organisation structure.</p>}
         {hq.branches.length > 1 ? (
-          <p className="border-t border-[var(--ejo-border)] px-4 py-2.5 text-xs text-[var(--ejo-text-muted)]">All branches: {t.opened} opened · {t.finished} finished · {naira(t.collected)} collected · {t.inWorkshop} in now · {t.ready} ready · {t.waiting} decisions waiting · {t.supportOpen} support requests open{t.supportLate ? ` (${t.supportLate} late)` : ''}</p>
+          <p className="border-t border-[var(--ejo-border)] px-4 py-2.5 text-xs text-[var(--ejo-text-muted)]">All branches: {t.opened} opened · {t.finished} finished · {naira(t.collected)} collected{t.fromSap ? ` (+ ${naira(t.fromSap)} invoiced in SAP before EJO)` : ''} · {t.inWorkshop} in now · {t.ready} ready · {t.waiting} decisions waiting · {t.supportOpen} support requests open{t.supportLate ? ` (${t.supportLate} late)` : ''}</p>
         ) : null}
       </SectionCard>
 

@@ -44,6 +44,8 @@ export function median(xs: number[]): number | null {
 export type HqBranch = {
   id: string; name: string; staff: number;
   opened: number; finished: number; collected: number;
+  /** Invoiced in SAP before EJO 100 in the period (v-A3 history; not in collected). */
+  fromSap: number;
   inWorkshop: number; ready: number;
   waiting: number; oldestWaitingHours: number | null;
   supportOpen: number; supportLate: number;
