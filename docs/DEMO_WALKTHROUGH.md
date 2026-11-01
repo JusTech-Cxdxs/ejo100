@@ -167,6 +167,19 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    this import** → the customer's spend drops back; nothing was deleted.
    **Reopen** and load again → the same invoices return, never twice.
 
+## 6. Staged files are released, not kept for ever
+
+1. **Data Exchange**: *Space used by staged files* shows how much the copies
+   of imported files take now (the 50,000-part file of section 4 is the big
+   one), and each import's own size in the list.
+2. As an **administrator**, set *Release a finished import’s file after* to,
+   say, 45 days, and save (0 keeps files for ever).
+3. Open a finished import (the customers of section 1): *Staged file* says
+   when it will be released automatically. As the **Workshop manager**, press
+   **Release it now**: the space drops, but *Every row and its outcome* and
+   *Rejected rows (to fix in Excel)* still download, and **Undo** still
+   works. The import can no longer be reopened from the released file.
+
 ---
 
 *Coming in the next releases (each adds a section here):* export from every

@@ -2,7 +2,8 @@ import Link from 'next/link';
 import { guardAnyPage } from '@/lib/authz/server';
 import { listImportJobs } from '@/lib/actions/data-exchange';
 import { ENTITIES, ENTITY_KEYS } from '@/lib/data-exchange/fields';
-import { IMPORT_STEPS, importStatus } from '@/lib/data-exchange/status';
+import { IMPORT_STEPS, bytesText, importStatus } from '@/lib/data-exchange/status';
+import { StagingSettings } from '@/components/data-exchange/StagingSettings';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { EmptyState, Icon, PageHeader, ResponsiveTable, SectionCard, StatusChip } from '@/components/ui';
 
@@ -14,7 +15,7 @@ const nf = (n: number) => n.toLocaleString('en-NG');
 export default async function DataExchangePage({ searchParams }: { searchParams: Promise<{ before?: string }> }) {
   await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve'], '/data-exchange');
   const { before } = await searchParams;
-  const { jobs, canRun } = await listImportJobs({ take: 30, before });
+  const { jobs, canRun, staging } = await listImportJobs({ take: 30, before });
   return (
     <div className="w-full space-y-6 p-4 sm:p-8">
       <PageHeader
@@ -50,6 +51,13 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         })}
       </div>
 
+      <SectionCard icon="layers" title="Space used by staged files" description={`Each import keeps a copy of its file while it is checked, approved and loaded. Once it is finished — and Finance has confirmed the totals, where needed — the copy is released after ${staging.days === 0 ? 'no set period (kept for ever)' : `${staging.days} days`}. The summary, every row’s outcome, rejected rows and what undo needs are kept.`}>
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <p className="text-sm text-[var(--ejo-text)]"><span className="text-2xl font-semibold tabular-nums">{bytesText(staging.totalBytes)}</span> <span className="text-[var(--ejo-text-muted)]">in staged files now</span></p>
+          {staging.canSet ? <StagingSettings days={staging.days} /> : null}
+        </div>
+      </SectionCard>
+
       <SectionCard icon="history" title="Imports" description="Newest first. Open one to see its check, approval, load and report." flush>
         {jobs.length === 0 ? (
           <div className="p-4"><EmptyState icon="inbox" title="No imports yet" compact>Download a template above, or start with your SAP export: its columns are matched automatically.</EmptyState></div>
@@ -63,6 +71,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
                   <th className="px-4 py-3 font-medium">Status</th>
                   <th className="px-4 py-3 text-right font-medium">Rows</th>
                   <th className="px-4 py-3 text-right font-medium">Added</th>
+                  <th className="px-4 py-3 text-right font-medium">Staged file</th>
                   <th className="px-4 py-3 font-medium">By</th>
                 </tr>
               </thead>
@@ -76,6 +85,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
                       <td className="px-4 py-3"><StatusChip label={st.label} tone={st.tone} /></td>
                       <td className="px-4 py-3 text-right tabular-nums text-[var(--ejo-text)]">{nf(j.fileRows)}</td>
                       <td className="px-4 py-3 text-right tabular-nums text-[var(--ejo-text)]">{nf(j.createdRows)}</td>
+                      <td className="px-4 py-3 text-right tabular-nums text-[var(--ejo-text)]">{bytesText(j.stagedBytes)}{j.rowsReleasedAt ? <span className="block text-xs text-[var(--ejo-text-muted)]">released</span> : null}</td>
                       <td className="px-4 py-3 text-[var(--ejo-text-muted)]">{j.createdBy}<span className="block text-xs">{formatDateTimeCompact(j.createdAt)}</span></td>
                     </tr>
                   );

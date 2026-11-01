@@ -7,6 +7,7 @@ import { recordJobRun } from '@/lib/job-runs';
 import { purgeOldErrorEvents } from '@/lib/error-events';
 import { purgeOldSiteVisits } from '@/lib/site-visits-retention';
 import { purgeExpiredOnSchedule } from '@/lib/recycle-bin/server';
+import { releaseExpiredStagedRows } from '@/lib/data-exchange/staging-server';
 import { purgeOldEnyoConversations } from '@/lib/enyo/retention';
 import { getOpenPricingAlertsForDigest } from '@/lib/pricing-digest';
 import { sendEmail } from '@/lib/email';
@@ -84,6 +85,9 @@ export async function GET(request: NextRequest) {
   const binned = await purgeExpiredOnSchedule().catch((err) => { logFailure('Recycle bin clean-up failed', err); return null; });
   if (binned !== null) await recordJobRun('recycle-bin-purge', { itemsRemoved: binned });
   // Enyo chats: staff and customer 12 months, public website 90 days (data inventory: EnyoConversation).
+  const staged = await releaseExpiredStagedRows().catch((err) => { logFailure('Releasing imported files failed', err); return null; });
+  if (staged !== null) await recordJobRun('import-staging-release', { importsReleased: staged.imports, rowsCleared: staged.rowsCleared, bytesFreed: staged.bytesFreed });
+
   const chats = await purgeOldEnyoConversations().catch((err) => { logFailure('Enyo conversation clean-up failed', err); return null; });
   if (chats !== null) await recordJobRun('enyo-cleanup', { conversationsRemoved: chats.staffAndCustomer + chats.publicChats, staffAndCustomer: chats.staffAndCustomer, publicChats: chats.publicChats });
   // Stored copies of connected mailboxes are kept 90 days (data inventory: MailMessage).

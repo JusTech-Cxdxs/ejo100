@@ -31,6 +31,7 @@ import { ENTITIES, autoMap, cleanMapping, isEntityKey, mappingProblems, profileF
 import { moveManyToBinInTx } from '@/lib/recycle-bin/server';
 import { checkPartRow, checkSupplierRow } from '@/lib/data-exchange/check-inventory';
 import { findCustomers } from '@/lib/data-exchange/lookup-server';
+import { measureStagedBytes, refreshStagedBytes, releaseStagedRows, releaseState, stagingDays } from '@/lib/data-exchange/staging-server';
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
@@ -120,11 +121,13 @@ async function secondSignatureAsMaster(userId: string, jobId: string): Promise<b
 
 export type ImportJobRow = {
   id: string; number: string; entity: EntityKey; fileName: string; status: ImportStatus; fileRows: number;
+  /** Bytes the staged copy of the file takes now (null: not measured yet). */
+  stagedBytes: number | null; rowsReleasedAt: Date | null;
   goodRows: number; warningRows: number; rejectedRows: number; duplicateRows: number; createdRows: number; updatedRows: number; skippedRows: number;
   createdBy: string; createdAt: Date; approvedBy: string | null; completedAt: Date | null;
 };
 
-export async function listImportJobs(opts: { take?: number; before?: string } = {}): Promise<{ jobs: ImportJobRow[]; canRun: boolean; canApprove: boolean }> {
+export async function listImportJobs(opts: { take?: number; before?: string } = {}): Promise<{ jobs: ImportJobRow[]; canRun: boolean; canApprove: boolean; staging: { days: number; totalBytes: number; canSet: boolean } }> {
   const [run, approve] = await Promise.all([canRun(), canApprove()]);
   if (!run && !approve) await authorize('dataexchange.import.run', undefined, 'listImportJobs', 'Only the people who bring records into the system can see imports.');
   const { organisationId } = await exchangeOrg();
@@ -133,11 +136,19 @@ export async function listImportJobs(opts: { take?: number; before?: string } = 
     where: { organisationId, ...(opts.before ? { createdAt: { lt: new Date(opts.before) } } : {}) },
     orderBy: { createdAt: 'desc' },
     take,
-    select: { id: true, number: true, entity: true, fileName: true, status: true, fileRows: true, goodRows: true, warningRows: true, rejectedRows: true, duplicateRows: true, createdRows: true, updatedRows: true, skippedRows: true, createdAt: true, completedAt: true, createdBy: { select: { fullName: true } }, approvedBy: { select: { fullName: true } } },
+    select: { id: true, number: true, entity: true, fileName: true, status: true, fileRows: true, goodRows: true, warningRows: true, rejectedRows: true, duplicateRows: true, createdRows: true, updatedRows: true, skippedRows: true, createdAt: true, completedAt: true, stagedBytes: true, rowsReleasedAt: true, createdBy: { select: { fullName: true } }, approvedBy: { select: { fullName: true } } },
   });
+  // Imports staged before sizes were recorded: measured a few at a time, then kept.
+  for (const j of jobs.filter((x) => x.stagedBytes === null && !['UPLOADING', 'CANCELLED'].includes(x.status)).slice(0, 3)) j.stagedBytes = await refreshStagedBytes(j.id);
+  const [org, total, canSet] = await Promise.all([
+    prisma.organisation.findUnique({ where: { id: organisationId }, select: { importStagingDays: true } }),
+    prisma.importJob.aggregate({ where: { organisationId, status: { not: 'CANCELLED' } }, _sum: { stagedBytes: true } }),
+    allows('admin.settings.manage'),
+  ]);
   return {
     canRun: run,
     canApprove: approve,
+    staging: { days: stagingDays(org?.importStagingDays), totalBytes: total._sum.stagedBytes ?? 0, canSet },
     jobs: jobs.map((j) => ({ ...j, entity: (isEntityKey(j.entity) ? j.entity : 'customers') as EntityKey, status: j.status as ImportStatus, createdBy: j.createdBy.fullName, approvedBy: j.approvedBy?.fullName ?? null })),
   };
 }
@@ -164,6 +175,8 @@ export type ImportJobDetail = ImportJobRow & {
   asOf: Date | null;
   totals: { check?: { lines: number; quantity: number; value: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
   signedOff: { by: string; at: Date } | null;
+  /** The staged copy of the file: its size, whether it was released (by whom), and when it will be. */
+  staged: { bytes: number | null; releasedAt: Date | null; releasedBy: string | null; releasable: boolean; why: string | null; dueAt: Date | null; days: number };
   me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean };
 };
 
@@ -175,11 +188,16 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
   if (!run && !approve && !financeSigned(job.entity)) throw new DataExchangeError('This import was not found.');
   const me = await exchangeOrg();
   const entity = asEntity(job.entity);
-  const [approveThis, signOff, branch, signer] = await Promise.all([
+  const [approveThis, signOff, branch, signer, releaser, org] = await Promise.all([
     approverOf(entity), financeSignatory(me.userId),
     job.branchId ? prisma.branch.findUnique({ where: { id: job.branchId }, select: { id: true, name: true } }) : null,
     job.signedOffById ? prisma.user.findUnique({ where: { id: job.signedOffById }, select: { fullName: true } }) : null,
+    job.rowsReleasedById ? prisma.user.findUnique({ where: { id: job.rowsReleasedById }, select: { fullName: true } }) : null,
+    prisma.organisation.findUnique({ where: { id: job.organisationId }, select: { importStagingDays: true } }),
   ]);
+  const days = stagingDays(org?.importStagingDays);
+  const rel = releaseState(job, days);
+  const stagedBytes = job.stagedBytes ?? (['UPLOADING', 'CANCELLED'].includes(job.status) ? null : await refreshStagedBytes(job.id));
   const [createdBy, approvedBy, preview, problems, possible, groups, profiles, sameFileBefore, master] = await Promise.all([
     prisma.user.findUnique({ where: { id: job.createdById }, select: { fullName: true } }),
     job.approvedById ? prisma.user.findUnique({ where: { id: job.approvedById }, select: { fullName: true } }) : null,
@@ -193,6 +211,7 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
   ]);
   return {
     id: job.id, number: job.number, entity, fileName: job.fileName, status: job.status as ImportStatus, fileRows: job.fileRows,
+    stagedBytes, rowsReleasedAt: job.rowsReleasedAt,
     goodRows: job.goodRows, warningRows: job.warningRows, rejectedRows: job.rejectedRows, duplicateRows: job.duplicateRows, matchedRows: job.matchedRows,
     createdRows: job.createdRows, updatedRows: job.updatedRows, skippedRows: job.skippedRows,
     createdBy: createdBy?.fullName ?? 'Someone', createdById: job.createdById, createdAt: job.createdAt, approvedBy: approvedBy?.fullName ?? null, approvedAt: job.approvedAt,
@@ -212,6 +231,7 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
     asOf: job.asOf,
     totals: (job.totals as ImportJobDetail['totals']) ?? null,
     signedOff: job.signedOffAt ? { by: signer?.fullName ?? 'Finance', at: job.signedOffAt } : null,
+    staged: { bytes: stagedBytes, releasedAt: job.rowsReleasedAt, releasedBy: job.rowsReleasedAt ? releaser?.fullName ?? 'the daily clean-up' : null, releasable: rel.releasable, why: rel.why, dueAt: rel.dueAt, days },
     me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff },
   };
 }
@@ -291,7 +311,7 @@ export async function finishImportUpload(jobId: string): Promise<{ rows: number 
   if (job.status !== 'UPLOADING') return { rows: job.fileRows };
   const rows = await prisma.importRow.count({ where: { jobId: job.id } });
   if (!rows) throw new DataExchangeError('No rows arrived. Choose the file again.');
-  await prisma.importJob.updateMany({ where: { id: job.id, status: 'UPLOADING' }, data: { status: 'UPLOADED', fileRows: rows } });
+  await prisma.importJob.updateMany({ where: { id: job.id, status: 'UPLOADING' }, data: { status: 'UPLOADED', fileRows: rows, stagedBytes: await measureStagedBytes(job.id) } });
   await writeAuditLog({ userId: job.createdById, action: 'data_exchange.uploaded', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, rows } });
   return { rows };
 }
@@ -552,6 +572,7 @@ export async function cancelImport(jobId: string): Promise<void> {
   if (!res.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
   // The staged copy of the file goes: nothing was loaded from it.
   await prisma.importRow.deleteMany({ where: { jobId: job.id } });
+  await prisma.importJob.update({ where: { id: job.id }, data: { stagedBytes: 0 } });
   await writeAuditLog({ userId, action: 'data_exchange.cancelled', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number } });
 }
 
@@ -977,12 +998,44 @@ export async function signOffImportTotals(jobId: string): Promise<void> {
   await writeAuditLog({ userId, action: 'data_exchange.totals_confirmed', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, lines: loaded?.lines ?? null, quantity: loaded?.quantity ?? null, valueNaira: loaded?.value ?? null } });
 }
 
+/**
+ * Releases a finished import's staged file now, before its period ends (an
+ * approver of this kind of record). Keeps the summary, every row's outcome,
+ * rejected rows, possible duplicates and what undo needs.
+ */
+export async function releaseImportRows(jobId: string): Promise<{ rowsCleared: number; bytesFreed: number }> {
+  await refuseDuringAssist('releaseImportRows');
+  await authorize('dataexchange.import.approve', undefined, 'releaseImportRows', 'Only an approver can release an import’s staged file.');
+  const job = await myImportJob(jobId);
+  const { userId } = await exchangeOrg();
+  await authorize(ENTITIES[asEntity(job.entity)].needs, undefined, 'releaseImportRows', `Only ${ENTITIES[asEntity(job.entity)].approver} can release this import’s file.`);
+  const st = releaseState(job, 0);
+  if (!st.releasable) throw new DataExchangeError(st.why ?? 'This import’s file cannot be released yet.');
+  const claimed = await prisma.importJob.updateMany({ where: { id: job.id, status: 'COMPLETED', rowsReleasedAt: null }, data: { error: null } });
+  if (!claimed.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
+  const r = await releaseStagedRows(job.id, userId);
+  await writeAuditLog({ userId, action: 'data_exchange.rows_released', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, by: 'approver', rowsCleared: r.rowsCleared, bytesBefore: r.bytesBefore, bytesAfter: r.bytesAfter } });
+  return { rowsCleared: r.rowsCleared, bytesFreed: Math.max(0, r.bytesBefore - r.bytesAfter) };
+}
+
+/** How many days after a finished import its staged file is released (0 = never; administrators). */
+export async function setImportStagingDays(days: number): Promise<void> {
+  await authorize('admin.settings.manage', undefined, 'setImportStagingDays', 'Only an administrator can change how long imported files are kept.');
+  const { userId, organisationId } = await exchangeOrg();
+  const n = Math.trunc(Number(days));
+  if (!Number.isFinite(n) || n < 0 || n > 3650) throw new DataExchangeError('Give a number of days from 0 (keep for ever) to 3,650.');
+  const before = await prisma.organisation.findUnique({ where: { id: organisationId }, select: { importStagingDays: true } });
+  await prisma.organisation.update({ where: { id: organisationId }, data: { importStagingDays: n } });
+  await writeAuditLog({ userId, action: 'data_exchange.staging_days_set', entityType: 'Organisation', entityId: organisationId, metadata: { before: stagingDays(before?.importStagingDays), after: n } });
+}
+
 /** An undone import, back to "Match the columns": the staged file is checked again and needs a fresh approval to load. */
 export async function reopenUndoneImport(jobId: string): Promise<void> {
   await authorize('dataexchange.import.run', undefined, 'reopenUndoneImport', 'Only the people who bring records into the system can reopen an import.');
   const job = await myImportJob(jobId);
   const { userId } = await exchangeOrg();
   if (job.status !== 'UNDONE') throw new DataExchangeError('Only an undone import can be reopened.');
+  if (job.rowsReleasedAt) throw new DataExchangeError('This import’s file was released, so it cannot be checked again here. Start a new import with the same file.');
   await prisma.$transaction(async (tx) => {
     const res = await tx.importJob.updateMany({
       where: { id: job.id, status: 'UNDONE' },
