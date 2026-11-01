@@ -1,4 +1,5 @@
 import { guardPage, allows } from '@/lib/authz/server';
+import { HistoryToggle } from '@/components/HistoryToggle';
 import { canSeeMasterAnalytics, getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { pluralize } from '@/lib/utils/pluralize';
 import { PageHeader, HeaderAction, StatTile, PriorityActions, BarRow, PeriodPills, Icon, CHART, type IconName } from '@/components/ui';
@@ -16,9 +17,10 @@ const naira = (n: number | null) => (n === null ? '—' : `₦${n.toLocaleString
 const pct = (n: number | null) => (n === null ? '—' : `${n}%`);
 const PERIODS: [string, string][] = [['today', 'Today'], ['this_month', 'This month'], ['last_month', 'Last month'], ['last_30', 'Last 30 days'], ['this_quarter', 'This quarter'], ['this_year', 'This year']];
 
-export default async function BusinessAnalyticsPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string }> }) {
+export default async function BusinessAnalyticsPage({ searchParams }: { searchParams: Promise<{ period?: string; from?: string; to?: string; history?: string }> }) {
   await guardPage('analytics.business.view', '/analytics');
-  const { period, from, to } = await searchParams;
+  const { period, from, to, history: h } = await searchParams;
+  const history = h !== 'exclude';
   // Refused on the server — typing the address directly does not get round it.
   if (!(await canSeeMasterAnalytics())) {
     return (
@@ -27,7 +29,7 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
       </div>
     );
   }
-  const a = await getMasterAnalytics(period, { from, to });
+  const a = await getMasterAnalytics(period, { from, to }, { history });
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const e = a.current.earnings;
@@ -53,7 +55,8 @@ export default async function BusinessAnalyticsPage({ searchParams }: { searchPa
       />
       <div className="mb-6 flex flex-wrap items-center gap-2">
         <span className="mr-1 inline-flex items-center gap-1.5 text-xs font-medium text-[var(--ejo-text-muted)]"><Icon name="calendar" size={14} />Period</span>
-        <PeriodPills periods={PERIODS} active={a.periodKey} hrefFor={(k) => `/analytics?period=${k}`} />
+        <PeriodPills periods={PERIODS} active={a.periodKey} hrefFor={(k) => `/analytics?period=${k}${history ? '' : '&history=exclude'}`} />
+        <HistoryToggle path="/analytics" params={{ period, from, to }} include={history} />
         <form className="flex flex-wrap items-center gap-1.5">
           <input type="hidden" name="period" value="custom" />
           <input type="date" name="from" required defaultValue={from ?? ''} aria-label="From" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-2 py-1 text-xs text-[var(--ejo-text)]" />

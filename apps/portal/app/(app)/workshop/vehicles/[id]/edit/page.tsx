@@ -1,4 +1,6 @@
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { provenanceOf } from '@/lib/data-exchange/provenance-server';
+import { ProvenanceCard } from '@/components/ProvenanceCard';
 import { actorLabel } from '@/lib/assist/rules';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
@@ -101,6 +103,7 @@ export default async function VehiclePage({
     getVehicleHistoryBeforeEjo(id),
   ]);
   if (!vehicle) notFound();
+  const origin = await provenanceOf({ organisationId: vehicle.customer.organisationId, createdAt: vehicle.createdAt, createdBy: vehicle.createdBy?.fullName ?? null, importJobId: vehicle.importJobId, externalSource: vehicle.externalSource, externalId: vehicle.externalId, numberLabel: 'equipment number' });
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   // One vehicle's descriptive / diagnostic / predictive / prescriptive picture.
@@ -510,6 +513,7 @@ export default async function VehiclePage({
           </dl>
           </div>
 
+          <ProvenanceCard p={origin} />
           {beforeEjo.checks.length || beforeEjo.invoices.length ? <BeforeEjo data={beforeEjo} /> : null}
 
           <RecycleBinPanel offer={binOffer} entity="CustomerVehicle" id={vehicle.id} />
@@ -761,7 +765,7 @@ function BeforeEjo({ data }: { data: Awaited<ReturnType<typeof getVehicleHistory
           <ul className="mt-2 divide-y divide-[var(--ejo-border)] text-sm">
             {data.invoices.map((i) => (
               <li key={i.id} className="flex items-start justify-between gap-3 py-2">
-                <span className="min-w-0"><span className="text-[var(--ejo-text)]">{i.number}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{dayText(i.date)}{i.customerName ? ` · ${i.customerName}` : ''}{i.description ? ` · ${i.description}` : ''}</span></span>
+                <span className="min-w-0"><span className="text-[var(--ejo-text)]">{i.number}{i.fiscalYear ? ` · ${i.fiscalYear}` : ''}</span><span className="block text-xs text-[var(--ejo-text-muted)]">{dayText(i.date)}{i.customerName ? ` · ${i.customerName}` : ''}{i.description ? ` · ${i.description}` : ''}</span></span>
                 <span className="shrink-0 tabular-nums text-[var(--ejo-text)]">{nairaText(i.amount)}</span>
               </li>
             ))}

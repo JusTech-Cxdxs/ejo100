@@ -1,11 +1,13 @@
 'use server';
 import { NO_CUSTOMER_EMAIL } from '@/lib/customer-email';
+import { parseSourceFilter, sourceWhere, type SOURCE_PARAMS } from '@/lib/source-filter';
+import { importIdsFor } from '@/lib/source-filter-server';
 import { highestBinnedReference, highestSequence } from '@/lib/recycle-bin/numbers';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 import { emailColleaguesLater } from '@/lib/workflow-notify';
 
-import { allows, authorize, authorizeOnJobCard, getPrincipal, authorizeOnService, canSeeRecord, inMyOrganisation, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
+import { allows, authorize, authorizeOnJobCard, getPrincipal, authorizeOnService, canSeeRecord, inMyOrganisation, myOrganisationId, orgWhere, reachWhere, refuse, seeJobCard, seeVehicle, seePart, NOT_AVAILABLE, refuseDuringAssist } from '@/lib/authz/server';
 import { cleanEmail, cleanName, cleanPhone, cleanPrimaryAddress, normaliseTags } from '@/lib/crm';
 import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { withdrawOpenSourcing } from '@/lib/sourcing-lifecycle';
@@ -30,7 +32,7 @@ import { unstable_cache } from 'next/cache';
 
 import { notifyGateOfRelease } from '@/lib/security-notify';
 import { customerTotal, isCustomerLine, coveredLabel } from '@/lib/estimate-billing';
-import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver } from '@ejo/database';
+import { prisma, JobCardStatus, setAuditActor, setAuditActorResolver, type Prisma } from '@ejo/database';
 import { claimed, lockExisting } from '@/lib/integrity';
 import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -463,12 +465,17 @@ export async function listVehiclesForCustomer(customerId: string): Promise<Vehic
   });
 }
 
-export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL') {
+export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER' | 'COMMERCIAL', origin: Partial<Record<(typeof SOURCE_PARAMS)[number], string>> = {}) {
   await requireUser();
   const q = search?.trim();
+  const fence = await orgWhere();
+  // Where each vehicle came from (created here or imported, which import) and when it entered EJO.
+  const sf = parseSourceFilter(origin);
+  const byOrigin = sourceWhere(sf, await importIdsFor(fence.organisationId ?? (await myOrganisationId()), sf)) as Prisma.CustomerVehicleWhereInput;
   return prisma.customerVehicle.findMany({
     where: {
-      customer: await orgWhere(),
+      customer: fence,
+      ...byOrigin,
       ...(vehicleType ? { vehicleType } : {}),
       ...(q
         ? {
@@ -477,6 +484,8 @@ export async function listAllVehicles(search?: string, vehicleType?: 'PASSENGER'
               { chassisNumber: { contains: q, mode: 'insensitive' } },
               { make: { contains: q, mode: 'insensitive' } },
               { model: { contains: q, mode: 'insensitive' } },
+              // The SAP equipment number (EQUNR), with or without its leading zeros.
+              { externalId: { in: [q, q.replace(/^0+(?=\w)/, '')] } },
             ],
           }
         : {}),
@@ -496,7 +505,7 @@ export async function getVehicle(id: string) {
   return prisma.customerVehicle.findFirst({
     where: { id, customer: await orgWhere() },
     include: {
-      customer: { select: { fullName: true } },
+      customer: { select: { fullName: true, organisationId: true } },
       createdBy: { select: { fullName: true } },
     },
   });

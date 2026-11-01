@@ -40,7 +40,8 @@ function periodRange(key: PeriodKey, now: Date, custom?: { from?: string; to?: s
 
 const SLIP_JOB = { slipLine: { select: { slip: { select: { jobCardId: true, vehicleServiceId: true } } } } } as const;
 
-export async function getMasterAnalytics(periodKey?: string, custom?: { from?: string; to?: string }) {
+/** `opts.history` false: leave out the invoices from SAP before EJO (EJO's own figures only). */
+export async function getMasterAnalytics(periodKey?: string, custom?: { from?: string; to?: string }, opts: { history?: boolean } = {}) {
   if (!(await canSeeMasterAnalytics())) throw new Error('The master dashboard is for the Master Admin, Administrators, the Manager and Finance.');
   const now = new Date();
   const key = ((PERIODS as readonly string[]).includes(periodKey ?? '') ? periodKey : 'this_month') as PeriodKey;
@@ -135,14 +136,15 @@ export async function getMasterAnalytics(periodKey?: string, custom?: { from?: s
   const day = (d: Date) => new Date(`${lagosYmd(d)}T00:00:00.000Z`);
   const prevFrom = new Date(+from - (+to - +from));
   const fence = await orgWhere();
-  const sapRows = fence.organisationId
+  const withHistory = opts.history !== false;
+  const sapRows = fence.organisationId && withHistory
     ? await prisma.historicalInvoice.groupBy({
         by: ['customerId'],
         where: { organisationId: fence.organisationId, voidedAt: null, invoiceDate: { gte: day(from), lt: day(to) }, ...(reach.branchId ? { branchId: reach.branchId } : {}) },
         _sum: { amount: true }, _count: { _all: true },
       })
     : [];
-  const sapPrev = fence.organisationId
+  const sapPrev = fence.organisationId && withHistory
     ? await prisma.historicalInvoice.aggregate({ where: { organisationId: fence.organisationId, voidedAt: null, invoiceDate: { gte: day(prevFrom), lt: day(from) }, ...(reach.branchId ? { branchId: reach.branchId } : {}) }, _sum: { amount: true } })
     : null;
   const sapTotal = sapRows.reduce((t, r) => t + num(r._sum.amount), 0);

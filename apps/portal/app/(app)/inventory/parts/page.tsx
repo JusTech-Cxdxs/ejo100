@@ -1,4 +1,6 @@
 import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { SOURCE_PARAMS } from '@/lib/source-filter';
+import { SourceFilterBar } from '@/components/SourceFilterBar';
 import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
@@ -34,14 +36,16 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
 export default async function InventoryPartsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string; page?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string; page?: string } & Partial<Record<(typeof SOURCE_PARAMS)[number], string>>>;
 }) {
   await guardAnyPage(['store.view'], '/inventory');
-  const { error, status, q, binned, page } = await searchParams;
+  const sp = await searchParams;
+  const { error, status, q, binned, page } = sp;
+  const origin = Object.fromEntries(SOURCE_PARAMS.map((k) => [k, sp[k]]).filter((e) => e[1])) as Record<string, string>;
   const branchId = await getStoreBranchId();
-  const [paged, partPolicies, canManage] = await Promise.all([listPartsPage(branchId, q, Number(page) || 1), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
+  const [paged, partPolicies, canManage] = await Promise.all([listPartsPage(branchId, q, Number(page) || 1, origin), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
   const parts = paged.parts;
-  const pageHref = (n: number) => `/inventory/parts?${new URLSearchParams({ ...(q ? { q } : {}), page: String(n) }).toString()}`;
+  const pageHref = (n: number) => `/inventory/parts?${new URLSearchParams({ ...(q ? { q } : {}), ...origin, page: String(n) }).toString()}`;
 
   return (
     <div className="p-8">
@@ -86,6 +90,7 @@ export default async function InventoryPartsPage({
           </LoadingLink>
         ) : null}
       </form>
+      <div className="mb-8 -mt-4"><SourceFilterBar action="/inventory/parts" values={sp} keep={{ q }} /></div>
 
       {canManage ? <FormJumpLink target="add-part">New Part</FormJumpLink> : null}
       <div className={canManage ? 'grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]' : 'grid gap-6'}>

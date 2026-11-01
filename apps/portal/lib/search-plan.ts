@@ -205,3 +205,28 @@ export function matchRanges(text: string, raw: string): [number, number][] {
   }
   return out.sort((a, b) => a[0] - b[0]);
 }
+
+// ── SAP and old-system numbers ──────────────────────────────────────────
+
+/**
+ * A query that may be a number another system gave a record: an SAP customer
+ * (KUNNR), vehicle (EQUNR), supplier (LIFNR), material or invoice number.
+ * SAP numbers are plain (no "JC-" prefix), so the same digits can belong to a
+ * customer and to an invoice: every match is shown, labelled with its kind.
+ *
+ * Accepted: "125262", "0000125262" (SAP's leading zeros), "SAP 125262",
+ * "125262 2026" or "125262/2026" (a fiscal year narrows invoices), and
+ * letters-and-digits numbers ("V-1000", "8-98123456-0"). `forms` are the
+ * ways it may be stored: as typed, without leading zeros, in capitals.
+ */
+export function sapNumberQuery(raw: string): { number: string; year: number | null; forms: string[] } | null {
+  const q = String(raw ?? '').trim().replace(/^sap\s*[:#]?\s*/i, '');
+  const m = /^([A-Za-z0-9][A-Za-z0-9\-./]{1,24}?)(?:\s*[\s/]\s*((?:19|20)\d\d))?$/.exec(q);
+  if (!m) return null;
+  const number = m[1]!;
+  if (!/\d/.test(number) || number.length < 3) return null;
+  const year = m[2] ? Number(m[2]) : null;
+  const stripped = number.replace(/^0+(?=[0-9A-Za-z])/, '');
+  const forms = [...new Set([number, stripped, number.toUpperCase(), stripped.toUpperCase()])].filter(Boolean);
+  return { number: stripped || number, year, forms };
+}

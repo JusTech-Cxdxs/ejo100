@@ -27,7 +27,17 @@ export type InvoiceValues = {
   vinKey: string | null;
   documentType: string | null;
   description: string | null;
+  /** SAP company code (BUKRS) and fiscal year (GJAHR): SAP numbers documents per company code and year, so the same number can come back in another year. Fiscal year from the file, else the invoice date's year. */
+  companyCode: string | null;
+  fiscalYear: number;
+  /** The numbering range the number belongs to ("SAP", or "SAP/1000/2026" when the file gives company code or year): an invoice is the same one only within it. */
+  source: string;
 };
+
+/** The SAP numbering range of a document: plain "SAP", or with its company code and fiscal year when the file gives either. */
+export function sapRange(companyCode: string | null, fiscalYear: number | null, given: boolean): string {
+  return given ? `SAP/${companyCode ?? '-'}/${fiscalYear ?? '-'}` : 'SAP';
+}
 
 export function checkInvoiceRow(cells: unknown[], mapping: Mapping, today = lagosToday()): Checked<InvoiceValues> {
   const issues: Issue[] = [];
@@ -70,14 +80,20 @@ export function checkInvoiceRow(cells: unknown[], mapping: Mapping, today = lago
   const goodVin = vk && vk.length >= 6 && vk.length <= 25 ? vk : null;
 
   const documentType = get(cells, mapping, 'documentType').slice(0, 20) || null;
+  const companyCode = get(cells, mapping, 'companyCode').toUpperCase().slice(0, 10) || null;
+  const yearRaw = get(cells, mapping, 'fiscalYear');
+  let fiscalYear: number | null = yearRaw ? Number(yearRaw) : null;
+  if (yearRaw && (!Number.isInteger(fiscalYear) || fiscalYear! < 1990 || fiscalYear! > 2100)) { warn('fiscalYear', `Fiscal year “${yearRaw}” is not a year; the invoice date’s year was used.`); fiscalYear = null; }
+  const ranged = Boolean(companyCode || fiscalYear);
+  const year = fiscalYear ?? (invoiceDate ? Number(invoiceDate.slice(0, 4)) : 0);
   const description = get(cells, mapping, 'description').slice(0, 300) || null;
 
   const failed = issues.some((i) => i.level === 'error');
   return {
     status: failed ? 'REJECTED' : issues.length ? 'WARNING' : 'GOOD',
     issues,
-    keys: invoiceNumber ? [`inv:${invoiceNumber.toUpperCase()}`] : [],
-    values: failed ? null : { invoiceNumber, invoiceDate: invoiceDate!, amount, customer: { externalId: custExt, phone: custPhone }, vin: goodVin ? vinRaw : null, vinKey: goodVin, documentType, description },
+    keys: invoiceNumber ? [`inv:${sapRange(companyCode, fiscalYear, ranged)}|${invoiceNumber.toUpperCase()}`] : [],
+    values: failed ? null : { invoiceNumber, invoiceDate: invoiceDate!, amount, customer: { externalId: custExt, phone: custPhone }, vin: goodVin ? vinRaw : null, vinKey: goodVin, documentType, description, companyCode, fiscalYear: year, source: sapRange(companyCode, fiscalYear, ranged) },
   };
 }
 

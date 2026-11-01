@@ -1,5 +1,7 @@
 'use server';
 import { actorLabel } from '@/lib/assist/rules';
+import { parseSourceFilter, sourceWhere, type SOURCE_PARAMS } from '@/lib/source-filter';
+import { importIdsFor } from '@/lib/source-filter-server';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
 import { logFailure } from '@/lib/log';
 
@@ -1144,13 +1146,17 @@ const PARTS_PAGE_SIZE = 50;
  * total — a catalogue of hundreds of thousands of SAP materials never loads
  * whole into a page.
  */
-export async function listPartsPage(branchId: string, search: string | undefined, page: number): Promise<{ parts: Awaited<ReturnType<typeof listParts>>; total: number; page: number; pages: number }> {
+export async function listPartsPage(branchId: string, search: string | undefined, page: number, origin: Partial<Record<(typeof SOURCE_PARAMS)[number], string>> = {}): Promise<{ parts: Awaited<ReturnType<typeof listParts>>; total: number; page: number; pages: number }> {
   await requireUser();
   branchId = await branchWithinReach('store.view', branchId);
   const q = search?.trim();
+  // Where each part came from (created here or imported from the SAP material master) and when it entered EJO.
+  const sf = parseSourceFilter(origin);
+  const org = (await prisma.branch.findUnique({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } }))?.businessUnit.organisationId ?? null;
   const where: Prisma.PartWhereInput = {
     branchId,
     isActive: true,
+    ...(sourceWhere(sf, await importIdsFor(org, sf)) as Prisma.PartWhereInput),
     ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { partNumber: { contains: q, mode: 'insensitive' } }, { category: { contains: q, mode: 'insensitive' } }, { barcode: { equals: q } }] } : {}),
   };
   const total = await prisma.part.count({ where });

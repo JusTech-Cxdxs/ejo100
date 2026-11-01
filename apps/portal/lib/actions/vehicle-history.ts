@@ -52,7 +52,7 @@ export async function getVehicleCoveredValue(vehicleId: string): Promise<number>
  * inspectors' names never reach the customer portal.
  */
 export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
-  invoices: { id: string; number: string; date: string; amount: number; documentType: string | null; description: string | null; customerName: string | null }[];
+  invoices: { id: string; number: string; date: string; amount: number; documentType: string | null; description: string | null; customerName: string | null; fiscalYear: number | null }[];
   checks: { id: string; kind: string; date: string; stage: string | null; result: string | null; inspector: string | null; reference: string | null; notes: string | null; model: string | null }[];
 }> {
   await requireUser();
@@ -65,7 +65,7 @@ export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
     prisma.historicalInvoice.findMany({
       where: { organisationId, voidedAt: null, OR: [{ vehicleId }, ...(vinKey ? [{ vinKey }] : [])] },
       orderBy: { invoiceDate: 'desc' }, take: 300,
-      select: { id: true, invoiceNumber: true, invoiceDate: true, amount: true, documentType: true, description: true, customerId: true },
+      select: { id: true, invoiceNumber: true, invoiceDate: true, amount: true, documentType: true, description: true, customerId: true, fiscalYear: true },
     }),
     vinKey
       ? prisma.vehicleHistoryRecord.findMany({
@@ -78,7 +78,7 @@ export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
   const names = new Map((await prisma.customer.findMany({ where: { organisationId, id: { in: [...new Set(invoices.map((i) => i.customerId))] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName]));
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
   return {
-    invoices: invoices.map((i) => ({ id: i.id, number: i.invoiceNumber, date: ymd(i.invoiceDate), amount: Number(i.amount), documentType: i.documentType, description: i.description, customerName: names.get(i.customerId) ?? null })),
+    invoices: invoices.map((i) => ({ id: i.id, number: i.invoiceNumber, date: ymd(i.invoiceDate), amount: Number(i.amount), documentType: i.documentType, description: i.description, customerName: names.get(i.customerId) ?? null, fiscalYear: i.fiscalYear })),
     checks: checks.map((c) => ({ id: c.id, kind: c.kind, date: ymd(c.eventDate), stage: c.stage, result: c.result, inspector: c.inspector, reference: c.reference, notes: c.notes, model: c.model })),
   };
 }

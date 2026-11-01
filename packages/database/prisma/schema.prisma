@@ -622,6 +622,8 @@ model Customer {
   @@index([organisationId])
   @@unique([organisationId, externalSource, externalId])
   @@index([importJobId])
+  // Search by the SAP / old-system number alone.
+  @@index([organisationId, externalId])
   @@map("customers")
   warranties      Warranty[]
   warrantyClaims WarrantyClaim[]
@@ -682,6 +684,7 @@ model CustomerVehicle {
 
   @@index([customerId])
   @@index([externalSource, externalId])
+  @@index([externalId])
   @@index([importJobId])
   @@map("customer_vehicles")
   warranties Warranty[]
@@ -1762,6 +1765,7 @@ model Part {
 
   @@unique([branchId, partNumber])
   @@unique([branchId, externalSource, externalId])
+  @@index([externalId])
   @@index([importJobId])
   @@map("parts")
 }
@@ -4367,6 +4371,7 @@ model Supplier {
   @@unique([organisationId, externalSource, externalId])
   @@index([organisationId, name])
   @@index([importJobId])
+  @@index([organisationId, externalId])
   @@map("suppliers")
 }
 
@@ -4395,6 +4400,13 @@ model HistoricalInvoice {
   amount         Decimal   @db.Decimal(14, 2)
   // SAP billing type (FKART) or document type (BLART), e.g. F2, G2, DR.
   documentType   String?
+  // SAP numbers documents per company code and fiscal year: the same number can
+  // come back in another year. Fiscal year (GJAHR) from the file, else the
+  // invoice date's year; company code (BUKRS) when given. When either is given
+  // in the file, externalSource is "SAP/<company code>/<year>" — the numbering
+  // range — so the unique key below keeps such invoices apart.
+  companyCode    String?
+  fiscalYear     Int?
   description    String?
   externalSource String    @default("SAP")
   importJobId    String?
@@ -4406,6 +4418,8 @@ model HistoricalInvoice {
   @@unique([organisationId, externalSource, invoiceNumber], map: "historical_invoices_org_source_number_key")
   @@index([customerId, invoiceDate])
   @@index([organisationId, invoiceDate])
+  // Search by the number alone (any company code and year).
+  @@index([organisationId, invoiceNumber])
   @@index([vehicleId])
   @@index([vinKey])
   @@index([importJobId])

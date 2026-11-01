@@ -1,4 +1,5 @@
 import { guardPage } from '@/lib/authz/server';
+import { HistoryToggle } from '@/components/HistoryToggle';
 import { getHeadquarters, type HqRow } from '@/lib/actions/headquarters';
 import { getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { getLeadershipPulse } from '@/lib/actions/leadership';
@@ -91,14 +92,16 @@ function BranchTable({ rows, period }: { rows: HqRow[]; period: string }) {
  * spreadsheet export. Read-only: each figure opens the page where it is dealt
  * with, and decisions stay with the managers who own them.
  */
-export default async function HeadquartersPage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
+export default async function HeadquartersPage({ searchParams }: { searchParams: Promise<{ period?: string; history?: string }> }) {
   await guardPage('analytics.business.view', '/headquarters');
   const sp = await searchParams;
-  const [hq, a, pulse] = await Promise.all([getHeadquarters(sp.period), getMasterAnalytics(sp.period).catch(() => null), getLeadershipPulse().catch(() => null)]);
+  // History from before EJO (SAP invoices) is included unless the viewer chooses EJO's own figures only.
+  const history = sp.history !== 'exclude';
+  const [hq, a, pulse] = await Promise.all([getHeadquarters(sp.period, { history }), getMasterAnalytics(sp.period, undefined, { history }).catch(() => null), getLeadershipPulse().catch(() => null)]);
   const t = hq.totals;
   const toAct = hq.branches.filter((b) => b.health.tone === 'act');
   const waiting = (pulse?.waiting ?? []).filter((w) => w.count > 0).sort((x, y) => (y.oldestHours ?? 0) - (x.oldestHours ?? 0));
-  const periodLink = (k: string) => (k === 'this_month' ? '/headquarters' : `/headquarters?period=${k}`);
+  const periodLink = (k: string) => { const p = new URLSearchParams({ ...(k === 'this_month' ? {} : { period: k }), ...(history ? {} : { history: 'exclude' }) }).toString(); return `/headquarters${p ? `?${p}` : ''}`; };
 
   return (
     <div className="w-full max-w-[90rem] space-y-6 p-4 sm:p-8" data-testid="headquarters">
@@ -111,7 +114,7 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
         actions={(
           <div className="flex flex-wrap gap-2">
             <AskEnyoButton variant="solid" send speak icon="speaker" label="Brief me" question={`Give me a spoken briefing on ${hq.lensBranch ?? (hq.scope === 'branch' ? 'my branch' : 'the whole organisation, branch by branch')} this month (use branch_briefing, then stock_alerts and warranty_watch): the one-line verdict, money and what makes it, the workshop — Job Cards and Vehicle Services — decisions waiting, inventory, warranty, the team, customers and support, and the three things I should do first.`} />
-            <a href={`/headquarters/export?period=${hq.period.key}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={15} />Export (CSV)</a>
+            <a href={`/headquarters/export?period=${hq.period.key}${history ? "" : "&history=exclude"}`} className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-3 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]"><Icon name="download" size={15} />Export (CSV)</a>
             {hq.canBroadcast ? <LoadingLink href="/notifications/broadcasts/new" className="inline-flex min-h-10 items-center gap-1.5 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-3 text-sm font-semibold text-white hover:brightness-110"><Icon name="megaphone" size={15} />Send a notice</LoadingLink> : null}
           </div>
         )}
@@ -123,6 +126,7 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
         {HQ_PERIODS.map((p) => (
           <LoadingLink key={p.key} href={periodLink(p.key)} aria-current={hq.period.key === p.key ? 'page' : undefined} className={`rounded-full px-3.5 py-1.5 text-sm font-medium ${hq.period.key === p.key ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] bg-[var(--ejo-surface)] text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]'}`}>{p.label}</LoadingLink>
         ))}
+        <span className="ml-auto"><HistoryToggle path="/headquarters" params={{ period: sp.period }} include={history} /></span>
       </nav>
 
       {toAct.length ? (
@@ -152,7 +156,7 @@ export default async function HeadquartersPage({ searchParams }: { searchParams:
       ) : null}
 
       <SectionCard icon="branch" title="Branches side by side" description={`${hq.period.label}: jobs opened and finished, money collected; now: in the workshop, ready to collect, decisions and customer requests waiting; median turnaround from check-in to check-out.`} flush
-        actions={<a href={`/headquarters/export?period=${hq.period.key}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Export</a>}>
+        actions={<a href={`/headquarters/export?period=${hq.period.key}${history ? "" : "&history=exclude"}`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Export</a>}>
         {hq.branches.length ? <BranchTable rows={hq.branches} period={hq.period.label} /> : <p className="p-4 text-sm text-[var(--ejo-text-muted)]">No branches yet — add them on Organisation structure.</p>}
         {hq.branches.length > 1 ? (
           <p className="border-t border-[var(--ejo-border)] px-4 py-2.5 text-xs text-[var(--ejo-text-muted)]">All branches: {t.opened} opened · {t.finished} finished · {naira(t.collected)} collected{t.fromSap ? ` (+ ${naira(t.fromSap)} invoiced in SAP before EJO)` : ''} · {t.inWorkshop} in now · {t.ready} ready · {t.waiting} decisions waiting · {t.supportOpen} support requests open{t.supportLate ? ` (${t.supportLate} late)` : ''}</p>

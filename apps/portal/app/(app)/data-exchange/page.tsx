@@ -58,7 +58,8 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         </div>
       </SectionCard>
 
-      <SectionCard icon="history" title="Imports" description="Newest first. Open one to see its check, approval, load and report." flush>
+      <SectionCard icon="history" title="Imports" description="Newest first. Open one to see its check, approval, load and report." flush
+        actions={<Link href="/data-exchange/timeline" className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">Day by day →</Link>}>
         {jobs.length === 0 ? (
           <div className="p-4"><EmptyState icon="inbox" title="No imports yet" compact>Download a template above, or start with your SAP export: its columns are matched automatically.</EmptyState></div>
         ) : (

@@ -36,7 +36,8 @@ export type Headquarters = {
 /** The Lagos calendar day a moment falls on, as a date-only value (for SAP history's invoice dates). */
 const lagosDay = (d: Date) => new Date(`${new Date(d.getTime() + 3_600_000).toISOString().slice(0, 10)}T00:00:00.000Z`);
 
-export async function getHeadquarters(periodKey?: string): Promise<Headquarters> {
+/** `opts.history` false: leave out the invoices from SAP before EJO (EJO's own figures only). */
+export async function getHeadquarters(periodKey?: string, opts: { history?: boolean } = {}): Promise<Headquarters> {
   await authorize('analytics.business.view', undefined, 'getHeadquarters', 'Headquarters is for leadership and managers.');
   const [reach, org, p] = await Promise.all([reachWhere('analytics.business.view'), myOrganisationId(), getPrincipal()]);
   const period = hqPeriod(periodKey);
@@ -98,7 +99,7 @@ export async function getHeadquarters(periodKey?: string): Promise<Headquarters>
   }));
   // Invoices from SAP before EJO 100 dated in the period, per branch (history: shown beside collected, never mixed into it).
   const sapB = new Map<string, number>();
-  if (org && ids.length) {
+  if (org && ids.length && opts.history !== false) {
     const hist = await prisma.historicalInvoice.groupBy({ by: ['branchId'], where: { organisationId: org, voidedAt: null, branchId: { in: ids }, invoiceDate: { gte: lagosDay(period.from), lt: lagosDay(period.to) } }, _sum: { amount: true } });
     for (const h of hist) if (h.branchId) sapB.set(h.branchId, num(h._sum.amount));
   }

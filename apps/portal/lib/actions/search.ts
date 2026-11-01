@@ -7,7 +7,7 @@ import { firstReach, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned
 import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
-import { groupRank, numberFilters, planSearch, referenceUrl, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
+import { groupRank, numberFilters, planSearch, referenceUrl, sapNumberQuery, type RefPrefix, type SearchPlan } from '@/lib/search-plan';
 import { fenceStaffHelp } from '@/lib/support/reach';
 
 export type SearchHit = { label: string; sub?: string; href: string };
@@ -268,9 +268,54 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Departments', hits: departments.map((r) => ({ label: r.name, sub: r.branch?.name, href: `/branches/${r.branchId}` })) },
     { group: 'Staff', hits: staff.map((r) => ({ label: r.fullName, sub: r.email, href: `/users?q=${encodeURIComponent(r.email)}` })) },
   ];
+  // Numbers SAP (or the old system) gave records: every match, labelled with its kind and year.
+  const sap = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), opens });
+  if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
   return groups
-    .map((g, i) => ({ g, i, rank: groupRank(plan, g.group) }))
+    .map((g, i) => ({ g, i, rank: g.group === 'SAP numbers' ? -50 : groupRank(plan, g.group) }))
     .filter(({ g }) => g.hits.length > 0)
     .sort((a, b) => a.rank - b.rank || a.i - b.i)
     .map(({ g }) => g);
 }
+
+/**
+ * Records found by a number another system gave them (SAP customer, vehicle
+ * (equipment), supplier, material and invoice numbers), each labelled
+ * "SAP customer 1000123", "SAP invoice 125262 · 2026"…, within the same
+ * reach as the other results. SAP reuses document numbers across company
+ * codes and fiscal years: every match is listed; "125262 2026" narrows to one year.
+ */
+async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; canWorkshop: boolean; canCrm: boolean; canCustomers: boolean; storeReach: Where | null; canSuppliers: boolean; opens: (keys: PermissionKey[], branchId: string | null | undefined) => boolean }): Promise<SearchHit[]> {
+  const n = sapNumberQuery(q);
+  if (!n) return [];
+  const ext = { in: n.forms };
+  const label = (src: string | null) => (src && src.startsWith('LEGACY') ? 'Old system' : 'SAP');
+  const take = 6;
+  const [customers, vehicles, suppliers, parts, invoices] = await Promise.all([
+    ctx.canCustomers ? prisma.customer.findMany({ where: { AND: [ctx.mineOrg as Prisma.CustomerWhereInput, { externalId: ext }] }, take, select: { id: true, fullName: true, externalId: true, externalSource: true } }).catch(() => []) : [],
+    ctx.canWorkshop ? prisma.customerVehicle.findMany({ where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, take, select: { id: true, make: true, model: true, plateNumber: true, externalId: true, externalSource: true } }).catch(() => []) : [],
+    ctx.canSuppliers ? prisma.supplier.findMany({ where: { ...(ctx.sameOrg as Prisma.SupplierWhereInput), externalId: ext }, take, select: { id: true, name: true, externalId: true, externalSource: true } }).catch(() => []) : [],
+    ctx.storeReach ? prisma.part.findMany({ where: { AND: [ctx.storeReach as Prisma.PartWhereInput, { externalId: ext }] }, take, select: { id: true, branchId: true, name: true, partNumber: true, externalId: true, externalSource: true, branch: { select: { name: true } } } }).catch(() => []) : [],
+    ctx.canCrm ? prisma.historicalInvoice.findMany({
+      where: { ...(ctx.sameOrg as Prisma.HistoricalInvoiceWhereInput), voidedAt: null, invoiceNumber: ext, ...(n.year ? { fiscalYear: n.year } : {}) },
+      orderBy: [{ fiscalYear: 'desc' }, { invoiceDate: 'desc' }], take: 10,
+      select: { id: true, invoiceNumber: true, fiscalYear: true, companyCode: true, documentType: true, invoiceDate: true, amount: true, externalSource: true, customerId: true },
+    }).catch(() => []) : [],
+  ]);
+  const names = invoices.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set(invoices.map((i) => i.customerId))] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
+  const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
+  const day = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/');
+  const dot = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ') || undefined;
+  return [
+    ...customers.map((c) => ({ label: `${label(c.externalSource)} customer ${c.externalId}`, sub: c.fullName, href: ctx.canCrm ? `/crm/customers/${c.id}` : `/workshop/customers?q=${encodeURIComponent(c.fullName)}` })),
+    ...vehicles.map((v) => ({ label: `${label(v.externalSource)} vehicle ${v.externalId}`, sub: dot([v.make, v.model].filter(Boolean).join(' '), v.plateNumber), href: `/workshop/vehicles/${v.id}/edit` })),
+    ...suppliers.map((x) => ({ label: `${label(x.externalSource)} supplier ${x.externalId}`, sub: x.name, href: `/inventory/suppliers?q=${encodeURIComponent(x.externalId ?? x.name)}` })),
+    ...parts.filter((p) => ctx.opens(['store.view'], p.branchId)).map((p) => ({ label: `${label(p.externalSource)} material ${p.externalId}`, sub: dot(p.partNumber, p.name, p.branch?.name), href: `/inventory/parts/${p.id}` })),
+    ...invoices.map((i) => ({
+      label: `${label(i.externalSource)} invoice ${i.invoiceNumber} · ${i.fiscalYear ?? i.invoiceDate.getUTCFullYear()}`,
+      sub: dot(names.get(i.customerId), day(i.invoiceDate), naira(i.amount), i.companyCode ? `company ${i.companyCode}` : null, i.documentType),
+      href: `/crm/customers/${i.customerId}?tab=jobs`,
+    })),
+  ];
+}
+

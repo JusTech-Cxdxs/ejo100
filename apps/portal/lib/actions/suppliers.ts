@@ -6,6 +6,8 @@
  * receipts. Read by the Store; fenced to the person's own organisation.
  */
 import { prisma, type Prisma } from '@ejo/database';
+import { parseSourceFilter, sourceWhere, type SOURCE_PARAMS } from '@/lib/source-filter';
+import { importIdsFor } from '@/lib/source-filter-server';
 import { authorize, getPrincipal, myOrganisationId } from '@/lib/authz/server';
 import { requireUser } from '@/lib/actions/workshop';
 
@@ -19,11 +21,12 @@ async function supplierOrg(): Promise<string> {
   return org;
 }
 
-export async function listSuppliersPage(search: string | undefined, page: number): Promise<{ rows: { id: string; name: string; externalId: string | null; externalSource: string | null; contactName: string | null; phone: string | null; email: string | null; address: string | null; isActive: boolean; receipts: number; lastReceivedAt: Date | null }[]; total: number; page: number; pages: number }> {
+export async function listSuppliersPage(search: string | undefined, page: number, origin: Partial<Record<(typeof SOURCE_PARAMS)[number], string>> = {}): Promise<{ rows: { id: string; name: string; externalId: string | null; externalSource: string | null; contactName: string | null; phone: string | null; email: string | null; address: string | null; isActive: boolean; receipts: number; lastReceivedAt: Date | null }[]; total: number; page: number; pages: number }> {
   await authorize('store.view', undefined, 'listSuppliersPage', 'Suppliers are for the Store.');
   const organisationId = await supplierOrg();
   const q = String(search ?? '').trim().slice(0, 80);
-  const where: Prisma.SupplierWhereInput = { organisationId, ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { externalId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) };
+  const sf = parseSourceFilter(origin);
+  const where: Prisma.SupplierWhereInput = { organisationId, ...(sourceWhere(sf, await importIdsFor(organisationId, sf)) as Prisma.SupplierWhereInput), ...(q ? { OR: [{ name: { contains: q, mode: 'insensitive' } }, { externalId: { contains: q, mode: 'insensitive' } }, { email: { contains: q, mode: 'insensitive' } }] } : {}) };
   const total = await prisma.supplier.count({ where });
   const pages = Math.max(1, Math.ceil(total / PAGE));
   const p = Math.min(Math.max(1, Math.trunc(page) || 1), pages);

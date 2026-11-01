@@ -41,8 +41,8 @@ test('invoices from SAP: an SAP billing extract maps itself; net plus tax; credi
   assert.deepEqual(mappingProblems('invoices', m), []);
   const r = checkInvoiceRow(['0090001234', '14.03.2023', '0001000123', '450,000.00', '33,750.00', 'NGN', 'jaanlr85el7100001', 'F2'], m, '2026-11-01');
   assert.equal(r.status, 'GOOD', JSON.stringify(r.issues));
-  assert.deepEqual(r.values, { invoiceNumber: '90001234', invoiceDate: '2023-03-14', amount: 483750, customer: { externalId: '1000123', phone: null }, vin: 'jaanlr85el7100001', vinKey: 'JAANLR85EL7100001', documentType: 'F2', description: null });
-  assert.deepEqual(r.keys, ['inv:90001234']);
+  assert.deepEqual(r.values, { invoiceNumber: '90001234', invoiceDate: '2023-03-14', amount: 483750, customer: { externalId: '1000123', phone: null }, vin: 'jaanlr85el7100001', vinKey: 'JAANLR85EL7100001', documentType: 'F2', description: null, companyCode: null, fiscalYear: 2023, source: 'SAP' });
+  assert.deepEqual(r.keys, ['inv:SAP|90001234']);
   const credit = checkInvoiceRow(['90001299', '20230401', '1000123', '12000-', '', '', '', 'G2'], m, '2026-11-01');
   assert.equal(credit.values?.amount, -12000);
   assert.match(credit.issues[0]!.message, /credit note/);
@@ -105,7 +105,7 @@ test('history is read-only and recoverable: undo voids, a reload restores, nothi
     const s = read(f);
     for (const q of s.matchAll(/historicalInvoice\.(findMany|groupBy|aggregate)\(\{[\s\S]{0,400}?\}/g)) assert.match(q[0], /voidedAt: null/, `${f}: ${q[0].slice(0, 80)}`);
   }
-  assert.match(read('lib/actions/crm.ts'), /WHERE h\."voidedAt" IS NULL/);
+  assert.match(read('lib/actions/crm.ts'), /WHERE \$\{history\} AND h\."voidedAt" IS NULL/);
   // Never shown to customers: the customer portal does not read SAP history.
   assert.doesNotMatch(read('../website/lib/customer-portal/data.ts'), /historicalInvoice|vehicleHistoryRecord/);
 });

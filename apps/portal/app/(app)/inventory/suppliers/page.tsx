@@ -1,4 +1,6 @@
 import { guardAnyPage } from '@/lib/authz/server';
+import { SOURCE_PARAMS } from '@/lib/source-filter';
+import { SourceFilterBar } from '@/components/SourceFilterBar';
 import { listSuppliersPage } from '@/lib/actions/suppliers';
 import { formatDateOnly } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
@@ -9,11 +11,13 @@ import { EmptyState, PageHeader, ResponsiveTable } from '@/components/ui';
 export const dynamic = 'force-dynamic';
 
 /** The organisation's suppliers (SAP vendors), shared by every branch: who they are and how often the Store receives from them. */
-export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string }> }) {
+export default async function SuppliersPage({ searchParams }: { searchParams: Promise<{ q?: string; page?: string } & Partial<Record<(typeof SOURCE_PARAMS)[number], string>>> }) {
   await guardAnyPage(['store.view'], '/inventory/suppliers');
-  const { q, page } = await searchParams;
-  const data = await listSuppliersPage(q, Number(page) || 1);
-  const href = (n: number) => `/inventory/suppliers?${new URLSearchParams({ ...(q ? { q } : {}), page: String(n) }).toString()}`;
+  const sp = await searchParams;
+  const { q, page } = sp;
+  const origin = Object.fromEntries(SOURCE_PARAMS.map((k) => [k, sp[k]]).filter((e) => e[1])) as Record<string, string>;
+  const data = await listSuppliersPage(q, Number(page) || 1, origin);
+  const href = (n: number) => `/inventory/suppliers?${new URLSearchParams({ ...(q ? { q } : {}), ...origin, page: String(n) }).toString()}`;
   return (
     <div className="w-full p-4 sm:p-8">
       <PageHeader icon="truck" back={{ href: '/inventory', label: 'Back to Inventory' }} title="Suppliers" description={<>Shared by every branch. Brought in from SAP through Data Exchange; goods receipts link to them by name. <OrgTrail area="Store" /></>} />
@@ -21,6 +25,7 @@ export default async function SuppliersPage({ searchParams }: { searchParams: Pr
         <LiveSearchInput type="search" name="q" defaultValue={q ?? ''} placeholder="Search by name, supplier number or email…" className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />
         <button type="submit" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-4 py-2 text-sm font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Search</button>
       </form>
+      <div className="mb-6"><SourceFilterBar action="/inventory/suppliers" values={sp} keep={{ q }} /></div>
       {data.total === 0 ? (
         <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]">
           <EmptyState compact icon="truck" title={q ? 'No supplier matches.' : 'No suppliers yet.'}>Bring the supplier list in from SAP under <LoadingLink href="/data-exchange" className="font-medium text-[var(--ejo-primary)] hover:underline">Data Exchange</LoadingLink>.</EmptyState>

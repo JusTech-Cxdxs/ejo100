@@ -222,13 +222,19 @@ them). Choose the **branch** whose sales they were.
 | Tax (₦) | — | MWSBK — added to a net amount, so the history is gross |
 | Currency | — | WAERK, WAERS — naira only (give DMBTR, the company-currency amount, for others) |
 | Chassis number (VIN) | — | VHVIN, VIN, chassis — links the invoice to the vehicle |
+| Company code, Fiscal year | — | BUKRS, GJAHR — give them: SAP numbers documents per company code and fiscal year, so the same number can come back in another year |
 | Document type, Description | — | FKART / BLART (F2 invoice, G2 credit), ARKTX / SGTXT |
 
 From SAP: a billing-document list (VF05, or table VBRK with its customer and
 vehicle) or the customer line items (FBL5N), exported to Excel.
 
-- **Each invoice number loads once.** Loading the same file again adds
+- **Each invoice loads once** — within its numbering range: with company
+  code and fiscal year given, *125262 in 2025* and *125262 in 2026* are two
+  invoices; without them the number alone identifies it (and the fiscal
+  year is taken from the invoice date). Loading the same file again adds
   nothing; an invoice already in the history is *Already in the history*.
+  Give the same columns each time (a file with GJAHR and one without are
+  different numbering ranges).
 - **Credit notes** (a negative amount — SAP's `20000-` is understood) reduce
   the customer's total.
 - **Rejected:** no invoice number, no date or a date that is not a real day,
@@ -353,6 +359,38 @@ which fits comfortably. On the organisation's paid plan this is routine.
   the server), the goods-receipt part picker (25 matches as you type) and the
   low-stock list (bounded) do not grow with the catalogue.
 
+## 9b. Finding and tracing imported records
+
+- **Search by the other system's number.** The search box at the top finds a
+  record by the number SAP (or the old system) gave it: customer (KUNNR),
+  vehicle / equipment (EQUNR), supplier (LIFNR), material, and invoice
+  numbers from the history — with or without SAP's leading zeros. SAP numbers
+  have no prefix, so the same digits can be a customer and an invoice: every
+  match is listed, labelled — *SAP customer 125262 · Ada Okafor*, *SAP
+  invoice 125262 · 2026*. Type a year after the number (*125262 2026* or
+  *125262/2026*) to narrow invoices to one fiscal year. Each person finds only
+  what they may open (invoices are for people with the CRM).
+- **Where it came from.** Customer, vehicle and part pages have a *Where this
+  came from* box: created in EJO by whom and when, or *Imported from SAP* /
+  *from a spreadsheet* by **IMP-…** (its file, who approved it; the number
+  opens the import for the people who may see imports), the SAP number, and
+  the original date (a customer's *customer since*). Exports and SAP postings
+  that included the record will be listed there when those arrive.
+- **Filter the lists** — Customers, Vehicles, Parts and Suppliers — under
+  *Where it came from, and when*: **Source** (created in EJO / imported from
+  SAP / from a spreadsheet), one **import number**, **Entered EJO** from–to
+  (created or imported) and, for customers, **Customer since** from–to (the
+  original date) — so "customers since 2018 or before who were imported last
+  week" is one filter. Job Cards, services and warranties are always made in
+  EJO, so they have no source to filter by.
+- **Day by day.** *Data Exchange → Day by day* is a calendar of imports
+  started, loaded, confirmed by Finance, undone, released and cancelled; a day
+  lists them, each opening its import.
+- **With or without the history.** Headquarters, the business analytics and
+  the CRM list have a switch: *With SAP history* (the default) or *EJO only*
+  (the invoices from before EJO left out of spend, visits, top customers and
+  the per-branch figures). The Headquarters export follows the switch.
+
 ## 9a. Staged files: space and release
 
 Each import keeps a copy of its file — every row — while it is checked,
@@ -394,10 +432,11 @@ from it).
 | A2 — suppliers; opening-balance receipts; parts made by an import; Finance sign-off | `scripts/predeploy/0005-parts-stock-suppliers.sql` (deploy) · `scripts/v-a2-parts-stock-suppliers.sql` (manual) |
 | A3 — customer since; invoice history; production / QC / PDI registers | `scripts/predeploy/0006-sap-history.sql` (deploy) · `scripts/v-a3-sap-history.sql` (manual) |
 | Staged files — release period, size, release record | `scripts/predeploy/0007-import-staging-release.sql` (deploy) · `scripts/v-a4a-import-staging-release.sql` (manual) |
+| Search and tracking — SAP-number indexes; invoice company code and fiscal year | `scripts/predeploy/0008-search-and-tracking.sql` (deploy) · `scripts/v-a4b-search-and-tracking.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a
-fresh schema. Run them in order (A0, A1, A2, A3, then the staged-files script).
+fresh schema. Run them in order (A0, A1, A2, A3, then the staged-files and search scripts).
 
 ## 11. Open questions for the organisation (not guessed in code)
 

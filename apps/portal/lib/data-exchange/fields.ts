@@ -195,6 +195,8 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'tax', label: 'Tax (₦)', help: 'Optional: the tax amount (SAP MWSBK), added to a net amount.', aliases: ['MWSBK', 'MWSTS', 'tax', 'tax amount', 'vat', 'vat amount'], example: '36375.00' },
       { key: 'currency', label: 'Currency', help: 'Optional: SAP WAERK. Only naira (NGN) is loaded.', aliases: ['WAERK', 'WAERS', 'currency', 'curr'], example: 'NGN' },
       { key: 'vin', label: 'Chassis number (VIN)', help: 'Optional: the vehicle the work was on. Links the invoice to the vehicle when it is in the system.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'vehicle', 'frame number'], example: 'JAANLR85EL7100001' },
+      { key: 'companyCode', label: 'Company code', help: 'Optional: SAP company code (BUKRS). SAP numbers documents per company code and fiscal year, so give these when the same number can appear twice.', aliases: ['BUKRS', 'company code', 'company', 'cocd'], example: '1000' },
+      { key: 'fiscalYear', label: 'Fiscal year', help: 'Optional: SAP fiscal year (GJAHR). Empty: the year of the invoice date.', aliases: ['GJAHR', 'fiscal year', 'fy', 'year'], example: '2023' },
       { key: 'documentType', label: 'Document type', help: 'Optional: SAP billing type (FKART, e.g. F2 invoice, G2 credit) or document type (BLART).', aliases: ['FKART', 'BLART', 'document type', 'billing type', 'doc type', 'type'], example: 'F2' },
       { key: 'description', label: 'Description', help: 'Optional: what the invoice was for.', aliases: ['ARKTX', 'SGTXT', 'BKTXT', 'description', 'text', 'item text', 'narration', 'details'], example: 'Service 40,000 km and brake pads' },
     ],

@@ -66,7 +66,7 @@ test('Headquarters: leadership with the whole organisation in view; a branch man
   assert.match(action, /prisma\.payment\.aggregate/);
   assert.doesNotMatch(action, /prisma\.payment\.findMany/);
   const route = read('app/(app)/headquarters/export/route.ts');
-  assert.match(route, /getHeadquarters\(period\)/, 'the export runs the same checks as the page');
+  assert.match(route, /getHeadquarters\(period, \{ history \}\)/, 'the export runs the same checks as the page');
   assert.match(route, /'Cache-Control': 'no-store'/);
   assert.match(route, /headquarters\.exported/, 'every export is in the audit trail');
 });

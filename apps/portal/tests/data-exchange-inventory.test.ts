@@ -119,7 +119,7 @@ test('the Store’s lists stay fast with a catalogue of any size', () => {
   assert.match(store, /export async function searchPartsForReceipt\([\s\S]{0,900}take: 25/);
   assert.match(store, /export async function listLowStockParts\([\s\S]{0,900}LIMIT 300/);
   assert.doesNotMatch(read('components/GoodsReceiptForm.tsx'), /parts: PartOption\[\]/);
-  assert.match(read('app/(app)/inventory/parts/page.tsx'), /listPartsPage\(branchId, q, Number\(page\) \|\| 1\)/);
+  assert.match(read('app/(app)/inventory/parts/page.tsx'), /listPartsPage\(branchId, q, Number\(page\) \|\| 1, origin\)/);
 });
 
 test('long imports stay inside the flood limit and survive a dropped connection', () => {
