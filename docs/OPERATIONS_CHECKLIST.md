@@ -30,7 +30,8 @@ Names only. Values never go into the repository, chat, or tickets.
 | `CRON_SECRET` | yes | Long random secret for the scheduled jobs |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | yes | Outgoing email |
 | `PLATFORM_OWNER_EMAIL` | yes | The platform owner account |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional | Instant notifications |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | optional (recommended on free plans) | Instant notifications; also cuts each open tab's regular checks from every 10 s to every minute ([FREE_PLAN.md](FREE_PLAN.md)) |
+| `DATABASE_SPACE_LIMIT_MB` | optional | The database plan's size in MB (default `500`, Supabase Free). Imports that would not fit are refused and a load near the limit pauses; `0` switches the checks off ([FREE_PLAN.md](FREE_PLAN.md)) |
 | `BETTER_AUTH_TRUSTED_ORIGINS` | optional | Extra addresses allowed to sign in (e.g. the `vercel.app` address next to a custom domain) |
 | `SERVER_ACTIONS_ALLOWED_ORIGINS` | optional | Only if a proxy in front changes the host name |
 | `AUTH_SIGNIN_PER_MINUTE`, `AUTH_RESET_REQUESTS_PER_5_MIN` | optional | Sign-in limits per address (defaults 20 and 5) |

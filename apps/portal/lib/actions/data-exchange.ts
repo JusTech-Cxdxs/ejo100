@@ -32,6 +32,8 @@ import { moveManyToBinInTx } from '@/lib/recycle-bin/server';
 import { checkPartRow, checkSupplierRow } from '@/lib/data-exchange/check-inventory';
 import { findCustomers } from '@/lib/data-exchange/lookup-server';
 import { measureStagedBytes, refreshStagedBytes, releaseStagedRows, releaseState, stagingDays } from '@/lib/data-exchange/staging-server';
+import { readDatabaseSpace } from '@/lib/database-space';
+import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space } from '@/lib/database-space-core';
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
@@ -40,6 +42,26 @@ import { checkCustomerRow, checkVehicleRow, phoneKey, type CustomerValues, type 
 export type ImportStatus = 'UPLOADING' | 'UPLOADED' | 'VALIDATING' | 'VALIDATED' | 'AWAITING_APPROVAL' | 'APPROVED' | 'LOADING' | 'PAUSED' | 'COMPLETED' | 'UNDOING' | 'UNDONE' | 'CANCELLED' | 'FAILED';
 
 class DataExchangeError extends Error {}
+
+/** The database's size against its plan, in a sentence. */
+function spaceWords(space: Space): string {
+  if (!space.limitBytes) return '';
+  return `It uses ${Math.round(space.usedBytes / 1048576).toLocaleString('en-NG')} MB of its ${Math.round(space.limitBytes / 1048576).toLocaleString('en-NG')} MB plan.`;
+}
+
+type RoomJob = { entity: string; status: string; goodRows: number; warningRows: number; createdRows?: number; updatedRows?: number; skippedRows?: number };
+/** Whether what is left of an import fits in the database's plan; the message says what to do. */
+function roomFor(job: RoomJob, space: Space): { ok: boolean; message: string | null } {
+  if (job.status === 'PAUSED' && shouldPauseLoad(space)) return { ok: false, message: `The database is nearly full. ${spaceWords(space)} Free space or move it to a bigger plan before resuming.` };
+  const left = Math.max(0, job.goodRows + job.warningRows - (job.createdRows ?? 0) - (job.updatedRows ?? 0) - (job.skippedRows ?? 0));
+  const fits = importFits(space, job.entity, left, isEntityKey(job.entity) ? ENTITIES[job.entity].plural : 'records');
+  return fits.ok ? { ok: true, message: null } : { ok: false, message: fits.message };
+}
+/** Refuses (in plain words) an import whose records would not fit in the database's plan. */
+async function refuseIfNoRoom(job: RoomJob, space: Space): Promise<void> {
+  const room = roomFor({ ...job, status: 'CHECK' }, space);
+  if (!room.ok) throw new DataExchangeError(room.message ?? 'Not enough database space.');
+}
 
 /** Blocks sent from the browser, rows per check / load batch, rows read per undo step. */
 const MAX_BLOCK_ROWS = 5000;
@@ -127,7 +149,7 @@ export type ImportJobRow = {
   createdBy: string; createdAt: Date; approvedBy: string | null; completedAt: Date | null;
 };
 
-export async function listImportJobs(opts: { take?: number; before?: string } = {}): Promise<{ jobs: ImportJobRow[]; canRun: boolean; canApprove: boolean; staging: { days: number; totalBytes: number; canSet: boolean } }> {
+export async function listImportJobs(opts: { take?: number; before?: string } = {}): Promise<{ jobs: ImportJobRow[]; canRun: boolean; canApprove: boolean; staging: { days: number; totalBytes: number; canSet: boolean }; space: Space }> {
   const [run, approve] = await Promise.all([canRun(), canApprove()]);
   if (!run && !approve) await authorize('dataexchange.import.run', undefined, 'listImportJobs', 'Only the people who bring records into the system can see imports.');
   const { organisationId } = await exchangeOrg();
@@ -140,15 +162,17 @@ export async function listImportJobs(opts: { take?: number; before?: string } = 
   });
   // Imports staged before sizes were recorded: measured a few at a time, then kept.
   for (const j of jobs.filter((x) => x.stagedBytes === null && !['UPLOADING', 'CANCELLED'].includes(x.status)).slice(0, 3)) j.stagedBytes = await refreshStagedBytes(j.id);
-  const [org, total, canSet] = await Promise.all([
+  const [org, total, canSet, space] = await Promise.all([
     prisma.organisation.findUnique({ where: { id: organisationId }, select: { importStagingDays: true } }),
     prisma.importJob.aggregate({ where: { organisationId, status: { not: 'CANCELLED' } }, _sum: { stagedBytes: true } }),
     allows('admin.settings.manage'),
+    readDatabaseSpace({ fresh: true }),
   ]);
   return {
     canRun: run,
     canApprove: approve,
     staging: { days: stagingDays(org?.importStagingDays), totalBytes: total._sum.stagedBytes ?? 0, canSet },
+    space,
     jobs: jobs.map((j) => ({ ...j, entity: (isEntityKey(j.entity) ? j.entity : 'customers') as EntityKey, status: j.status as ImportStatus, createdBy: j.createdBy.fullName, approvedBy: j.approvedBy?.fullName ?? null })),
   };
 }
@@ -178,6 +202,8 @@ export type ImportJobDetail = ImportJobRow & {
   /** The staged copy of the file: its size, whether it was released (by whom), and when it will be. */
   staged: { bytes: number | null; releasedAt: Date | null; releasedBy: string | null; releasable: boolean; why: string | null; dueAt: Date | null; days: number };
   me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean };
+  /** Whether what is left to load fits in the database's plan (checked before sending, approving, loading and resuming). */
+  room: { ok: boolean; message: string | null };
 };
 
 export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
@@ -233,6 +259,7 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
     signedOff: job.signedOffAt ? { by: signer?.fullName ?? 'Finance', at: job.signedOffAt } : null,
     staged: { bytes: stagedBytes, releasedAt: job.rowsReleasedAt, releasedBy: job.rowsReleasedAt ? releaser?.fullName ?? 'the daily clean-up' : null, releasable: rel.releasable, why: rel.why, dueAt: rel.dueAt, days },
     me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff },
+    room: ['VALIDATED', 'AWAITING_APPROVAL', 'APPROVED', 'PAUSED'].includes(job.status) ? roomFor(job, await readDatabaseSpace({ fresh: true })) : { ok: true, message: null },
   };
 }
 
@@ -287,7 +314,7 @@ export async function createImportJob(input: { entity: string; fileName: string;
 }
 
 /** One block of rows, as read in the browser (rowNumber = the line in the file; the header is line 1). Safe to send twice. */
-export async function appendImportRows(jobId: string, rows: { rowNumber: number; cells: string[] }[]): Promise<{ received: number }> {
+export async function appendImportRows(jobId: string, rows: { rowNumber: number; cells: string[] }[]): Promise<{ received: number; stop?: string }> {
   await authorize('dataexchange.import.run', undefined, 'appendImportRows', 'Only the people who bring records into the system can upload a file.');
   const job = await myImportJob(jobId);
   if (job.status !== 'UPLOADING') throw new DataExchangeError('This import is no longer receiving rows.');
@@ -300,6 +327,9 @@ export async function appendImportRows(jobId: string, rows: { rowNumber: number;
     data.push({ jobId: job.id, rowNumber: n, cells: r.cells.slice(0, width).map((c) => String(c ?? '').slice(0, MAX_CELL)) });
   }
   if (!data.length) return { received: 0 };
+  // Returned, not thrown: the person must read why (a thrown message is hidden in production, and the upload would retry it).
+  const room = stagingFits(await readDatabaseSpace(), data.length);
+  if (!room.ok) return { received: 0, stop: room.message };
   const res = await prisma.importRow.createMany({ data, skipDuplicates: true });
   return { received: res.count };
 }
@@ -531,6 +561,7 @@ export async function submitImportForApproval(jobId: string): Promise<void> {
   const { userId } = await exchangeOrg();
   if (job.status !== 'VALIDATED') throw new DataExchangeError('Check the file first.');
   if (job.goodRows + job.warningRows === 0) throw new DataExchangeError('No row of this file can be loaded. Fix the rejected rows and upload the file again.');
+  await refuseIfNoRoom(job, await readDatabaseSpace({ fresh: true }));
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'VALIDATED' }, data: { status: 'AWAITING_APPROVAL', submittedAt: new Date(), error: null } });
   if (!res.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
   await writeAuditLog({ userId, action: 'data_exchange.submitted', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, toLoad: job.goodRows + job.warningRows, rejected: job.rejectedRows + job.duplicateRows } });
@@ -546,6 +577,7 @@ export async function approveImport(jobId: string): Promise<void> {
   if (job.createdById === userId && !(await secondSignatureAsMaster(userId, job.id))) {
     throw new DataExchangeError('You prepared this import, so another manager or administrator must approve it.');
   }
+  await refuseIfNoRoom(job, await readDatabaseSpace({ fresh: true }));
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'AWAITING_APPROVAL' }, data: { status: 'APPROVED', approvedById: userId, approvedAt: new Date() } });
   if (!res.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
   await writeAuditLog({ userId, action: 'data_exchange.approved', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, toLoad: job.goodRows + job.warningRows } });
@@ -598,6 +630,8 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   if (job.status === 'PAUSED') return { done: false, loaded: job.createdRows + job.updatedRows + job.skippedRows, total: job.goodRows + job.warningRows, status: 'PAUSED', last: 0 };
   if (!['APPROVED', 'LOADING'].includes(job.status)) return { done: true, loaded: job.createdRows + job.updatedRows + job.skippedRows, total: job.goodRows + job.warningRows, status: job.status as ImportStatus, last: 0 };
   if (job.status === 'APPROVED') {
+    // Space may have gone since approval: checked again before anything is written.
+    await refuseIfNoRoom(job, await readDatabaseSpace({ fresh: true }));
     await prisma.importJob.updateMany({ where: { id: job.id, status: 'APPROVED' }, data: { status: 'LOADING', startedAt: new Date() } });
     await writeAuditLog({ userId, action: 'data_exchange.load_started', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number } });
   }
@@ -607,6 +641,13 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   // Batches, each in its own transaction (a failure loses only that batch), until about two seconds have passed:
   // few, steady requests, well inside the flood limit on submissions (middleware.ts).
   const begun = Date.now();
+  // A load that has run the database close to its plan's limit pauses (the rest of the space is kept for daily work).
+  const space = await readDatabaseSpace();
+  if (shouldPauseLoad(space)) {
+    const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'LOADING' }, data: { status: 'PAUSED', error: `${PAUSED_FOR_SPACE} ${spaceWords(space)} Free space or move the database to a bigger plan, then press Resume: the load carries on from where it stopped.` } });
+    if (res.count) await writeAuditLog({ userId, action: 'data_exchange.load_paused', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, reason: 'database nearly full', usedBytes: space.usedBytes, limitBytes: space.limitBytes } });
+    return { done: false, loaded: job.createdRows + job.updatedRows + job.skippedRows, total: job.goodRows + job.warningRows, status: 'PAUSED', last };
+  }
   try {
     for (;;) {
       const from = last;
@@ -814,6 +855,8 @@ export async function resumeImport(jobId: string): Promise<void> {
   const job = await myImportJob(jobId);
   const { userId } = await exchangeOrg();
   await authorizeLoader(job, userId);
+  const space = await readDatabaseSpace({ fresh: true });
+  if (shouldPauseLoad(space)) throw new DataExchangeError(`The database is still nearly full. ${spaceWords(space)} Free space or move it to a bigger plan first.`);
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'PAUSED' }, data: { status: 'LOADING', error: null } });
   if (res.count) await writeAuditLog({ userId, action: 'data_exchange.resumed', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number } });
 }
@@ -1059,9 +1102,14 @@ export async function listImportBranches(): Promise<{ id: string; name: string }
 
 /** Imports waiting on this person: approval (for approvers, never their own), and their own sent back or ready to load. */
 export async function getDataExchangeDashboardItems(): Promise<{ id: string; title: string; detail: string; url: string; createdAt: Date }[]> {
-  const [run, approve, finance] = await Promise.all([canRun(), canApprove(), allows('workshop.payment.record')]);
+  const [run, approve, finance, admin] = await Promise.all([canRun(), canApprove(), allows('workshop.payment.record'), allows('admin.settings.manage')]);
   if (!run && !approve && !finance) return [];
   const { userId, organisationId } = await exchangeOrg();
+  // Administrators are told while there is still time to act (80% of the database plan, and again when nearly full).
+  const space = admin && (run || approve) ? await readDatabaseSpace() : null;
+  const spaceItem = space && (space.level === 'warn' || space.level === 'full') && space.limitBytes
+    ? [{ id: `database-space-${space.level}`, title: space.level === 'full' ? 'The database is nearly full' : 'The database is filling up', detail: `${spaceWords(space)} Past the limit nothing can be saved: release finished imports’ staged files or move the database to a bigger plan.`, url: '/data-exchange#database-space', createdAt: new Date() }]
+    : [];
   const [waiting, mine] = await Promise.all([
     approve ? prisma.importJob.findMany({ where: { organisationId, status: 'AWAITING_APPROVAL', createdById: { not: userId }, entity: { in: await approvableEntities() } }, orderBy: { submittedAt: 'asc' }, take: 10, select: { id: true, number: true, entity: true, fileName: true, goodRows: true, warningRows: true, submittedAt: true, createdAt: true } }) : [],
     run ? prisma.importJob.findMany({ where: { organisationId, createdById: userId, OR: [{ status: 'APPROVED' }, { status: 'VALIDATED', error: { startsWith: 'Sent back' } }] }, orderBy: { updatedAt: 'desc' }, take: 10, select: { id: true, number: true, status: true, entity: true, fileName: true, updatedAt: true } }) : [],
@@ -1072,6 +1120,7 @@ export async function getDataExchangeDashboardItems(): Promise<{ id: string; tit
     ? await prisma.importJob.findMany({ where: { organisationId, entity: { in: ['stock', 'invoices'] }, status: 'COMPLETED', signedOffAt: null, createdById: { not: userId }, approvedById: { not: userId } }, orderBy: { completedAt: 'asc' }, take: 10, select: { id: true, number: true, entity: true, totals: true, completedAt: true, updatedAt: true } })
     : [];
   return [
+    ...spaceItem,
     ...toConfirm.map((j) => ({ id: `import-confirm-${j.id}`, title: `Confirm ${j.entity === 'invoices' ? 'invoice history' : 'opening stock'} ${j.number}`, detail: `${j.entity === 'invoices' ? 'Amount' : 'Value'} loaded: ₦${Math.round(((j.totals as { loaded?: { value: number } } | null)?.loaded?.value ?? 0)).toLocaleString('en-NG')}`, url: `/data-exchange/imports/${j.id}`, createdAt: j.completedAt ?? j.updatedAt })),
     ...waiting.map((j) => ({ id: `import-approve-${j.id}`, title: `Approve import ${j.number}`, detail: `${(j.goodRows + j.warningRows).toLocaleString('en-NG')} ${label(j.entity)} from ${j.fileName}`, url: `/data-exchange/imports/${j.id}`, createdAt: j.submittedAt ?? j.createdAt })),
     ...mine.map((j) => ({ id: `import-mine-${j.id}`, title: j.status === 'APPROVED' ? `Import ${j.number} approved — load it` : `Import ${j.number} sent back`, detail: `${label(j.entity)} from ${j.fileName}`, url: `/data-exchange/imports/${j.id}`, createdAt: j.updatedAt })),
