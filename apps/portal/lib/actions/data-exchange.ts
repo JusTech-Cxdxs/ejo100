@@ -1100,3 +1100,45 @@ export async function importRowsPage(jobId: string, kind: 'rejects' | 'possible'
     rows: rows.map((r) => ({ rowNumber: r.rowNumber, status: r.status, cells: (r.cells as unknown[]).map((c) => String(c ?? '')), issues: (r.issues as Issue[] | null) ?? [], matchedBy: r.matchedBy, resultId: r.resultId })),
   };
 }
+
+// ── Timeline ────────────────────────────────────────────────────────────
+
+export type ExchangeEvent = { at: Date; kind: 'started' | 'loaded' | 'confirmed' | 'undone' | 'released' | 'cancelled'; importId: string; number: string; entity: EntityKey; fileName: string; rows: number; by: string | null };
+
+/**
+ * One Lagos calendar month of Data Exchange activity, day by day: imports
+ * started, loaded, confirmed by Finance, undone, released and cancelled —
+ * each opening its import. (Exports and the daily SAP files join this
+ * timeline when they arrive.)
+ */
+export async function getDataExchangeTimeline(month?: string): Promise<{ month: string; events: ExchangeEvent[] }> {
+  const [run, approve] = await Promise.all([canRun(), canApprove()]);
+  if (!run && !approve) await authorize('dataexchange.import.run', undefined, 'getDataExchangeTimeline', 'Only the people who bring records into the system can see imports.');
+  const { organisationId } = await exchangeOrg();
+  const now = new Date(Date.now() + 3_600_000).toISOString().slice(0, 7);
+  const m = /^(\d{4})-(\d{2})$/.exec(String(month ?? '')) && Number(String(month).slice(5)) >= 1 && Number(String(month).slice(5)) <= 12 ? String(month) : now;
+  const from = new Date(`${m}-01T00:00:00+01:00`);
+  const next = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5)), 1));
+  const to = new Date(`${next.toISOString().slice(0, 7)}-01T00:00:00+01:00`);
+  const range = { gte: from, lt: to };
+  const jobs = await prisma.importJob.findMany({
+    where: { organisationId, OR: [{ createdAt: range }, { completedAt: range }, { signedOffAt: range }, { undoneAt: range }, { rowsReleasedAt: range }, { status: 'CANCELLED', updatedAt: range }] },
+    take: 2000,
+    select: { id: true, number: true, entity: true, fileName: true, fileRows: true, status: true, createdAt: true, completedAt: true, signedOffAt: true, undoneAt: true, rowsReleasedAt: true, updatedAt: true, createdById: true, approvedById: true, signedOffById: true, undoneById: true, rowsReleasedById: true },
+  });
+  const ids = [...new Set(jobs.flatMap((j) => [j.createdById, j.approvedById, j.signedOffById, j.undoneById, j.rowsReleasedById]).filter((x): x is string => Boolean(x)))];
+  const names = new Map((ids.length ? await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } }) : []).map((u) => [u.id, u.fullName]));
+  const inside = (d: Date | null | undefined): d is Date => Boolean(d && +d >= +from && +d < +to);
+  const events: ExchangeEvent[] = [];
+  for (const j of jobs) {
+    const base = { importId: j.id, number: j.number, entity: asEntity(j.entity), fileName: j.fileName, rows: j.fileRows };
+    if (inside(j.createdAt)) events.push({ ...base, at: j.createdAt, kind: 'started', by: names.get(j.createdById) ?? null });
+    if (inside(j.completedAt)) events.push({ ...base, at: j.completedAt, kind: 'loaded', by: j.approvedById ? names.get(j.approvedById) ?? null : null });
+    if (inside(j.signedOffAt)) events.push({ ...base, at: j.signedOffAt, kind: 'confirmed', by: j.signedOffById ? names.get(j.signedOffById) ?? null : null });
+    if (inside(j.undoneAt)) events.push({ ...base, at: j.undoneAt, kind: 'undone', by: j.undoneById ? names.get(j.undoneById) ?? null : null });
+    if (inside(j.rowsReleasedAt)) events.push({ ...base, at: j.rowsReleasedAt, kind: 'released', by: j.rowsReleasedById ? names.get(j.rowsReleasedById) ?? null : 'the daily clean-up' });
+    if (j.status === 'CANCELLED' && inside(j.updatedAt)) events.push({ ...base, at: j.updatedAt, kind: 'cancelled', by: null });
+  }
+  events.sort((a, b) => +a.at - +b.at);
+  return { month: m, events };
+}

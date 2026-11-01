@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { provenanceOf } from '@/lib/data-exchange/provenance-server';
+import { ProvenanceCard } from '@/components/ProvenanceCard';
 import { notFound } from 'next/navigation';
 import { guardPage } from '@/lib/authz/server';
 import { getCustomer360, getCustomerActivity } from '@/lib/actions/crm';
@@ -70,8 +72,12 @@ export default async function Customer360Page({ params, searchParams }: { params
   const data = await getCustomer360(id);
   if (!data) notFound();
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : 'overview';
-  const [activity, binOffer] = await Promise.all([tab === 'activity' ? getCustomerActivity(id, 300) : Promise.resolve([]), getRecycleBinOffer('Customer', id)]);
   const { customer: c, portal, money, can } = data;
+  const [activity, binOffer, origin] = await Promise.all([
+    tab === 'activity' ? getCustomerActivity(id, 300) : Promise.resolve([]),
+    getRecycleBinOffer('Customer', id),
+    provenanceOf({ organisationId: c.organisationId, createdAt: c.createdAt, createdBy: c.createdBy, importJobId: c.importJobId, externalSource: c.externalSource, externalId: c.externalId, numberLabel: 'customer number', original: { label: 'Customer since (before EJO)', date: c.customerSince } }),
+  ]);
   const base = `/crm/customers/${c.id}`;
   const notice: Notice | null = sp.error ? { kind: 'error', title: 'That didn’t work', text: sp.error } : sp.status ? STATUS[sp.status] ?? null : null;
   const editing = sp.edit === '1' && can.manage;
@@ -171,6 +177,7 @@ export default async function Customer360Page({ params, searchParams }: { params
             </div>
             <div className="min-w-0 space-y-6">
               <PortalCard data={data} base={base} />
+              <ProvenanceCard p={origin} />
               {pinned.length ? (
                 <Section icon="pin" title="Pinned notes" action={<Link href={`${base}?tab=notes`} className="text-xs font-medium text-[var(--ejo-primary)] hover:underline">All notes →</Link>}>
                   <ul className="space-y-2">{pinned.slice(0, 3).map((n) => <li key={n.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/30 bg-[var(--ejo-warning)]/[0.06] p-3 text-sm"><p className="whitespace-pre-line break-words text-[var(--ejo-text)]">{n.body}</p><p className="mt-1 text-[11px] text-[var(--ejo-text-muted)]">{n.author} · {formatDateTimeCompact(n.createdAt)}</p></li>)}</ul>
@@ -547,7 +554,7 @@ function ContactsTab({ data }: { data: Data }) {
 }
 
 /** Invoices from SAP before EJO 100: read-only (no links to edit, pay or refund). */
-function SapInvoiceList({ rows }: { rows: { id: string; number: string; date: string; amount: number; vehicleLabel: string | null; documentType: string | null; description: string | null }[] }) {
+function SapInvoiceList({ rows }: { rows: { id: string; number: string; date: string; amount: number; vehicleLabel: string | null; documentType: string | null; description: string | null; fiscalYear: number | null; companyCode: string | null }[] }) {
   return (
     <ul className="divide-y divide-[var(--ejo-border)]">
       {rows.slice(0, 500).map((h) => (
@@ -555,7 +562,7 @@ function SapInvoiceList({ rows }: { rows: { id: string; number: string; date: st
           <div className="flex min-w-0 items-start gap-3">
             <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)]"><CrmIcon name="receipt" size={16} /></span>
             <div className="min-w-0">
-              <p className="text-sm font-medium text-[var(--ejo-text)]">Invoice {h.number}{h.documentType ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">({h.documentType})</span> : null} <Chip tone="muted">From SAP, before EJO</Chip></p>
+              <p className="text-sm font-medium text-[var(--ejo-text)]">Invoice {h.number}{h.fiscalYear ? ` · ${h.fiscalYear}` : ''}{h.companyCode ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">company {h.companyCode}</span> : null}{h.documentType ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">({h.documentType})</span> : null} <Chip tone="muted">From SAP, before EJO</Chip></p>
               <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(`${h.date}T12:00:00+01:00`))}{h.vehicleLabel ? ` · ${h.vehicleLabel}` : ''}{h.description ? ` · ${h.description}` : ''}</p>
             </div>
           </div>

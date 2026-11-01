@@ -36,10 +36,14 @@ const dayDate = (d: string) => new Date(`${d}T00:00:00.000Z`);
 // ── Lookups ───────────────────────────────────────────────────────────
 
 /** Invoices already in the history (voided ones too: a reload restores them). */
-async function findInvoices(db: Db, organisationId: string, source: string, numbers: string[]) {
+/** The numbering range an invoice row belongs to: "LEGACY" for an old system's file, else SAP's (with company code and year when given). */
+const rangeOf = (job: HistoryJob, v: { source: string }) => (src(job.sourceSystem) === 'LEGACY' ? 'LEGACY' : v.source);
+const invKey = (range: string, number: string) => `${range}|${number.toUpperCase()}`;
+
+async function findInvoices(db: Db, organisationId: string, numbers: string[]) {
   if (!numbers.length) return new Map<string, { id: string; voided: boolean; importJobId: string | null }>();
-  const rows = await db.historicalInvoice.findMany({ where: { organisationId, externalSource: source, invoiceNumber: { in: numbers } }, select: { id: true, invoiceNumber: true, voidedAt: true, importJobId: true } });
-  return new Map(rows.map((r) => [r.invoiceNumber.toUpperCase(), { id: r.id, voided: Boolean(r.voidedAt), importJobId: r.importJobId }]));
+  const rows = await db.historicalInvoice.findMany({ where: { organisationId, invoiceNumber: { in: [...new Set(numbers)] } }, select: { id: true, invoiceNumber: true, externalSource: true, voidedAt: true, importJobId: true } });
+  return new Map(rows.map((r) => [invKey(r.externalSource, r.invoiceNumber), { id: r.id, voided: Boolean(r.voidedAt), importJobId: r.importJobId }]));
 }
 
 /** The organisation's vehicles with these chassis numbers (as stored: capitals, no spaces). */
@@ -71,7 +75,7 @@ export async function checkHistoryRows(entity: HistoryEntity, job: HistoryJob, m
     const checked = rows.map((r) => ({ r, c: checkInvoiceRow(r.cells as unknown[], mapping) }));
     const [cust, existing, vehicles] = await Promise.all([
       invoiceCustomers(prisma, job, checked),
-      findInvoices(prisma, job.organisationId, src(job.sourceSystem), checked.map((x) => x.c.values?.invoiceNumber).filter((v): v is string => Boolean(v))),
+      findInvoices(prisma, job.organisationId, checked.map((x) => x.c.values?.invoiceNumber).filter((v): v is string => Boolean(v))),
       findVehiclesByVin(prisma, job.organisationId, checked.map((x) => x.c.values?.vinKey).filter((v): v is string => Boolean(v))),
     ]);
     for (const { r, c } of checked) {
@@ -87,7 +91,7 @@ export async function checkHistoryRows(entity: HistoryEntity, job: HistoryJob, m
           const veh = v.vinKey ? vehicles.get(v.vinKey) : undefined;
           if (v.vinKey && !veh) { issues.push({ field: 'vin', level: 'warning', message: 'The vehicle is not in the system yet, so the invoice is kept on the customer only (it links to the vehicle once the vehicle is imported and the file loaded again).' }); }
           else if (veh && veh.customerId !== owner) { issues.push({ field: 'vin', level: 'warning', message: 'The vehicle now belongs to another customer; the invoice stays with this customer and on the vehicle’s history.' }); }
-          const hit = existing.get(v.invoiceNumber.toUpperCase());
+          const hit = existing.get(invKey(rangeOf(job, v), v.invoiceNumber));
           if (hit && !hit.voided && hit.importJobId !== job.id) { matchedId = hit.id; matchedBy = 'inv'; issues.push({ field: 'invoiceNumber', level: 'warning', message: 'Already in the history (loaded before); left as it is.' }); }
           if (status === 'GOOD' && issues.length) status = 'WARNING';
         }
@@ -145,12 +149,11 @@ export async function loadHistoryRows(tx: Tx, entity: HistoryEntity, job: Histor
 }
 
 async function loadInvoices(tx: Tx, job: HistoryJob, mapping: Mapping, rows: LoadRow[]): Promise<void> {
-  const source = src(job.sourceSystem);
   const checked = rows.map((r) => ({ r, c: checkInvoiceRow(r.cells as unknown[], mapping) }));
   // Matched again now: a customer or vehicle may have been added since the check.
   const [cust, existing, vehicles] = await Promise.all([
     invoiceCustomers(tx, job, checked),
-    findInvoices(tx, job.organisationId, source, checked.map((x) => x.c.values?.invoiceNumber).filter((v): v is string => Boolean(v))),
+    findInvoices(tx, job.organisationId, checked.map((x) => x.c.values?.invoiceNumber).filter((v): v is string => Boolean(v))),
     findVehiclesByVin(tx, job.organisationId, checked.map((x) => x.c.values?.vinKey).filter((v): v is string => Boolean(v))),
   ]);
   const results: Result[] = [];
@@ -163,7 +166,7 @@ async function loadInvoices(tx: Tx, job: HistoryJob, mapping: Mapping, rows: Loa
     if (!v) { results.push({ id: r.id, status: 'SKIPPED', resultId: null, note: 'Could not be read again when loading.' }); continue; }
     const owner = (v.customer.externalId && cust.ext.get(v.customer.externalId.toUpperCase())) || (v.customer.phone && cust.phone.get(v.customer.phone.slice(-10))) || null;
     if (!owner) { results.push({ id: r.id, status: 'SKIPPED', resultId: null, note: 'The customer is no longer in the system; not loaded.' }); continue; }
-    const k = v.invoiceNumber.toUpperCase();
+    const k = invKey(rangeOf(job, v), v.invoiceNumber);
     const hit = existing.get(k);
     if (hit && !hit.voided) { results.push({ id: r.id, status: 'SKIPPED', resultId: hit.id, note: 'Already in the history; left as it is.' }); continue; }
     if (hit && hit.voided) { restore.push({ rowId: r.id, id: hit.id }); continue; }
@@ -174,7 +177,7 @@ async function loadInvoices(tx: Tx, job: HistoryJob, mapping: Mapping, rows: Loa
     creates.push({
       id, organisationId: job.organisationId, branchId: job.branchId, customerId: owner, vehicleId: v.vinKey ? vehicles.get(v.vinKey)?.id ?? null : null,
       vin: v.vin, vinKey: v.vinKey, invoiceNumber: v.invoiceNumber, invoiceDate: dayDate(v.invoiceDate), amount: v.amount,
-      documentType: v.documentType, description: v.description, externalSource: source, importJobId: job.id,
+      documentType: v.documentType, description: v.description, externalSource: rangeOf(job, v), companyCode: v.companyCode, fiscalYear: v.fiscalYear, importJobId: job.id,
     });
   }
   if (creates.length) {

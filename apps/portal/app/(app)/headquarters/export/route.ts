@@ -13,10 +13,12 @@ export const dynamic = 'force-dynamic';
  * audit trail; never cached.
  */
 export async function GET(req: Request): Promise<Response> {
-  const period = new URL(req.url).searchParams.get('period') ?? undefined;
+  const url = new URL(req.url);
+  const period = url.searchParams.get('period') ?? undefined;
+  const history = url.searchParams.get('history') !== 'exclude';
   let hq;
   try {
-    hq = await getHeadquarters(period);
+    hq = await getHeadquarters(period, { history });
   } catch {
     return new NextResponse('Not available.', { status: 403, headers: { 'Cache-Control': 'no-store' } });
   }

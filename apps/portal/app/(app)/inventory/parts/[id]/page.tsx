@@ -1,4 +1,6 @@
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { provenanceOf } from '@/lib/data-exchange/provenance-server';
+import { ProvenanceCard } from '@/components/ProvenanceCard';
 import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import { guardAnyPage, allows } from '@/lib/authz/server';
@@ -77,7 +79,10 @@ export default async function PartDetailPage({
   const canSeeCustomers = await allows('crm.view');
   // Delivery costs and margins are for the Store, Finance, management and Warranty — not the workshop floor.
   const [canSeeCosts, canManage] = await Promise.all([Promise.all(STORE_COST_PERMISSIONS.map((k) => allows(k, { branchId: part.branchId }))).then((xs) => xs.some(Boolean)), allows('store.parts.manage', { branchId: part.branchId })]);
-  const [lastEdit, auditTrail, binOffer] = await Promise.all([getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id), getRecycleBinOffer('Part', id)]);
+  const [lastEdit, auditTrail, binOffer, origin] = await Promise.all([
+    getLastEditInfo('Part', id, 'part.updated'), getPartAuditTrail(id), getRecycleBinOffer('Part', id),
+    provenanceOf({ branchId: part.branchId, createdAt: part.createdAt, createdBy: part.createdBy.fullName, importJobId: part.importJobId, externalSource: part.externalSource, externalId: part.externalId, numberLabel: 'material number' }),
+  ]);
   // Older warranty-change entries stored a policy id — show its name.
   const policyIdsInTrail = auditTrail
     .filter((e: (typeof auditTrail)[number]) => e.action === 'part.warranty_policy_set' && e.metadata && typeof e.metadata === 'object')
@@ -946,6 +951,7 @@ export default async function PartDetailPage({
               </ul>
             )}
           </div>
+          <ProvenanceCard p={origin} />
           <RecycleBinPanel offer={binOffer} entity="Part" id={id} />
         </div>
       </div>

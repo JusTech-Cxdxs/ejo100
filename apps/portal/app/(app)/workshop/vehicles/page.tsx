@@ -1,4 +1,6 @@
 import { FormJumpLink } from '@/components/ui/FormJumpLink';
+import { SOURCE_PARAMS } from '@/lib/source-filter';
+import { SourceFilterBar } from '@/components/SourceFilterBar';
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { guardAnyPage, allows } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -21,15 +23,16 @@ import { CustomerLink } from '@/components/CustomerLink';
 export default async function WorkshopVehiclesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; binned?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; error?: string; binned?: string } & Partial<Record<(typeof SOURCE_PARAMS)[number], string>>>;
 }) {
   await guardAnyPage(['workshop.view'], '/workshop');
-  const { q, type, status, error, binned } = await searchParams;
+  const sp = await searchParams;
+  const { q, type, status, error, binned } = sp;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   const vehicleType = type === 'PASSENGER' || type === 'COMMERCIAL' ? type : undefined;
   // Deleting a vehicle is done from its own page (Danger zone).
-  const vehicles = await listAllVehicles(q, vehicleType);
+  const vehicles = await listAllVehicles(q, vehicleType, sp);
 
   return (
     <div className="p-8">
@@ -66,6 +69,7 @@ export default async function WorkshopVehiclesPage({
           Search
         </button>
       </form>
+      <div className="mb-6"><SourceFilterBar action="/workshop/vehicles" values={sp} keep={{ q, type: vehicleType }} /></div>
 
       <FormJumpLink target="register-vehicle">New vehicle</FormJumpLink>
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">

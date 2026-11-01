@@ -139,7 +139,12 @@ inv.push(['0090009002', '11.10.2024', kunnr(3), '2000.00', '0.00', 'USD', '', 'F
 inv.push(['', '12.10.2024', kunnr(4), '80000.00', '6000.00', 'NGN', '', 'F2', 'No invoice number']);
 inv.push(['0090009003', '31.06.2024', kunnr(5), '80000.00', '6000.00', 'NGN', '', 'F2', 'No such day']);
 inv.push([inv[0]![0]!, inv[0]![1]!, inv[0]![2]!, inv[0]![3]!, inv[0]![4]!, 'NGN', inv[0]![6]!, 'F2', 'Exported twice']);
-writeFileSync(join(OUT, '06_SAP_invoice_history_demo.csv'), toCsv(['VBELN', 'FKDAT', 'KUNAG', 'NETWR', 'MWSBK', 'WAERK', 'VHVIN', 'FKART', 'ARKTX'], inv));
+// SAP numbers documents per company code and fiscal year: the same number comes back in a later year (both load, labelled "· 2025" and "· 2026").
+inv.push(['0090005000', '20.03.2025', kunnr(2), '64000.00', '4800.00', 'NGN', vin(2), 'F2', 'Wheel alignment']);
+inv.push(['0090005000', '18.02.2026', kunnr(2), '71000.00', '5325.00', 'NGN', vin(2), 'F2', 'Service 30,000 km']);
+// Company code 1000 and the fiscal year (here the calendar year) on every line, as a billing extract has them.
+const withRange = inv.map((r) => [...r, '1000', (r[1]!.match(/(\d{4})$/) ?? ['', ''])[1]!]);
+writeFileSync(join(OUT, '06_SAP_invoice_history_demo.csv'), toCsv(['VBELN', 'FKDAT', 'KUNAG', 'NETWR', 'MWSBK', 'WAERK', 'VHVIN', 'FKART', 'ARKTX', 'BUKRS', 'GJAHR'], withRange));
 
 // ── The plant's registers (Excel, as kept on the line today) ────────────
 // PDI register: one workbook, no "register" column (chosen when importing). Two steps per vehicle.

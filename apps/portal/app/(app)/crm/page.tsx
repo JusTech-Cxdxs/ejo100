@@ -1,4 +1,7 @@
 import Link from 'next/link';
+import { HistoryToggle } from '@/components/HistoryToggle';
+import { SOURCE_PARAMS } from '@/lib/source-filter';
+import { SourceFilterBar } from '@/components/SourceFilterBar';
 import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { getCrmHub, type CrmHubParams } from '@/lib/actions/crm';
 import { allows, guardPage } from '@/lib/authz/server';
@@ -30,11 +33,11 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const [hub, canBroadcast] = await Promise.all([getCrmHub(sp), allows('notifications.broadcast.send')]);
   const k = hub.kpis;
-  const filtered = Boolean(sp.q || sp.type || sp.tag || sp.status || sp.open || sp.portal || sp.gaps);
+  const filtered = Boolean(sp.q || sp.type || sp.tag || sp.status || sp.open || sp.portal || sp.gaps || SOURCE_PARAMS.some((k) => sp[k]));
   const notice: Notice | null = sp.error ? { kind: 'error', title: 'That didn’t work', text: sp.error } : sp.status ? NOTICES[sp.status] ?? null : null;
   const qs = (patch: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    for (const key of ['q', 'type', 'tag', 'status', 'open', 'portal', 'gaps', 'sort', 'page'] as const) { const v = key in patch ? patch[key] : sp[key]; if (v && !(key === 'status' && !['active', 'off'].includes(v))) p.set(key, v); }
+    for (const key of ['q', 'type', 'tag', 'status', 'open', 'portal', 'gaps', 'sort', 'page', 'history', ...SOURCE_PARAMS] as const) { const v = key in patch ? patch[key] : sp[key]; if (v && !(key === 'status' && !['active', 'off'].includes(v))) p.set(key, v); }
     const s = p.toString();
     return `/crm${s ? `?${s}` : ''}`;
   };
@@ -136,6 +139,8 @@ export default async function CrmHubPage({ searchParams }: { searchParams: Promi
               {filtered ? <Link href="/crm" className="px-1 py-2 text-sm text-[var(--ejo-text-muted)] hover:text-[var(--ejo-text)]">Clear</Link> : null}
             </div>
           </form>
+          <div className="flex flex-wrap items-center justify-between gap-2"><span className="text-xs text-[var(--ejo-text-muted)]">Spend, visits and top spenders</span><HistoryToggle path="/crm" params={{ q: sp.q, type: sp.type, tag: sp.tag, open: sp.open, portal: sp.portal, gaps: sp.gaps, sort: sp.sort, ...Object.fromEntries(SOURCE_PARAMS.map((k) => [k, sp[k]])) }} include={sp.history !== 'exclude'} /></div>
+          <SourceFilterBar action="/crm" original="Customer since" values={sp} keep={{ history: sp.history, q: sp.q, type: sp.type, tag: sp.tag, status: sp.status && ['active', 'off'].includes(sp.status) ? sp.status : undefined, open: sp.open, portal: sp.portal, gaps: sp.gaps, sort: sp.sort }} />
 
           <p className="text-sm text-[var(--ejo-text-muted)]">{hub.matching} {hub.matching === 1 ? 'customer' : 'customers'}{filtered ? ' match' : ''}{hub.pages > 1 ? ` · page ${hub.page} of ${hub.pages}` : ''}</p>
 

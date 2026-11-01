@@ -180,6 +180,27 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    *Rejected rows (to fix in Excel)* still download, and **Undo** still
    works. The import can no longer be reopened from the released file.
 
+## 7. Find anything by its SAP number, and see where it came from
+
+1. In the search box at the top, type an SAP customer number from section 1,
+   with SAP's zeros: **0001000103**. The result reads *SAP customer 1000103*
+   with the customer's name.
+2. Type **0090005000**: two invoices, *SAP invoice 90005000 · 2025* and
+   *· 2026* — SAP reused the number in a new fiscal year (company code 1000),
+   and both are kept. Type **90005000 2026**: only that year's.
+3. Open the customer: **Where this came from** says *Imported from SAP*, the
+   import (**IMP-…**, which opens it), the SAP customer number and *Customer
+   since*. A part from section 4 and a vehicle from section 2 have the same
+   box.
+4. **Customers** → *Where it came from, and when* → Source *Imported from
+   SAP*, *Customer since* to 31/12/2018 → only long-standing SAP customers.
+   Add the import number to narrow to one file. Vehicles, Parts and
+   Suppliers have the same filter.
+5. **Data Exchange → Day by day**: today shows every import started, loaded,
+   confirmed and released; a day opens its list.
+6. **Headquarters** and **Analytics**: switch between *With SAP history* and
+   *EJO only*; the CRM list has the same switch for spend and top spenders.
+
 ---
 
 *Coming in the next releases (each adds a section here):* export from every
