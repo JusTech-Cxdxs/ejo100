@@ -340,7 +340,7 @@ far smaller (one line per part held, one per vendor).
 their indexes); the staged rows of that import take **513 MB**. Plan for
 about **1.3 KB per material** in total while the import is kept. The free
 development tier of Supabase (500 MB) is therefore too small for a full
-material master; the demo keeps **50,000** parts (`docs/demo/03_SAP_parts_50k.csv`),
+material master; the demo keeps **50,000** parts (`docs/demo/correct/03_SAP_parts_50k.csv`),
 which fits comfortably. On the organisation's paid plan this is routine.
 
 ### What keeps it fast at any size

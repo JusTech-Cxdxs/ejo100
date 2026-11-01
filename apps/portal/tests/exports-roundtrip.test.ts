@@ -166,9 +166,8 @@ test('an export’s CSV with notes that hold separators still reads with commas'
 
 // ── The demo files match themselves ─────────────────────────────────────
 
-test('docs/demo: every column of every SAP demo file is recognised, nothing required is missing', () => {
-  const demo = join(ROOT, '..', '..', 'docs', 'demo');
-  for (const [file, entity] of [['01_SAP_customers_demo.csv', 'customers'], ['03a_SAP_parts_200.csv', 'parts'], ['04_SAP_opening_stock_demo.csv', 'stock'], ['05_SAP_suppliers_demo.csv', 'suppliers'], ['06_SAP_invoice_history_demo.csv', 'invoices'], ['08_production_QC_register_demo.csv', 'registers']] as [string, EntityKey][]) {
+test('docs/demo: every column of every SAP demo file is recognised, nothing required is missing (both folders)', () => {
+  for (const demo of [join(ROOT, '..', '..', 'docs', 'demo', 'correct'), join(ROOT, '..', '..', 'docs', 'demo', 'with-mistakes')]) for (const [file, entity] of [['01_SAP_customers_demo.csv', 'customers'], ['03a_SAP_parts_200.csv', 'parts'], ['04_SAP_opening_stock_demo.csv', 'stock'], ['05_SAP_suppliers_demo.csv', 'suppliers'], ['06_SAP_invoice_history_demo.csv', 'invoices'], ['08_production_QC_register_demo.csv', 'registers']] as [string, EntityKey][]) {
     const [h] = parseCsv(readFileSync(join(demo, file), 'utf8'));
     const m = autoMap(entity, h!);
     const used = new Set(Object.values(m).filter((v) => v !== null));
@@ -177,8 +176,8 @@ test('docs/demo: every column of every SAP demo file is recognised, nothing requ
   }
 });
 
-test('docs/demo tells one consistent story (only the planted mistakes break it)', async () => {
-  const demo = join(ROOT, '..', '..', 'docs', 'demo');
+test('docs/demo/correct tells one consistent story', async () => {
+  const demo = join(ROOT, '..', '..', 'docs', 'demo', 'correct');
   const csvOf = (f: string) => { const [h, ...rows] = parseCsv(readFileSync(join(demo, f), 'utf8')); return rows.filter((r) => !isBlankRow(r)).map((r) => Object.fromEntries(h!.map((k, i) => [k, r[i] ?? '']))); };
   const xlsxOf = async (f: string) => { const b = new Uint8Array(readFileSync(join(demo, f))); const rows: string[][] = []; await readXlsx(() => (async function* () { yield b; })(), (r) => { rows.push(...r); }); const [h, ...rest] = rows; return rest.map((r) => Object.fromEntries(h!.map((k, i) => [k, r[i] ?? '']))); };
   const sapDay = (s: string) => { const m = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(s); if (!m) return null; const d = `${m[3]}-${m[2]}-${m[1]}`; return new Date(`${d}T00:00:00Z`).toISOString().startsWith(d) ? d : null; };

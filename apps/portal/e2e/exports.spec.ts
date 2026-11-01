@@ -99,7 +99,7 @@ test('Customers → CSV with SAP field names: line 1 is the header (KUNNR, NAME1
   const { id, file, name } = await exportFromButton(page, 'CSV, SAP field names');
   expect(name).toMatch(/^EJO-customers-\d{4}-\d{2}-\d{2}-EXP-\d{4}-\d{6}-SAP\.csv$/);
   const lines = csvRows(file.toString('utf8'));
-  expect(lines[0]).toMatch(/^"KUNNR","NAME1","KTOKD","SMTP_ADDR","TELF1"/);
+  expect(lines[0]).toMatch(/^"KUNNR","NAME1","KTOKD","TELF1","TELF2","SMTP_ADDR"/);
   expect(lines.some((l) => l.startsWith('"#'))).toBe(false);
   // A customer created in EJO has no SAP number yet: KUNNR is empty, for SAP's team to create it.
   const ours = lines.find((l) => l.includes(CUSTOMER))!;
