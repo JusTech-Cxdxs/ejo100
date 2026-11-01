@@ -1,13 +1,13 @@
 # Data migration — bringing existing records into EJO 100
 
-How an organisation's existing data (years of customers, vehicles and, from
-phase A2, parts and opening stock) comes into EJO 100 from SAP and from
-spreadsheets, **without retyping and without risk to the live records**.
+How an organisation's existing data — years of customers and vehicles, the
+suppliers, the parts catalogue (SAP material master) and the stock each
+branch holds — comes into EJO 100 from SAP and from spreadsheets, **without
+retyping and without risk to the live records**.
 
-> Status: **A1** (this document's first version). Customers and vehicles.
-> Coming next: A2 parts master (800,000 lines), opening stock, suppliers;
-> A3 open job cards, service history, warranties, price lists; A4 export from
-> every list and the measured performance run.
+> Status: **A2.** Customers, vehicles (A1); suppliers, parts, opening stock
+> (A2). Coming next: SAP history (customer-since dates, invoice history,
+> production / QC / PDI registers); A4 export from every list.
 
 ## 1. The principle
 
@@ -36,15 +36,21 @@ deleted at once if the import is cancelled.
 
 | Role | Prepare (upload, match, check, send for approval) | Approve, load, send back, undo |
 | --- | --- | --- |
-| Administrator (headquarters) | Yes | Yes (never their own) |
+| Administrator (headquarters) | Yes | Yes, everything (never their own) |
 | Group IT administrator | Yes | — (the business approves what goes in) |
 | Branch administrator | Yes | — |
-| Workshop manager | — | Yes |
-| Customer care lead | — | Yes |
-| Everyone else (front desk, technicians, finance, store, security…) | — | — |
+| Workshop manager | — | Customers and vehicles of their branch |
+| Customer care lead | — | Customers and vehicles |
+| Store manager | — | Suppliers, parts and opening stock of their branch |
+| Finance officer | — | — · **confirms the value** of loaded opening stock |
+| Everyone else (front desk, technicians, security…) | — | — |
 
-Approving also needs the right to manage customers, so only the people who
-own customer records approve them.
+Each kind of record is approved by the **department that owns it**: approving
+customers also needs the right to manage customers; approving suppliers,
+parts and stock needs the right to manage the Store's parts. Opening stock
+has a second signature: after it loads, someone in **Finance** (not the
+person who prepared or approved it) confirms the value. Finance opens
+opening-stock imports only — never a customers file.
 
 ## 3. Customers
 
@@ -108,7 +114,83 @@ VINs and plates are unique on the platform: one registered for another
 organisation is rejected. A VIN that is not the standard 17 characters is
 kept as written, with a note.
 
-## 5. File rules
+## 5. Suppliers
+
+The organisation's supplier list (SAP vendors), shared by every branch, at
+**Store → Suppliers**. Goods receipts link to a supplier when the name
+typed matches one, and the receipt form suggests suppliers as you type.
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Supplier number | — | LIFNR, vendor number, creditor |
+| Name (+ second line) | **Yes** | NAME1 (+ NAME2), supplier name |
+| Contact, phone, email | — | contact person / TELF1 / SMTP_ADDR |
+| Address, city, tax ID | — | STRAS / ORT01 / STCD1 |
+
+Matched by supplier number, then by name. Undo moves imported suppliers to
+the Recycle bin (refused for any that goods receipts already name).
+
+## 6. Parts (the SAP material master)
+
+Into **one branch's** catalogue, chosen when the import starts.
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Part number | **Yes** | MATNR, material number, part number, item code |
+| Description | **Yes** | MAKTX, material description |
+| Material group / category | — | MATKL, material group |
+| Base unit | — (Piece) | MEINS — SAP codes become words: ST/PC → Piece, EA → Each, L → Litre, KG → Kilogram, CAR → Carton, DR → Drum… |
+| Tracking | — (Quantity) | XCHPF = X → Batch; a serial profile (SERNP) → Serial |
+| Barcode, selling price | — | EAN11 / price |
+| Reorder point, safety stock | — | MINBE / EISBE |
+| Alternative unit + base units in it | — | MEINH + UMREZ (e.g. Drum = 208 Litre) |
+| Number in SAP, if different | — | BISMT (old material number). From SAP and empty: the part number. |
+
+Matched by SAP number, then part number (any case). New parts are added with
+their alternative unit; an existing part is left as it is, or gets only its
+empty fields filled — never its stock, unit or tracking. Undo moves imported
+parts to the Recycle bin (refused for any that have stock, receipts or
+issues — reverse an opening-stock import first).
+
+**Large catalogues stay fast:** the Parts list is paged (50 a page, with the
+total), the goods-receipt form searches parts as you type instead of loading
+the catalogue, and the stock tools ask the database for the low parts only.
+
+## 7. Opening stock
+
+What each part of one branch held **at the cut-over**, with its cost — from
+the SAP stock and valuation report (MB52 / MC.9 / the material valuation).
+
+| Field | Required | Recognised column names (examples) |
+| --- | --- | --- |
+| Part number | **Yes** | MATNR — the part must already be in the branch's catalogue |
+| Quantity on hand | **Yes** | LABST (unrestricted stock) |
+| Unit | — (base unit) | MEINS — the base unit or the part's alternative unit |
+| Stock value | **This or the unit cost** | SALK3 |
+| Unit cost (+ price unit) | **This or the stock value** | VERPR / STPRS (+ PEINH: a price per 100 has 100) |
+| Batch | for batch parts | CHARG |
+| Serial numbers | for serial parts | SERNR, separated by commas or semicolons |
+| Storage location | — | LGORT (kept on the receipt's notes; the same batch in two locations is added together) |
+
+- **Before approval**, the check shows the lines, units and **total value**
+  that will load, to compare with the SAP report for the same plant and date.
+- Loaded as **opening-balance goods receipts** (one per batch of lines),
+  numbered like any receipt (GRN-…), dated at the **cut-over date** chosen at
+  upload, supplier *Opening balance — SAP (IMP-…)*. So **stock on hand, FIFO
+  cost layers, stock value and the inventory analytics** count it exactly
+  like a delivery; ageing starts from the cut-over date.
+- Only for parts with **no stock history** yet (no deliveries, stock on hand
+  or issues); otherwise the line is rejected — record a goods receipt instead.
+  Negative stock, a zero quantity, no cost, a batch part without its batch,
+  serial numbers that do not match the quantity or already exist: rejected.
+- After loading, the report shows the value now on the shelves and whether it
+  **matches the checked file exactly**; **Finance confirms** it.
+- **Reversal** takes the stock back off the shelves and removes the
+  opening-balance receipts — refused once anything has been issued or
+  reserved from them. The file stays in the import: **Reopen** checks it again
+  and it needs a fresh approval to load.
+
+## 8. File rules
 
 - **CSV** (comma, semicolon, tab or pipe — worked out from the first line;
   UTF-8 or Windows-1252) or **Excel .xlsx** (first sheet).
@@ -124,26 +206,77 @@ kept as written, with a note.
   neutralises spreadsheet formulas, so nothing typed into the system can run
   as a formula when opened in Excel.
 
-## 6. Size and the database
+## 9. Size, speed and the database
 
 The staging area lives in the organisation's own Postgres database (no new
-services). A row of a typical customers file takes roughly 0.5–1 KB staged.
-For the largest loads (the 800,000-line parts master in A2) the organisation's
-database plan must allow for the staged rows plus the records themselves; the
-free development tier (500 MB) does not. The A4 performance run will record
-measured timings and sizes here.
+services). Every figure below was **measured**, not estimated.
 
-## 7. For the database administrator
+### The 800,000-material speed run (A2)
+
+A full SAP material master — 800,000 materials, 69 MB of CSV with the SAP
+field names (MATNR, MAKTX, MATKL, MEINS, XCHPF, EAN11, VKP, MINBE, EISBE,
+MEINH, UMREZ) — taken through the real screens in a browser: upload, column
+matching, check, a second person's approval, load, then a catalogue search.
+Run with `e2e/perf-parts.spec.ts` (`PERF_FILE=…`; not part of CI) on
+31 October 2026, against Postgres 16 on a 2-processor, 8 GB machine with the
+browser on the same machine.
+
+| Step | Time | Rate |
+| --- | --- | --- |
+| Upload (read in the browser, sent in blocks) | 1 min 56 s | ≈ 6,900 rows a second |
+| Check (nothing live changes) | 1 min 6 s | ≈ 12,000 rows a second |
+| Load, after approval | 5 min 48 s | ≈ 2,300 rows a second |
+| **Total, file to catalogue** | **≈ 9 minutes** | |
+| Parts Catalog search ("Brake pad") among 800,000 parts | 3 s, page included | paged, 50 a page |
+
+All 800,000 materials were created: none rejected, none duplicated, and
+`created = rows − rejected − duplicates` was asserted at the end. The
+**Opening stock** and **Suppliers** files use the same engine; their size is
+far smaller (one line per part held, one per vendor).
+
+**Database space** after the run: the 800,000 parts take **475 MB** (with
+their indexes); the staged rows of that import take **513 MB**. Plan for
+about **1.3 KB per material** in total while the import is kept. The free
+development tier of Supabase (500 MB) is therefore too small for a full
+material master; the demo keeps **50,000** parts (`docs/demo/03_SAP_parts_50k.csv`),
+which fits comfortably. On the organisation's paid plan this is routine.
+
+### What keeps it fast at any size
+
+- **Steady, few requests.** Each check, load or undo request works in blocks
+  for about 2.5 seconds, then answers with its progress: about 25 requests a
+  minute whatever the server's speed — well inside the portal's flood limit
+  of 120 submissions a minute per person (`middleware.ts`). Uploads send at
+  most one block every 0.6 s. (The first speed run found this limit: a check
+  quicker than two requests a second was being refused. A test now pins the
+  pacing to the limit.)
+- **A row cursor.** Each block reads on from the last row number through the
+  (import, row number) index, so block 800 is as quick as block 1.
+- **Interruptions are harmless.** A request that fails or does not answer
+  within two minutes is tried again (five times, about a minute in all, with
+  "reconnecting…" on the bar), then the page offers *Carry on*. Every step is
+  repeatable: a row is never checked or loaded twice. Closing the page and
+  opening it again carries on where it was.
+- **Lookups by index only.** Matching against existing parts, customers and
+  vehicles uses the indexed number as written and in capitals — never a scan
+  that changes every row's case.
+- **The Store's screens are paged.** Parts Catalog (50 a page, searched on
+  the server), the goods-receipt part picker (25 matches as you type) and the
+  low-stock list (bounded) do not grow with the catalogue.
+
+## 10. For the database administrator
 
 | Change | Script |
 | --- | --- |
 | A0 — customer email optional; SAP numbers on customers, vehicles, parts | `scripts/predeploy/0003-external-keys.sql` (deploy) · `scripts/v-a0-optional-email-sap-keys.sql` (manual, Supabase SQL editor) |
 | A1 — import tables; "made by this import" on customers and vehicles | `scripts/predeploy/0004-data-exchange.sql` (deploy) · `scripts/v-a1-data-exchange.sql` (manual) |
+| A2 — suppliers; opening-balance receipts; parts made by an import; Finance sign-off | `scripts/predeploy/0005-parts-stock-suppliers.sql` (deploy) · `scripts/v-a2-parts-stock-suppliers.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
-twice on Postgres 16 against the previous structure. Run A0 before A1.
+twice on Postgres 16 against the previous structure and compared with a
+fresh schema. Run them in order (A0, A1, A2).
 
-## 8. Open questions for the organisation (not guessed in code)
+## 11. Open questions for the organisation (not guessed in code)
 
 1. Which SAP extracts will be supplied (customer master, material master,
    stock), from which SAP release, and with which field names.

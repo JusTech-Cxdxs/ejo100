@@ -3,7 +3,7 @@ import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
 import { allows, guardAnyPage } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
-import { listParts, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
+import { listPartsPage, getStoreBranchId, listAllPartTypesForSelect, searchPartTypesForSelect } from '@/lib/actions/store';
 import { durationLabel, durationShort } from '@/lib/warranty-state';
 import { StockLevelDot, stockLevel } from '@/components/StockLevelDot';
 import { PartWarrantyChoice } from '@/components/PartWarrantyChoice';
@@ -34,12 +34,14 @@ const TRACKING_TYPE_LABEL: Record<string, string> = {
 export default async function InventoryPartsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string }>;
+  searchParams: Promise<{ error?: string; status?: string; q?: string; binned?: string; page?: string }>;
 }) {
   await guardAnyPage(['store.view'], '/inventory');
-  const { error, status, q, binned } = await searchParams;
+  const { error, status, q, binned, page } = await searchParams;
   const branchId = await getStoreBranchId();
-  const [parts, partPolicies, canManage] = await Promise.all([listParts(branchId, q), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
+  const [paged, partPolicies, canManage] = await Promise.all([listPartsPage(branchId, q, Number(page) || 1), listWarrantyPolicies('PART', { state: 'active' }), allows('store.parts.manage', { branchId })]);
+  const parts = paged.parts;
+  const pageHref = (n: number) => `/inventory/parts?${new URLSearchParams({ ...(q ? { q } : {}), page: String(n) }).toString()}`;
 
   return (
     <div className="p-8">
@@ -149,6 +151,18 @@ export default async function InventoryPartsPage({
               </table>
             </ResponsiveTable>
           )}
+          {paged.total > 0 ? (
+            <nav aria-label="Pages" className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-[var(--ejo-text-muted)]">
+              <span>Showing {((paged.page - 1) * 50 + 1).toLocaleString('en-NG')}–{Math.min(paged.page * 50, paged.total).toLocaleString('en-NG')} of {paged.total.toLocaleString('en-NG')} parts{q ? ` matching “${q}”` : ''}</span>
+              {paged.pages > 1 ? (
+                <span className="flex items-center gap-2">
+                  {paged.page > 1 ? <LoadingLink href={pageHref(paged.page - 1)} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Previous</LoadingLink> : null}
+                  <span>Page {paged.page.toLocaleString('en-NG')} of {paged.pages.toLocaleString('en-NG')}</span>
+                  {paged.page < paged.pages ? <LoadingLink href={pageHref(paged.page + 1)} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]">Next</LoadingLink> : null}
+                </span>
+              ) : null}
+            </nav>
+          ) : null}
         </div>
 
         {canManage ? (

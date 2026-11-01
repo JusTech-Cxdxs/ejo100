@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock';
 
 export type FieldDef = {
   key: string;
@@ -33,8 +33,12 @@ export type EntityDef = {
   noun: string;
   plural: string;
   description: string;
-  /** Who may run and approve it (on top of the Data Exchange permissions). */
-  needs: 'crm.manage';
+  /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
+  needs: 'crm.manage' | 'store.parts.manage';
+  /** Loads into one branch (its catalogue / stock), chosen when the import starts. */
+  branch?: boolean;
+  /** Who approves, in words. */
+  approver: string;
   /** In this order, a row is matched to an existing record. */
   matchOrder: string[];
   /** Load this before (e.g. customers before their vehicles). */
@@ -50,6 +54,7 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
     plural: 'customers',
     description: 'People and organisations you serve: names, phone numbers, emails, addresses, SAP customer numbers.',
     needs: 'crm.manage',
+    approver: 'a Workshop manager, the Customer care lead or an administrator',
     matchOrder: ['SAP / old system number', 'email', 'phone'],
     fields: [
       { key: 'externalId', label: 'Customer number (SAP or old system)', help: 'The customer number in SAP (business partner / KUNNR) or your old system. Used to recognise the customer again in later files.', aliases: ['KUNNR', 'PARTNER', 'BU_PARTNER', 'customer number', 'customer no', 'customer id', 'customer code', 'account number', 'account no', 'debtor', 'debtor number', 'bp number', 'business partner'], example: '1000123' },
@@ -74,6 +79,7 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
     plural: 'vehicles',
     description: 'Customers’ vehicles: chassis number (VIN), plate, engine number, make, model, year, mileage — each linked to its customer.',
     needs: 'crm.manage',
+    approver: 'a Workshop manager, the Customer care lead or an administrator',
     matchOrder: ['SAP / old system number', 'chassis number (VIN)', 'plate'],
     after: 'customers',
     fields: [
@@ -92,9 +98,91 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'mileage', label: 'Mileage (km)', help: 'Last known odometer reading in kilometres.', aliases: ['mileage', 'odometer', 'km', 'kilometres', 'kilometers', 'odometer reading', 'last mileage'], example: '45200' },
     ],
   },
+  suppliers: {
+    key: 'suppliers',
+    label: 'Suppliers',
+    noun: 'supplier',
+    plural: 'suppliers',
+    description: 'The organisation’s suppliers (SAP vendors): names, vendor numbers, contacts. Shared by every branch; goods receipts link to them.',
+    needs: 'store.parts.manage',
+    approver: 'a Store manager or an administrator',
+    matchOrder: ['SAP / old system number', 'name'],
+    fields: [
+      { key: 'externalId', label: 'Supplier number (SAP or old system)', help: 'The vendor number in SAP (LIFNR) or your old system.', aliases: ['LIFNR', 'vendor', 'vendor number', 'vendor no', 'supplier number', 'supplier no', 'supplier code', 'creditor', 'creditor number'], example: '0000300045' },
+      { key: 'name', label: 'Name', help: 'The supplier’s name.', aliases: ['NAME1', 'name', 'supplier', 'supplier name', 'vendor name', 'company'], example: 'Isuzu Motors Africa', required: true },
+      { key: 'name2', label: 'Name, second line', help: 'Optional: added after the name (SAP NAME2).', aliases: ['NAME2', 'name 2'], example: '' },
+      { key: 'contactName', label: 'Contact person', help: 'Optional.', aliases: ['contact', 'contact person', 'contact name', 'attention'], example: 'Sales desk' },
+      { key: 'phone', label: 'Phone', help: 'Optional.', aliases: ['TELF1', 'phone', 'telephone', 'tel', 'mobile'], example: '+27 41 403 9111' },
+      { key: 'email', label: 'Email', help: 'Optional.', aliases: ['SMTP_ADDR', 'email', 'e-mail'], example: 'orders@example.com' },
+      { key: 'address', label: 'Address', help: 'Optional, one line.', aliases: ['STRAS', 'address', 'street'], example: 'Struandale, Port Elizabeth' },
+      { key: 'city', label: 'City', help: 'Optional.', aliases: ['ORT01', 'city', 'town'], example: '' },
+      { key: 'taxId', label: 'Tax ID', help: 'Optional (TIN / VAT number).', aliases: ['STCD1', 'STCEG', 'tin', 'tax id', 'vat'], example: '' },
+    ],
+  },
+  parts: {
+    key: 'parts',
+    label: 'Parts',
+    noun: 'part',
+    plural: 'parts',
+    description: 'The parts catalogue (SAP material master): part numbers, descriptions, units, material groups, tracking, prices, reorder levels — into one branch’s Store.',
+    needs: 'store.parts.manage',
+    approver: 'a Store manager or an administrator',
+    branch: true,
+    matchOrder: ['SAP / old system number', 'part number'],
+    fields: [
+      { key: 'partNumber', label: 'Part number', help: 'The part (material) number — SAP MATNR. Unique in the branch.', aliases: ['MATNR', 'material', 'material number', 'part number', 'part no', 'part code', 'item code', 'item number', 'sku', 'article number'], example: '8-98123456-0', required: true },
+      { key: 'name', label: 'Description', help: 'What the part is called — SAP MAKTX.', aliases: ['MAKTX', 'material description', 'description', 'part name', 'name', 'item description', 'short text'], example: 'Brake pad set, front (NQR)', required: true },
+      { key: 'category', label: 'Material group / category', help: 'Optional: the SAP material group (MATKL) or your own category.', aliases: ['MATKL', 'material group', 'category', 'product group', 'group'], example: 'BRAKES' },
+      { key: 'baseUnit', label: 'Base unit', help: 'The unit stock is counted in — SAP MEINS (ST, EA, PC, L, KG…). Empty: Piece.', aliases: ['MEINS', 'base unit', 'unit', 'uom', 'unit of measure', 'bun'], example: 'ST' },
+      { key: 'trackingType', label: 'Tracking', help: 'Quantity, Batch or Serial. SAP batch-managed (XCHPF = X) becomes Batch. Empty: Quantity.', aliases: ['tracking', 'tracking type', 'XCHPF', 'batch managed', 'SERNP', 'serial profile'], example: 'Quantity', choices: ['Quantity', 'Batch', 'Serial'] },
+      { key: 'barcode', label: 'Barcode', help: 'Optional — SAP EAN11.', aliases: ['EAN11', 'barcode', 'ean', 'gtin', 'upc'], example: '' },
+      { key: 'sellingPrice', label: 'Selling price (₦)', help: 'Optional: the price per base unit.', aliases: ['selling price', 'price', 'list price', 'sales price', 'retail price', 'KBETR', 'VKP'], example: '45000' },
+      { key: 'reorderPoint', label: 'Reorder point', help: 'Optional — SAP MINBE.', aliases: ['MINBE', 'reorder point', 'reorder level', 'min stock', 'minimum stock'], example: '4' },
+      { key: 'safetyStock', label: 'Safety stock', help: 'Optional — SAP EISBE.', aliases: ['EISBE', 'safety stock', 'buffer stock'], example: '2' },
+      { key: 'altUnit', label: 'Alternative unit', help: 'Optional: a unit it also comes in (SAP MEINH), e.g. Carton, Drum.', aliases: ['MEINH', 'alternative unit', 'alt unit', 'pack unit', 'purchase unit'], example: '' },
+      { key: 'altFactor', label: 'Base units in the alternative unit', help: 'How many base units one alternative unit holds (SAP UMREZ), e.g. 12.', aliases: ['UMREZ', 'conversion', 'conversion factor', 'pack size', 'units per pack'], example: '' },
+      { key: 'externalId', label: 'Number in SAP or the old system', help: 'Optional, when it differs from the part number (e.g. the old material number BISMT). From SAP and left empty: the part number.', aliases: ['BISMT', 'old material number', 'old part number', 'legacy number'], example: '' },
+    ],
+  },
+  stock: {
+    key: 'stock',
+    label: 'Opening stock',
+    noun: 'stock line',
+    plural: 'stock lines',
+    description: 'What each part of one branch’s Store holds at the cut-over, with its cost (SAP stock and valuation). Loaded as opening-balance goods receipts, so stock value, FIFO costs and the inventory analytics include it.',
+    needs: 'store.parts.manage',
+    approver: 'a Store manager or an administrator, then Finance confirms the totals',
+    branch: true,
+    matchOrder: ['part number'],
+    after: 'parts',
+    fields: [
+      { key: 'partNumber', label: 'Part number', help: 'The part (material) number — SAP MATNR. The part must be in the branch’s catalogue already.', aliases: ['MATNR', 'material', 'material number', 'part number', 'part no', 'item code', 'sku'], example: '8-98123456-0', required: true },
+      { key: 'quantity', label: 'Quantity on hand', help: 'Unrestricted stock — SAP LABST — in the unit below.', aliases: ['LABST', 'unrestricted', 'unrestricted stock', 'quantity', 'qty', 'on hand', 'stock', 'quantity on hand', 'closing stock'], example: '12', required: true },
+      { key: 'unit', label: 'Unit', help: 'Optional: the unit of the quantity (SAP MEINS). Empty: the part’s base unit.', aliases: ['MEINS', 'unit', 'uom', 'bun'], example: 'ST' },
+      { key: 'totalValue', label: 'Stock value (₦)', help: 'The value of this stock — SAP SALK3. Give this or the unit cost.', aliases: ['SALK3', 'stock value', 'total value', 'value', 'valuation', 'amount'], example: '540000' },
+      { key: 'unitCost', label: 'Unit cost (₦)', help: 'The cost of one unit — SAP moving average price VERPR (or standard price STPRS). Used when no stock value is given.', aliases: ['VERPR', 'STPRS', 'unit cost', 'cost price', 'cost', 'moving average price', 'standard price', 'price'], example: '45000' },
+      { key: 'priceUnit', label: 'Price unit', help: 'SAP PEINH: the number of units the unit cost is for (a cost per 100 has 100 here). Empty: 1.', aliases: ['PEINH', 'price unit', 'per'], example: '' },
+      { key: 'batch', label: 'Batch', help: 'SAP CHARG. Needed for batch-tracked parts.', aliases: ['CHARG', 'batch', 'batch number', 'lot', 'lot number'], example: '' },
+      { key: 'serials', label: 'Serial numbers', help: 'For serial-tracked parts: one per unit, separated by commas or semicolons.', aliases: ['SERNR', 'serial', 'serials', 'serial numbers', 'serial number'], example: '' },
+      { key: 'storageLocation', label: 'Storage location', help: 'Optional — SAP LGORT. Kept on the receipt’s notes.', aliases: ['LGORT', 'storage location', 'sloc', 'location', 'bin'], example: '0001' },
+    ],
+  },
 };
 
 export const ENTITY_KEYS = Object.keys(ENTITIES) as EntityKey[];
+
+/** SAP's unit codes (ISO and German) → the words the Store uses. Anything else is kept as written. */
+const SAP_UNITS: Record<string, string> = {
+  ST: 'Piece', PC: 'Piece', PCE: 'Piece', EA: 'Each', EACH: 'Each', PCS: 'Piece', NOS: 'Piece', NO: 'Piece',
+  L: 'Litre', LTR: 'Litre', LT: 'Litre', ML: 'Millilitre', KG: 'Kilogram', G: 'Gram', M: 'Metre', MTR: 'Metre', CM: 'Centimetre', MM: 'Millimetre',
+  SET: 'Set', ST2: 'Set', PAA: 'Pair', PR: 'Pair', PAIR: 'Pair', CAR: 'Carton', CTN: 'Carton', CT: 'Carton', BOX: 'Box', BX: 'Box', DR: 'Drum', DRM: 'Drum',
+  KIT: 'Kit', ROL: 'Roll', RL: 'Roll', PAK: 'Pack', PAC: 'Pack', PK: 'Pack', CAN: 'Can', BOT: 'Bottle', BT: 'Bottle', TUB: 'Tube', GAL: 'Gallon',
+};
+export function unitWord(raw: string): string {
+  const v = String(raw ?? '').trim();
+  if (!v) return '';
+  return SAP_UNITS[v.toUpperCase()] ?? v.replace(/^./, (c) => c.toUpperCase());
+}
 
 export function isEntityKey(x: unknown): x is EntityKey {
   return typeof x === 'string' && x in ENTITIES;
@@ -166,6 +254,7 @@ export function cleanMapping(entity: EntityKey, raw: unknown, columnCount: numbe
 export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   const out: string[] = [];
   for (const f of ENTITIES[entity].fields) if (f.required && mapping[f.key] == null) out.push(`Choose the column for “${f.label}”.`);
+  if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
   if (entity === 'vehicles') {
     if (mapping.customerExternalId == null && mapping.customerEmail == null && mapping.customerPhone == null) out.push('Choose how to find each vehicle’s customer: their customer number, email or phone.');
     if (mapping.chassisNumber == null && mapping.plateNumber == null) out.push('Choose the column for the chassis number (VIN) or the plate.');

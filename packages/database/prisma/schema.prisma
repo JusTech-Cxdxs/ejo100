@@ -122,6 +122,7 @@ model Organisation {
   broadcasts Broadcast[]
   importJobs ImportJob[]
   importMappingProfiles ImportMappingProfile[]
+  suppliers  Supplier[]
 }
 
 model BusinessUnit {
@@ -438,6 +439,7 @@ model User {
   importJobsCreated  ImportJob[] @relation("ImportJobCreatedBy")
   importJobsApproved ImportJob[] @relation("ImportJobApprovedBy")
   importMappingProfilesCreated ImportMappingProfile[] @relation("ImportMappingProfileCreatedBy")
+  suppliersCreated  Supplier[] @relation("SupplierCreatedBy")
 }
 
 // One-to-one HR extension of User, keeping the identity table small.
@@ -1723,6 +1725,8 @@ model Part {
   // externalId the material number (MATNR). Unique per branch and source.
   externalSource String?
   externalId     String?
+  // The import that created this part (Data Exchange, v-A2): Undo moves exactly these to the Recycle bin.
+  importJobId    String?
   createdById  String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -1748,6 +1752,7 @@ model Part {
 
   @@unique([branchId, partNumber])
   @@unique([branchId, externalSource, externalId])
+  @@index([importJobId])
   @@map("parts")
 }
 
@@ -1885,16 +1890,26 @@ model GoodsReceipt {
   branchId        String
   referenceNumber String   @unique
   supplierName    String
+  // v-A2: the supplier from the organisation's supplier list, when the name matches one (the name stays as typed).
+  supplierId      String?
   receivedById    String
   receivedAt      DateTime @default(now())
   notes           String?
+  // v-A2: the stock a branch already held when it started with EJO, brought in by an import (Data Exchange):
+  // an opening-balance receipt dated at the cut-over, so FIFO costs, stock value and the inventory analytics
+  // include it like any delivery. importJobId: the import that made it (its reversal removes exactly these).
+  isOpeningBalance Boolean @default(false)
+  importJobId     String?
   createdAt       DateTime @default(now())
 
+  supplier   Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   branch     Branch             @relation(fields: [branchId], references: [id], onDelete: Cascade)
   receivedBy User               @relation("GoodsReceiptReceivedBy", fields: [receivedById], references: [id])
   lines      GoodsReceiptLine[]
 
   @@index([branchId, receivedAt])
+  @@index([importJobId])
+  @@index([supplierId])
   @@map("goods_receipts")
   gateDeliveries GateDelivery[]
 }
@@ -4233,6 +4248,11 @@ model ImportJob {
   skippedRows    Int      @default(0)
   // Totals shown in the reconciliation report (e.g. stock quantity and value).
   totals         Json?
+  // Opening stock (v-A2): the cut-over date the stock was counted at — the date of its opening-balance receipts.
+  asOf           DateTime?
+  // Opening stock (v-A2): Finance confirms the loaded quantity and value (a second sign-off after the Store's approval).
+  signedOffById  String?
+  signedOffAt    DateTime?
   error          String?
   createdById    String
   submittedAt    DateTime?
@@ -4300,4 +4320,34 @@ model ImportMappingProfile {
 
   @@unique([organisationId, entity, name])
   @@map("import_mapping_profiles")
+}
+
+/// v-A2: the organisation's suppliers (SAP vendors), shared by every branch. Goods receipts keep the supplier's
+/// name as typed and link here when it matches; brought in from SAP (LIFNR) or typed in.
+model Supplier {
+  id             String   @id @default(cuid())
+  organisationId String
+  name           String
+  contactName    String?
+  phone          String?
+  email          String?
+  address        String?
+  taxId          String?
+  isActive       Boolean  @default(true)
+  // The supplier's number in another system: externalSource SAP and externalId the vendor number (LIFNR).
+  externalSource String?
+  externalId     String?
+  importJobId    String?
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation Organisation   @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  createdBy    User           @relation("SupplierCreatedBy", fields: [createdById], references: [id])
+  receipts     GoodsReceipt[]
+
+  @@unique([organisationId, externalSource, externalId])
+  @@index([organisationId, name])
+  @@index([importJobId])
+  @@map("suppliers")
 }

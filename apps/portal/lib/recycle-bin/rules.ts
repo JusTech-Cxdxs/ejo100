@@ -8,8 +8,8 @@
  */
 import { pluralize } from '../utils/pluralize';
 
-export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part';
-export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part'];
+export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier';
+export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier'];
 
 /** How each kind is named to people, and the verb prefix of its audit entries. */
 export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: string; icon: string }> = {
@@ -18,6 +18,7 @@ export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: 
   Customer: { noun: 'Customer', plural: 'Customers', audit: 'customer', icon: 'user' },
   CustomerVehicle: { noun: 'Vehicle', plural: 'Vehicles', audit: 'vehicle', icon: 'car' },
   Part: { noun: 'Part', plural: 'Parts', audit: 'part', icon: 'boxes' },
+  Supplier: { noun: 'Supplier', plural: 'Suppliers', audit: 'supplier', icon: 'truck' },
 };
 
 /** The record's own page. */
@@ -28,6 +29,7 @@ export function binHref(entity: BinEntity, id: string): string {
     case 'Customer': return `/crm/customers/${id}`;
     case 'CustomerVehicle': return `/workshop/vehicles/${id}/edit`;
     case 'Part': return `/inventory/parts/${id}`;
+    case 'Supplier': return `/inventory/suppliers?q=${encodeURIComponent(id)}`;
   }
 }
 
@@ -226,6 +228,13 @@ export type PartFacts = {
   stockReserved: number;
 };
 
+/** A supplier goes only while no goods receipt names it (receipts are the Store's record). */
+export function supplierEligibility(f: { receipts: number }): Eligibility {
+  const b: string[] = [];
+  if (f.receipts > 0) b.push(`is on ${some(f.receipts, 'goods receipt')}`);
+  return verdict('supplier', b, 'Switch it off (inactive) instead.');
+}
+
 export function partEligibility(f: PartFacts): Eligibility {
   const b: string[] = [];
   if (f.goodsReceiptLines > 0 || f.batches > 0 || f.serials > 0) b.push('has been received into stock');
@@ -277,6 +286,7 @@ export const SNAPSHOT_ORDER: Record<BinEntity, string[]> = {
   Customer: ['customer', 'customerCompany', 'customerAddress', 'customerContact', 'customerNote', 'customerNotificationRead', 'customerVehicle', 'serviceReminderLog'],
   CustomerVehicle: ['customerVehicle', 'serviceReminderLog'],
   Part: ['part', 'partUnitOfMeasure', 'partStock', 'partFitment'],
+  Supplier: ['supplier'],
 };
 
 export type SnapshotRow = { model: string; data: Record<string, unknown> };

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  approveImport, cancelImport, checkImportBatch, loadImportBatch, pauseImport, resumeImport, saveImportMapping, sendImportBack, submitImportForApproval, undoImportBatch,
+  approveImport, cancelImport, checkImportBatch, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, signOffImportTotals, submitImportForApproval, undoImportBatch,
   type ImportJobDetail,
 } from '@/lib/actions/data-exchange';
 import { ENTITIES, mappingFromProfile, type Mapping } from '@/lib/data-exchange/fields';
@@ -11,6 +11,8 @@ import { IMPORT_STEPS, importStatus } from '@/lib/data-exchange/status';
 import { Icon, SectionCard, StatusChip } from '@/components/ui';
 
 const nf = (n: number) => n.toLocaleString('en-NG');
+const naira = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const qf = (n: number) => n.toLocaleString('en-NG', { maximumFractionDigits: 3 });
 const btn = 'inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] px-4 py-2 text-sm font-medium disabled:opacity-50';
 const primary = `${btn} bg-[var(--ejo-primary)] text-white hover:opacity-90`;
 const secondary = `${btn} border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]`;
@@ -55,17 +57,45 @@ function Bar({ done, total, label }: { done: number; total: number; label: strin
   );
 }
 
-/** Runs a batch step again and again while the page is open (stops on done, error, pause or leaving). */
+const STEP_TIMEOUT_MS = 120_000;
+const RETRY_DELAYS_MS = [2_000, 5_000, 10_000, 20_000, 30_000];
+const wait = (ms: number) => new Promise<void>((r) => { setTimeout(r, ms); });
+
+/**
+ * Runs a batch step again and again while the page is open (stops on done,
+ * pause or leaving). A step that fails or does not answer within two minutes
+ * (a dropped connection, a server restart) is tried again after a short
+ * wait, five times in a row before the page says it stopped. That is safe:
+ * every step is repeatable — a row already checked or loaded is never done
+ * twice. `onRetry` tells the page it is reconnecting.
+ */
 function useLoop() {
   const alive = useRef(true);
-  useEffect(() => () => { alive.current = false; }, []);
-  return useCallback(async <T,>(step: () => Promise<T>, done: (r: T) => boolean, onEach: (r: T) => void) => {
-    for (;;) {
-      if (!alive.current) return null;
-      const r = await step();
-      onEach(r);
-      if (done(r)) return r;
-    }
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const busy = useRef(false);
+  return useCallback(async <T,>(step: () => Promise<T>, done: (r: T) => boolean, onEach: (r: T) => void, onRetry?: (attempt: number) => void) => {
+    // One run at a time on a page: a second start (a double click, a resume) does nothing.
+    if (busy.current) return null;
+    busy.current = true;
+    try {
+      let failures = 0;
+      for (;;) {
+        if (!alive.current) return null;
+        let r: T;
+        try {
+          r = await Promise.race([step(), wait(STEP_TIMEOUT_MS).then(() => { throw new Error('The server did not answer in time.'); })]);
+        } catch (err) {
+          if (failures >= RETRY_DELAYS_MS.length) throw err;
+          onRetry?.(failures + 1);
+          await wait(RETRY_DELAYS_MS[failures]!);
+          failures += 1;
+          continue;
+        }
+        failures = 0;
+        onEach(r);
+        if (done(r)) return r;
+      }
+    } finally { busy.current = false; }
   }, []);
 }
 
@@ -91,39 +121,47 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
     });
   };
 
+  // The connection dropped for a moment: say so, keep the bar where it was, and carry on.
+  const reconnecting = useCallback((attempt: number) => {
+    setProgress((p) => (p ? { ...p, label: `${p.label.replace(/ · reconnecting.*$/, '')} · reconnecting (attempt ${attempt} of ${RETRY_DELAYS_MS.length})…` } : p));
+  }, []);
+
   const runCheck = useCallback(async () => {
     setError(null);
     try {
-      await loop(() => checkImportBatch(job.id), (r) => r.done, (r) => setProgress({ done: r.checked, total: r.total, label: `Checked ${nf(r.checked)} of ${nf(r.total)} rows…` }));
+      let after = 0;
+      await loop(() => checkImportBatch(job.id, after), (r) => r.done, (r) => { after = r.last; setProgress({ done: r.checked, total: r.total, label: `Checked ${nf(r.checked)} of ${nf(r.total)} rows…` }); }, reconnecting);
       router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : 'Checking stopped. Try again.'); }
-  }, [job.id, loop, router]);
+  }, [job.id, loop, router, reconnecting]);
 
   const runLoad = useCallback(async () => {
     setError(null);
     startedAt.current = Date.now();
     let first: number | null = null;
     try {
-      await loop(() => loadImportBatch(job.id), (r) => r.done || r.status === 'PAUSED', (r) => {
+      let after = 0;
+      await loop(() => loadImportBatch(job.id, after), (r) => r.done || r.status === 'PAUSED', (r) => {
+        after = r.last;
         if (first === null) first = r.loaded;
         const secs = (Date.now() - startedAt.current) / 1000;
         const rate = secs > 1 ? (r.loaded - first) / secs : 0;
         const eta = rate > 0 ? Math.max(0, Math.round((r.total - r.loaded) / rate)) : null;
         setProgress({ done: r.loaded, total: r.total, label: `Loaded ${nf(r.loaded)} of ${nf(r.total)} rows${rate > 0 ? ` · ${nf(Math.round(rate))} rows a second` : ''}${eta !== null && eta > 0 ? ` · about ${eta > 90 ? `${Math.round(eta / 60)} minutes` : `${eta} seconds`} left` : ''}` });
-      });
+      }, reconnecting);
       router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : 'Loading stopped. Press Resume.'); router.refresh(); }
-  }, [job.id, loop, router]);
+  }, [job.id, loop, router, reconnecting]);
 
   const runUndo = useCallback(async () => {
     setError(null);
     try {
       const total = job.createdRows + job.updatedRows;
-      const r = await loop(() => undoImportBatch(job.id), (x) => x.done || x.blockers.length > 0, (x) => { if (x.left >= 0) setProgress({ done: total - x.left, total, label: `Undoing — ${nf(Math.max(0, total - x.left))} of ${nf(total)} rows…` }); });
+      const r = await loop(() => undoImportBatch(job.id), (x) => x.done || x.blockers.length > 0, (x) => { if (x.left >= 0) setProgress({ done: total - x.left, total, label: `Undoing — ${nf(Math.max(0, total - x.left))} of ${nf(total)} rows…` }); }, reconnecting);
       if (r && r.blockers.length) { setBlockers(r.blockers); setProgress(null); return; }
       router.refresh();
     } catch (err) { setError(err instanceof Error ? err.message : 'Undo stopped. Try again.'); }
-  }, [job.createdRows, job.updatedRows, job.id, loop, router]);
+  }, [job.createdRows, job.updatedRows, job.id, loop, router, reconnecting]);
 
   // A step that was running when the page was left carries on when it is opened again.
   const resumed = useRef(false);
@@ -140,7 +178,14 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
       <Steps step={st.step} />
       {job.error ? <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3 text-sm text-[var(--ejo-text)]">{job.error}</p> : null}
       {job.sameFileBefore ? <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-3 text-sm text-[var(--ejo-text)]">The same file was imported before as <a className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/data-exchange/imports/${job.sameFileBefore.id}`}>{job.sameFileBefore.number}</a>. Records already in the system are recognised and are not added twice.</p> : null}
-      {error ? <p role="alert" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">{error}</p> : null}
+      {error ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">
+          <span>{error}</span>
+          {/* A step that stopped on a lost connection carries on from where it was: nothing is done twice. */}
+          {job.status === 'VALIDATING' ? <button type="button" className={secondary} onClick={() => void runCheck()}>Carry on checking</button> : null}
+          {job.status === 'UNDOING' && job.me.canApprove ? <button type="button" className={secondary} onClick={() => void runUndo()}>Carry on undoing</button> : null}
+        </div>
+      ) : null}
       {progress ? <SectionCard icon="activity" title="In progress" description="You can leave this page: the step carries on when you open it again."><Bar {...progress} /></SectionCard> : null}
 
       {job.status === 'UPLOADING' ? (
@@ -168,8 +213,14 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
             <Tile label="Ready, with a note" value={job.warningRows} tone="text-[var(--ejo-warning)]" hint="Load without the value noted" />
             <Tile label="Rejected" value={job.rejectedRows} tone="text-[var(--ejo-error)]" />
             <Tile label="Duplicates in the file" value={job.duplicateRows} hint="Only the first copy loads" />
-            <Tile label={`Already a ${def.noun}`} value={job.matchedRows} hint="Recognised, not duplicated" />
+            {job.entity === 'stock' ? null : <Tile label={`Already a ${def.noun}`} value={job.matchedRows} hint="Recognised, not duplicated" />}
           </div>
+          {job.entity === 'stock' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
+              <p className="font-medium">To load into {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} stock lines · {qf(job.totals.check.quantity)} units · <span className="tabular-nums">{naira(job.totals.check.value)}</span></p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare these with the SAP stock report for the same plant and date{job.asOf ? ` (${new Date(job.asOf).toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium' })})` : ''} before sending it for approval. It loads as opening-balance goods receipts on that date.</p>
+            </div>
+          ) : null}
           {job.problems.length ? (
             <details className="mt-4" open={job.status === 'VALIDATED'}>
               <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text)]">Rows with a problem or a note (first {job.problems.length})</summary>
@@ -209,7 +260,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
       {job.status === 'AWAITING_APPROVAL' ? (
         <SectionCard icon="badge" tone="warning" title="Approval" description={`Sent by ${job.createdBy}. Nothing has been loaded yet.`}>
           {mayApprove ? <ApprovePanel job={job} pending={pending} act={act} /> : (
-            <p className="text-sm text-[var(--ejo-text-muted)]">{isCreator ? 'Another manager or administrator must approve it: the person who prepared an import cannot approve it.' : 'Waiting for a manager or administrator to approve it.'}</p>
+            <p className="text-sm text-[var(--ejo-text-muted)]">{isCreator ? `Approved by ${def.approver}: the person who prepared an import cannot approve it.` : `Waiting for ${def.approver} to approve it.`}</p>
           )}
           {isCreator && job.me.canRun ? <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => act(() => cancelImport(job.id))}>Cancel this import</button> : null}
         </SectionCard>
@@ -241,11 +292,35 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
             <Tile label="Not added" value={job.skippedRows} hint="Already there, or a possible duplicate" />
             <Tile label="Rejected in the check" value={job.rejectedRows + job.duplicateRows} tone="text-[var(--ejo-error)]" />
           </div>
+          {job.entity === 'stock' && job.totals?.loaded ? (
+            <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm">
+              <p className="font-medium text-[var(--ejo-text)]">Stock value now in {job.branch?.name ?? 'the branch'}: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> ({qf(job.totals.loaded.quantity)} units on {nf(job.totals.loaded.lines)} lines)</p>
+              {job.totals.check ? (
+                <p className={Math.abs(job.totals.loaded.value - job.totals.check.value) < 0.01 ? 'text-xs text-[var(--ejo-success)]' : 'text-xs text-[var(--ejo-warning)]'}>
+                  {Math.abs(job.totals.loaded.value - job.totals.check.value) < 0.01 ? `Matches the checked file exactly (${naira(job.totals.check.value)}).` : `The checked file came to ${naira(job.totals.check.value)}; the difference is lines not added (see the report file).`}
+                </p>
+              ) : null}
+              {job.totals.receipts?.length ? <p className="text-xs text-[var(--ejo-text-muted)]">Opening-balance receipts: {job.totals.receipts.slice(0, 12).map((r, i) => <span key={r.id}>{i ? ', ' : ''}<a className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/inventory/goods-receipts/${r.id}`}>{r.number}</a></span>)}{job.totals.receipts.length > 12 ? ` and ${job.totals.receipts.length - 12} more` : ''}. They feed stock value, FIFO costs and the <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/inventory/analytics">inventory analytics</a>.</p> : null}
+              <div className="border-t border-[var(--ejo-border)] pt-2">
+                {job.signedOff ? (
+                  <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Value confirmed by {job.signedOff.by} (Finance), {new Date(job.signedOff.at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' })}.</p>
+                ) : job.status === 'COMPLETED' ? (
+                  job.me.canSignOff ? (
+                    <button type="button" className={primary} disabled={pending} onClick={() => act(() => signOffImportTotals(job.id))}><Icon name="check" size={14} /> Confirm the value (Finance)</button>
+                  ) : <p className="text-xs text-[var(--ejo-warning)]">Waiting for Finance to confirm the value.</p>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <p className="mt-3 text-xs text-[var(--ejo-text-muted)]">{nf(job.fileRows)} rows in the file = {nf(job.createdRows)} added + {nf(job.updatedRows)} filled in + {nf(job.skippedRows)} not added + {nf(job.rejectedRows + job.duplicateRows)} rejected{job.fileRows - (job.createdRows + job.updatedRows + job.skippedRows + job.rejectedRows + job.duplicateRows) !== 0 && job.status === 'COMPLETED' ? ' (check the totals)' : '.'}</p>
           {job.status === 'COMPLETED' && job.me.canApprove ? (
             <div className="mt-4 border-t border-[var(--ejo-border)] pt-4">
-              <p className="text-sm text-[var(--ejo-text-muted)]">Undo moves the {def.plural} this import added to the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> — each can be restored from there — and empties only the fields it filled in. It is refused while any work has been recorded on them since.</p>
-              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(`Undo ${job.number}? The ${nf(job.createdRows)} ${def.plural} it added move to the Recycle bin, where they can be restored.`)) void runUndo(); }}><Icon name="restore" size={14} /> Undo this import</button>
+              {job.entity === 'stock' ? (
+                <p className="text-sm text-[var(--ejo-text-muted)]">Reversing takes this opening stock back off the shelves and removes its opening-balance receipts. It is refused once anything has been issued or reserved from it. The file stays here, so it can be checked and loaded again.</p>
+              ) : (
+                <p className="text-sm text-[var(--ejo-text-muted)]">Undo moves the {def.plural} this import added to the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> — each can be restored from there — and empties only the fields it filled in. It is refused while any work has been recorded on them since.</p>
+              )}
+              <button type="button" className={`${danger} mt-3`} disabled={pending} onClick={() => { if (window.confirm(job.entity === 'stock' ? `Reverse the opening stock of ${job.number}? Stock on hand goes down by what it added.` : `Undo ${job.number}? The ${nf(job.createdRows)} ${def.plural} it added move to the Recycle bin, where they can be restored.`)) void runUndo(); }}><Icon name="restore" size={14} /> {job.entity === 'stock' ? 'Reverse this opening stock' : 'Undo this import'}</button>
               {blockers.length ? (
                 <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3 text-sm">
                   <p className="font-medium text-[var(--ejo-text)]">It cannot be undone: work has been recorded on these since.</p>
@@ -257,7 +332,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
         </SectionCard>
       ) : null}
 
-      {job.status === 'UNDONE' ? <p className="text-sm text-[var(--ejo-text-muted)]">The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p> : null}
+      {job.status === 'UNDONE' ? (
+        <div className="space-y-3">
+          <p className="text-sm text-[var(--ejo-text-muted)]">{job.entity === 'stock' ? 'This opening stock was reversed: its receipts were removed and stock on hand went back down. The file is still here.' : <>The {def.plural} this import added are in the <a href="/recycle-bin" className="font-medium text-[var(--ejo-primary)] hover:underline">Recycle bin</a> (reason: “Undo of import {job.number}”), each restorable until the bin empties it.</>}{(job.progress.KEPT ?? 0) > 0 ? ` ${nf(job.progress.KEPT ?? 0)} were kept because work was recorded on them during the undo.` : ''}</p>
+          {job.me.canRun ? <button type="button" className={secondary} disabled={pending} onClick={() => act(() => reopenUndoneImport(job.id))}><Icon name="restore" size={14} /> Reopen: check and load this file again</button> : null}
+        </div>
+      ) : null}
       {job.status === 'CANCELLED' ? <p className="text-sm text-[var(--ejo-text-muted)]">This import was cancelled. Nothing from it was loaded.</p> : null}
       <p className="sr-only"><StatusChip label={st.label} tone={st.tone} /></p>
     </div>
@@ -269,7 +349,8 @@ function ApprovePanel({ job, pending, act }: { job: ImportJobDetail; pending: bo
   return (
     <div className="space-y-3">
       <p className="text-sm text-[var(--ejo-text)]">
-        Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.
+        {job.entity === 'stock' && job.totals?.check ? <>Approving loads <strong>{naira(job.totals.check.value)}</strong> of opening stock ({nf(job.totals.check.lines)} lines) into {job.branch?.name ?? 'the branch'} as opening-balance receipts; Finance then confirms the value. </> : null}
+        Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}{job.branch ? ` of ${job.branch.name}` : ''}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.
       </p>
       {job.me.id === job.createdById ? <p className="text-xs text-[var(--ejo-warning)]">You prepared this import. As the platform administrator you may approve it while nobody else holds the role; this is recorded.</p> : null}
       <div className="flex flex-wrap gap-2">

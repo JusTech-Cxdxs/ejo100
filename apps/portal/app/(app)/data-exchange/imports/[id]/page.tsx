@@ -10,7 +10,8 @@ import { PageHeader, StatusChip } from '@/components/ui';
 export const dynamic = 'force-dynamic';
 
 export default async function ImportJobPage({ params }: { params: Promise<{ id: string }> }) {
-  await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve'], '/data-exchange/imports');
+  // Finance too: they confirm the value of opening-stock imports (the action shows them stock imports only).
+  await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve', 'workshop.payment.record'], '/data-exchange/imports');
   const { id } = await params;
   const job = await getImportJob(id).catch(() => null);
   if (!job) notFound();

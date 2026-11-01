@@ -197,6 +197,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   // never given to AI, removed with their import, and gone when an import is cancelled.
   ImportJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the contract (the record of what was brought in)', ai: 'AGGREGATE_ONLY' },
   ImportRow: { tenancy: 'VIA_PARENT', owner: 'jobId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: 'With its import; deleted at once if the import is cancelled', ai: 'NEVER' },
+  // v-A2: the organisation's suppliers (SAP vendors). Business contacts; restorable from the Recycle bin.
+  Supplier: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'RECYCLE_BIN', retention: 'Life of the contract', ai: 'AUTHORISED_USER', recycleBin: true },
   ImportMappingProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },
   MailStyleSample: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: '90 days, at most 200 per person; removed when they withdraw consent or disconnect their mailbox', ai: 'AUTHORISED_USER' },
   IntegrityAlert: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL', 'FINANCIAL', 'AUDIT'], lifecycle: 'STATE_MACHINE', retention: '7 years (internal-control evidence); reviewed alerts are never deleted', ai: 'AUTHORISED_USER' },

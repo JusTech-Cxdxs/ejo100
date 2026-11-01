@@ -73,10 +73,53 @@ window, so both can be signed in at once.
    recorded since (a Job Card, a service, a warranty, a portal sign-in) — the
    page lists exactly which ones and why.
 
+## 4. Suppliers, the parts catalogue and opening stock (A2)
+
+*The questions: "800,000 parts — and the stock we hold today?"*
+
+People: the **preparer** (Group IT), a **Store Manager** of the branch, and
+someone in **Finance**.
+
+1. **Suppliers.** Preparer → Data Exchange → *Suppliers* → drop
+   `docs/demo/05_SAP_suppliers_demo.csv` (SAP vendor layout: LIFNR, NAME1…).
+   Send for approval; the **Store Manager** approves and loads. Open
+   **Store → Suppliers**: the list, with SAP vendor numbers.
+2. **Parts.** Preparer → *Parts* → choose the branch → drop
+   `docs/demo/03_SAP_parts_50k.csv` — **50,000 SAP materials** (MATNR, MAKTX,
+   MATKL, MEINS, XCHPF…). Point out:
+   - SAP's unit codes become words (ST → Piece, L → Litre, CAR → Carton);
+   - lubricants come in as **batch-tracked**, with *1 Drum = 208 Litre*;
+   - Group IT cannot approve: only the Store Manager (or an administrator).
+   Approve and load as the Store Manager and watch rows a second.
+   (For a quick first try, `03a_SAP_parts_200.csv` holds 200.)
+3. **Store → Parts Catalog**: *Showing 1–50 of 50,000 parts*, paged; search
+   "NQR brake" — instant. **Record Goods Receipt**: the part picker searches
+   as you type and suggests the imported suppliers.
+4. **Opening stock.** Preparer → *Opening stock* → same branch → **Counted
+   on** = the cut-over date → drop `docs/demo/04_SAP_opening_stock_demo.csv`
+   (MATNR, LABST, MEINS, SALK3, VERPR, CHARG, LGORT). The check:
+   - shows **the lines, units and total value** that will load — "compare with
+     the SAP stock report for the same plant and date";
+   - rejects the planted mistakes: **negative stock** (`3-`), a **part not in
+     the catalogue**, a line with **no cost**, a **batch part without its
+     batch**.
+5. Store Manager approves and loads. The report: *Stock value now in Isolo
+   Branch: ₦… — Matches the checked file exactly.* Open one of the
+   **opening-balance receipts** (GRN-…, supplier *Opening balance — SAP*,
+   dated at the cut-over).
+6. **Finance** → bell → *Confirm opening stock IMP-…* → **Confirm the value
+   (Finance)**. The Store Manager could not: they approved it.
+7. **Store → Inventory Analytics**: the stock value, FIFO costs and ageing
+   now include the opening stock.
+8. To show it is reversible: Store Manager → **Reverse this opening stock**
+   → stock on hand goes back down and the receipts are removed (refused once
+   anything has been issued); **Reopen** brings the file back to be checked
+   and approved again.
+
 ---
 
-*Coming in the next releases (each adds a section here):* parts master and
-opening stock (A2), customer-since dates and SAP invoice history in the
-analytics, production / QC / PDI registers, export from every list (A4), the
-daily SAP files and reconciliation (C1), PDI with certificates (D), and
-inviting imported customers to the portal (B).
+*Coming in the next releases (each adds a section here):* customer-since
+dates and SAP invoice history in the analytics, production / QC / PDI
+registers, export from every list (A4), the daily SAP files and
+reconciliation (C1), PDI with certificates (D), and inviting imported
+customers to the portal (B).

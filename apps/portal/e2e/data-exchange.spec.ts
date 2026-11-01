@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { as, uniq } from './helpers';
+import { as, uniq, open } from './helpers';
 import { db } from './db';
 import { writeXlsx } from '../lib/data-exchange/xlsx-writer';
 
@@ -51,8 +51,9 @@ function vehiclesXlsx(): Buffer {
 }
 
 async function startImport(page: Page, entity: 'customers' | 'vehicles', file: { name: string; mimeType: string; buffer: Buffer }): Promise<string> {
-  await page.goto(`/data-exchange/new?entity=${entity}`);
+  await open(page, `/data-exchange/new?entity=${entity}`);
   await expect(page.getByRole('heading', { name: `Import ${entity}` })).toBeVisible();
+  await expect(page.locator('#import-file')).toHaveCount(1);
   await page.locator('#import-file').setInputFiles(file);
   await page.waitForURL(/\/data-exchange\/imports\/[^/?]+$/, { timeout: 60_000 });
   return page.url();
@@ -99,18 +100,18 @@ test('customers from an SAP export: columns match themselves, the check rejects 
   await page.getByRole('button', { name: /Send for approval/ }).click();
   await expect(page.getByRole('heading', { name: 'Approval' })).toBeVisible();
   // Group IT prepares; it does not approve.
-  await expect(page.getByText(/must approve it|Waiting for a manager/)).toBeVisible();
+  await expect(page.getByText(/the person who prepared an import cannot approve it/)).toBeVisible();
   await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
 });
 
 test('the front desk cannot open Data Exchange; the manager approves, it loads, and the report adds up', async ({ page }) => {
   await as(page, 'receptionist');
-  await page.goto('/data-exchange');
+  await open(page, '/data-exchange');
   await expect(page).toHaveURL(/access-denied/);
   await expect(page.getByRole('link', { name: 'Data Exchange' })).toHaveCount(0);
 
   await as(page, 'workshop-manager');
-  await page.goto(customersUrl);
+  await open(page, customersUrl);
   await page.getByRole('button', { name: 'Approve' }).click();
   await expect(page.getByRole('heading', { name: 'Load' })).toBeVisible();
   await loadAndReport(page);
@@ -146,7 +147,7 @@ test('vehicles from an Excel workbook link to their customers; an unknown custom
   await page.getByRole('button', { name: /Send for approval/ }).click();
 
   await as(page, 'workshop-manager');
-  await page.goto(vehiclesUrl);
+  await open(page, vehiclesUrl);
   await page.getByRole('button', { name: 'Approve' }).click();
   await loadAndReport(page);
   const nqr = await db().customerVehicle.findFirst({ where: { customer: { externalId: kunnr(1) } }, select: { model: true, year: true, mileage: true, vehicleType: true } });
@@ -159,11 +160,11 @@ test('undo moves exactly what each import added to the Recycle bin (vehicles fir
   await as(page, 'workshop-manager');
   page.on('dialog', (d) => void d.accept());
   // The vehicles first (their own import), then the customers they belonged to.
-  await page.goto(vehiclesUrl);
+  await open(page, vehiclesUrl);
   await page.getByRole('button', { name: 'Undo this import' }).click();
   await expect(page.getByRole('heading', { name: 'Undone' })).toBeVisible({ timeout: 60_000 });
   expect(await db().customerVehicle.count({ where: { customer: { externalId: { in: [kunnr(1), kunnr(2)] } } } })).toBe(0);
-  await page.goto(customersUrl);
+  await open(page, customersUrl);
   await page.getByRole('button', { name: 'Undo this import' }).click();
   await expect(page.getByRole('heading', { name: 'Undone' })).toBeVisible({ timeout: 60_000 });
   expect(await db().customer.count({ where: { externalId: { in: [kunnr(1), kunnr(2), kunnr(4)] } } })).toBe(0);
@@ -173,7 +174,7 @@ test('undo moves exactly what each import added to the Recycle bin (vehicles fir
   expect(items.map((i) => i.reference).sort()).toEqual([ADA, `Fleet Co ${T} Logistics Ltd`, MUSA].sort());
   // …and the administrator restores one from the bin, with its SAP number back.
   await as(page, 'administrator');
-  await page.goto('/recycle-bin');
+  await open(page, '/recycle-bin');
   const row = page.getByTestId('bin-row').filter({ hasText: MUSA }).first();
   await expect(row).toContainText(`Undo of import ${number}`);
   // (the confirmation is accepted by the dialog handler set at the start of this test)

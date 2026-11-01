@@ -17,7 +17,7 @@ import { writeAuditLog } from '@/lib/workshop-core';
 import { StaleStateError, isUniqueClashOn, numberClashPause } from '@/lib/integrity-core';
 import { lagosYear } from '@/lib/utils/format-date';
 import {
-  BIN_KIND, binLabel, customerEligibility, jobCardEligibility, orderedSnapshot, parseSnapshot, partEligibility, plainRow,
+  BIN_KIND, binLabel, customerEligibility, jobCardEligibility, orderedSnapshot, parseSnapshot, partEligibility, plainRow, supplierEligibility,
   purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility, vehicleServiceEligibility,
   type BinEntity, type Eligibility, type SnapshotRow,
 } from './rules';
@@ -64,6 +64,10 @@ export async function binRecord(entity: BinEntity, id: string, db: Db = prisma):
     const v = await db.customerVehicle.findUnique({ where: { id }, select: { make: true, model: true, plateNumber: true, chassisNumber: true, createdById: true, createdAt: true, customer: { select: { fullName: true, organisationId: true } } } });
     const ref = v ? v.plateNumber || v.chassisNumber || [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle' : '';
     return v ? { entity, id, organisationId: v.customer.organisationId, branchId: null, createdById: v.createdById, createdAt: v.createdAt, reference: ref, label: binLabel([vehicleText(v), v.chassisNumber, v.customer.fullName]) } : null;
+  }
+  if (entity === 'Supplier') {
+    const s = await db.supplier.findUnique({ where: { id }, select: { name: true, externalId: true, organisationId: true, createdById: true, createdAt: true } });
+    return s ? { entity, id, organisationId: s.organisationId, branchId: null, createdById: s.createdById, createdAt: s.createdAt, reference: s.name, label: binLabel([s.name, s.externalId ? `Supplier ${s.externalId}` : null]) } : null;
   }
   const p = await db.part.findUnique({ where: { id }, select: { name: true, partNumber: true, branchId: true, createdById: true, createdAt: true, branch: { select: { name: true, businessUnit: { select: { organisationId: true } } } } } });
   return p ? { entity, id, organisationId: p.branch.businessUnit.organisationId, branchId: p.branchId, createdById: p.createdById, createdAt: p.createdAt, reference: p.partNumber || p.name, label: binLabel([p.partNumber, p.name, p.branch.name]) } : null;
@@ -206,6 +210,10 @@ export async function eligibilityOf(entity: BinEntity, id: string, db: Db = pris
     case 'Customer': return customerFacts(db, id);
     case 'CustomerVehicle': return vehicleFacts(db, id);
     case 'Part': return partFacts(db, id);
+    case 'Supplier': {
+      const s = await db.supplier.findUnique({ where: { id }, select: { _count: { select: { receipts: true } } } });
+      return s ? supplierEligibility({ receipts: s._count.receipts }) : null;
+    }
   }
 }
 
@@ -261,6 +269,7 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
       ...plain(notes, 'customerNote'), ...plain(reads, 'customerNotificationRead'), ...plain(vehicles, 'customerVehicle'), ...plain(logs, 'serviceReminderLog'),
     ];
   }
+  if (entity === 'Supplier') return plain([await tx.supplier.findUniqueOrThrow({ where: { id } })], 'supplier');
   const root = await tx.part.findUniqueOrThrow({ where: { id } });
   const [units, stock, fitments] = await Promise.all([
     tx.partUnitOfMeasure.findMany({ where: { partId: id }, orderBy: { unitName: 'asc' } }),
@@ -270,8 +279,8 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   return [...plain([root], 'part'), ...plain(units, 'partUnitOfMeasure'), ...plain(stock ? [stock] : [], 'partStock'), ...plain(fitments, 'partFitment')];
 }
 
-const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part'> = {
-  JobCard: 'jobCard', VehicleService: 'vehicleService', Customer: 'customer', CustomerVehicle: 'customerVehicle', Part: 'part',
+const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part' | 'supplier'> = {
+  JobCard: 'jobCard', VehicleService: 'vehicleService', Customer: 'customer', CustomerVehicle: 'customerVehicle', Part: 'part', Supplier: 'supplier',
 };
 
 async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> {
@@ -279,6 +288,7 @@ async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> 
   else if (entity === 'VehicleService') await tx.vehicleService.delete({ where: { id } });
   else if (entity === 'CustomerVehicle') await tx.customerVehicle.delete({ where: { id } });
   else if (entity === 'Part') await tx.part.delete({ where: { id } });
+  else if (entity === 'Supplier') await tx.supplier.delete({ where: { id } });
   else {
     // Set-password links carry the customer id in `value`, without a foreign key.
     await tx.customerVerification.deleteMany({ where: { value: id } });
@@ -331,10 +341,46 @@ const group = <T extends Record<string, unknown>>(rows: T[], key: keyof T) => {
  * same rules as a single delete); the ids moved are returned, the others are
  * left untouched for the caller to report.
  */
-export async function moveManyToBinInTx(tx: Tx, entity: 'Customer' | 'CustomerVehicle', ids: string[], reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+export async function moveManyToBinInTx(tx: Tx, entity: 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier', ids: string[], reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
   if (!ids.length) return [];
   await lockExisting(tx, LOCK[entity], ids).catch(() => undefined);
   const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  if (entity === 'Supplier') {
+    const list = await tx.supplier.findMany({ where: { id: { in: ids }, receipts: { none: {} } } });
+    if (!list.length) return [];
+    await tx.recycleBinItem.createMany({
+      data: list.map((x) => ({
+        organisationId: x.organisationId, branchId: null, entityType: 'Supplier', entityId: x.id, reference: x.name, label: binLabel([x.name, x.externalId ? `Supplier ${x.externalId}` : null]), reason,
+        snapshot: orderedSnapshot('Supplier', plain([x], 'supplier')) as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter,
+      })),
+    });
+    await tx.supplier.deleteMany({ where: { id: { in: list.map((x) => x.id) } } });
+    return list.map((x) => x.id);
+  }
+  if (entity === 'Part') {
+    // The same rules as deleting one part: never received, never issued, matched, warranted or priced; no stock.
+    const parts = await tx.part.findMany({
+      where: { id: { in: ids }, goodsReceiptLines: { none: {} }, batches: { none: {} }, serials: { none: {} }, quantityConsumptions: { none: {} }, requestSlipLines: { none: {} }, matchedOnEstimateLines: { none: {} }, matchedOnServiceEstimateLines: { none: {} }, warranties: { none: {} }, pricingAlerts: { none: {} }, OR: [{ stock: null }, { stock: { quantityOnHand: 0, quantityReserved: 0 } }] },
+      include: { branch: { select: { name: true, businessUnit: { select: { organisationId: true } } } } },
+    });
+    if (!parts.length) return [];
+    const pids = parts.map((x) => x.id);
+    const [units, stocks, fitments] = await Promise.all([
+      tx.partUnitOfMeasure.findMany({ where: { partId: { in: pids } }, orderBy: { unitName: 'asc' } }),
+      tx.partStock.findMany({ where: { partId: { in: pids } } }),
+      tx.partFitment.findMany({ where: { partId: { in: pids } }, orderBy: { createdAt: 'asc' } }),
+    ]);
+    const u = group(units, 'partId'); const st = group(stocks, 'partId'); const f = group(fitments, 'partId');
+    await tx.recycleBinItem.createMany({
+      data: parts.map(({ branch, ...x }) => ({
+        organisationId: branch.businessUnit.organisationId, branchId: x.branchId, entityType: 'Part', entityId: x.id, reference: x.partNumber || x.name, label: binLabel([x.partNumber, x.name, branch.name]), reason,
+        snapshot: orderedSnapshot('Part', [...plain([x], 'part'), ...plain(u.get(x.id) ?? [], 'partUnitOfMeasure'), ...plain(st.get(x.id) ?? [], 'partStock'), ...plain(f.get(x.id) ?? [], 'partFitment')]) as unknown as Prisma.InputJsonValue,
+        deletedById: actorId, deletedAt: now, purgeAfter,
+      })),
+    });
+    await tx.part.deleteMany({ where: { id: { in: pids } } });
+    return pids;
+  }
   if (entity === 'CustomerVehicle') {
     const vehicles = await tx.customerVehicle.findMany({
       where: { id: { in: ids }, jobCards: { none: {} }, vehicleServices: { none: {} }, warranties: { none: {} }, warrantyClaims: { none: {} }, gateExits: { none: {} }, roadTestPermits: { none: {} } },
@@ -506,6 +552,11 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
     }
     for (const r of rows) if (r.model === 'customerVehicle') await plateFree(r.data);
     notes.push('Send them a new set-password link from their customer page if they use the customer portal.');
+  } else if (entity === 'Supplier') {
+    if (typeof root.externalId === 'string' && root.externalId) {
+      const clash = await tx.supplier.findFirst({ where: { organisationId, externalSource: (root.externalSource as string | null) ?? null, externalId: root.externalId }, select: { id: true } });
+      if (clash) fail(`Another supplier now has the supplier number ${root.externalId}. Change it first, then restore this one.`);
+    }
   } else {
     await needBranch(root.branchId);
     if (typeof root.partNumber === 'string' && root.partNumber) {
