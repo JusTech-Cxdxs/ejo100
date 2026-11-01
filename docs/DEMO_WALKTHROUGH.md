@@ -225,10 +225,38 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    rows and size. Type the **EXP-** number in search: it opens. *Day by day*
    shows today's exports beside the imports.
 
+## 9. One label per vehicle: scan it, open its whole life
+
+Needs the production, QC and PDI registers of section 5 loaded (files 07 and 08).
+
+1. In the search box type **JAANLR85EL7100001** and press Enter (a handheld
+   scanner does exactly this). The vehicle's one page opens: an Isuzu NPR 71,
+   **From kit to customer** stage by stage — the chassis and trim stations,
+   the water test in *Quality audit*, the final inspection and road test in
+   *Pre-delivery inspection* — then its customer, Job Cards, Vehicle Services,
+   warranties, claims, road tests and gate exits.
+2. **Label**: the QR code and the Code 128 barcode of the VIN. Scan the QR
+   code with a phone: it opens this page (signing in first if needed, then
+   straight back here). One label per vehicle — never per part, kit or
+   station; parts are traced through the Store's records.
+3. As the **Workshop manager**, print the **Windscreen label** (100 × 60 mm),
+   the **Door-jamb label** (90 × 38 mm), the **Traveller sheet** (A4: every
+   stage with what is recorded and lines to sign) and the **PDI
+   certificate** (A4, for the customer: no staff names; it certifies only
+   when every PDI check's latest result is a pass, and otherwise prints as
+   *NOT A CERTIFICATE*). Each paper counts its own reprints, and the codes
+   never change.
+4. Sign in as a **Technician**: the vehicle page opens, the print buttons do
+   not. As a **Security officer** at the gate: the page opens; the
+   customer's name is for the CRM.
+5. A vehicle still in the plant (VIN in the registers, no customer yet) has
+   the same page and label: *Not sold yet*.
+
 ---
 
-*Coming in the next releases (each adds a section here):* round-trip updates
-from an exported file with a preview of the changes (A4b), bulk PDFs, a
-customer's data request and scheduled exports (A4c), the daily SAP files and
-reconciliation (C1), PDI with certificates (D), and inviting imported
-customers to the portal (B).
+*Coming in the next releases (each adds a section here):* recording PDI on
+screen for the Isuzu NQR, NPR, QLR and QMR and the Soueast S07, then kit
+arrival and QC, line stations, QA and the yard (D); round-trip updates from an
+exported file with a preview of the changes (A4b); bulk PDFs, a customer's
+data request and scheduled exports (A4c); the daily SAP files and
+reconciliation (C1); and inviting imported customers to the portal (B).

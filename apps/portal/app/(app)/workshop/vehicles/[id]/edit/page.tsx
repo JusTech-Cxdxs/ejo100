@@ -34,6 +34,7 @@ import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime, formatDateTimeCompact, formatDateOnly } from '@/lib/utils/format-date';
 import { BackLink, PageTitle } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
+import { isChassisLike, vehiclePagePath } from '@/lib/vin';
 
 const AUDIT_ACTION_LABEL: Record<string, string> = {
   'vehicle.gate_exit': 'Left through the gate',
@@ -144,14 +145,24 @@ export default async function VehiclePage({
             {vehicle.plateNumber || vehicle.chassisNumber} — owned by <CustomerLink id={vehicle.customerId} name={vehicle.customer.fullName} canView={canSeeCustomers} />
           </p>
         </div>
-        {!isEditing ? (
-          <LoadingLink
-            href={`/workshop/vehicles/${id}/edit?edit=true`}
-            className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
-          >
-            Edit
-          </LoadingLink>
-        ) : null}
+        <span className="flex flex-wrap items-center gap-2">
+          {vehicle.chassisNumber && isChassisLike(vehicle.chassisNumber) ? (
+            <LoadingLink
+              href={vehiclePagePath(vehicle.chassisNumber)}
+              className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+            >
+              Vehicle page and label
+            </LoadingLink>
+          ) : null}
+          {!isEditing ? (
+            <LoadingLink
+              href={`/workshop/vehicles/${id}/edit?edit=true`}
+              className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] px-3 py-1.5 text-xs font-medium text-[var(--ejo-text)] hover:bg-[var(--ejo-surface)]"
+            >
+              Edit
+            </LoadingLink>
+          ) : null}
+        </span>
       </div>
 
       {error ? (

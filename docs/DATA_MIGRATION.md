@@ -278,6 +278,13 @@ A file that is one register only (a "PDI register" workbook) needs no
 *Register* column: choose **Which register is this file?** when importing.
 The same check (register, VIN, date and station) is loaded once.
 
+Each row also lands on the vehicle's own page (*/vehicles/VIN*, the page its
+label opens), in its life stage: a station or step naming the kit, a case or
+arrival goes to **Kit arrival and QC**; the yard to **Yard**; a sale or
+delivery to **Sale**; otherwise Production rows are **Assembly stations**, QC
+rows **Quality audit** and PDI rows **Pre-delivery inspection**. A failed or
+rework result shows as needing attention until a later pass of the same check.
+
 ## 7c. Undoing history
 
 Undo of an invoice-history or register import **voids** what it loaded: the
