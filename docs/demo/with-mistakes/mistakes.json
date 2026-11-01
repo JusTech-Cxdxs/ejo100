@@ -1,0 +1,227 @@
+[
+  {
+    "file": "06_SAP_invoice_history_demo.csv",
+    "row": 128,
+    "entity": "invoices",
+    "what": "Customer 0009999999 is not in EJO",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The customer was not found. Import the customers file first, or check the customer number."
+  },
+  {
+    "file": "06_SAP_invoice_history_demo.csv",
+    "row": 129,
+    "entity": "invoices",
+    "what": "Invoice in US dollars",
+    "expect": "rejected",
+    "by": "check",
+    "says": "The amount is in USD. Only naira invoices are loaded: give the amount in the company’s currency (SAP DMBTR) instead."
+  },
+  {
+    "file": "06_SAP_invoice_history_demo.csv",
+    "row": 130,
+    "entity": "invoices",
+    "what": "No invoice number",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Invoice number is required (SAP VBELN or BELNR)."
+  },
+  {
+    "file": "06_SAP_invoice_history_demo.csv",
+    "row": 131,
+    "entity": "invoices",
+    "what": "31 June does not exist",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“31.06.2024” is not a date. Write it as 14.03.2019, 14/03/2019, 2019-03-14 or 20190314."
+  },
+  {
+    "file": "06_SAP_invoice_history_demo.csv",
+    "row": 132,
+    "entity": "invoices",
+    "what": "Invoice 0090001001 a second time in the same file",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same invoice number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "01_SAP_customers_demo.csv",
+    "row": 32,
+    "entity": "customers",
+    "what": "No name",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Name is required."
+  },
+  {
+    "file": "01_SAP_customers_demo.csv",
+    "row": 33,
+    "entity": "customers",
+    "what": "Email with two @ and no domain",
+    "expect": "warning",
+    "by": "check",
+    "says": "“yetunde.afolabi@@example” is not a valid email, so the customer was kept without one (no portal access until it is corrected)."
+  },
+  {
+    "file": "01_SAP_customers_demo.csv",
+    "row": 34,
+    "entity": "customers",
+    "what": "Customer number 0001000105 a second time (row 6 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same customer number as row 6 of the file; only the first is loaded."
+  },
+  {
+    "file": "02_vehicles_demo.xlsx",
+    "row": 32,
+    "entity": "vehicles",
+    "what": "VIN JAANLR85EL7100003 a second time (row 4 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same chassis number as row 4 of the file; only the first is loaded."
+  },
+  {
+    "file": "02_vehicles_demo.xlsx",
+    "row": 33,
+    "entity": "vehicles",
+    "what": "Neither a VIN nor a plate",
+    "expect": "rejected",
+    "by": "check",
+    "says": "No chassis number (VIN) or plate: one of them is needed to know the vehicle."
+  },
+  {
+    "file": "02_vehicles_demo.xlsx",
+    "row": 34,
+    "entity": "vehicles",
+    "what": "Customer 0009999999 is not in EJO",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The customer was not found. Import the customers file first, or check the customer number, email or phone."
+  },
+  {
+    "file": "05_SAP_suppliers_demo.csv",
+    "row": 12,
+    "entity": "suppliers",
+    "what": "No supplier name",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Name is required."
+  },
+  {
+    "file": "05_SAP_suppliers_demo.csv",
+    "row": 13,
+    "entity": "suppliers",
+    "what": "Supplier number 0000300041 a second time (row 2 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same supplier number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "03a_SAP_parts_200.csv",
+    "row": 202,
+    "entity": "parts",
+    "what": "No part number",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Part number is required."
+  },
+  {
+    "file": "03a_SAP_parts_200.csv",
+    "row": 203,
+    "entity": "parts",
+    "what": "No description",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Description is required."
+  },
+  {
+    "file": "03a_SAP_parts_200.csv",
+    "row": 204,
+    "entity": "parts",
+    "what": "Part number 8-98100000-0 a second time (row 2 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same part number (SAP material number) as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "03a_SAP_parts_200.csv",
+    "row": 205,
+    "entity": "parts",
+    "what": "A negative selling price",
+    "expect": "warning",
+    "by": "check",
+    "says": "Selling price “-6500” is not an amount; it was left out."
+  },
+  {
+    "file": "04_SAP_opening_stock_demo.csv",
+    "row": 2002,
+    "entity": "stock",
+    "what": "Negative stock (SAP writes it 3-)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Negative stock (3-) cannot be an opening balance; correct it in SAP or leave the line out."
+  },
+  {
+    "file": "04_SAP_opening_stock_demo.csv",
+    "row": 2003,
+    "entity": "stock",
+    "what": "Part 9-99999999-9 is not in the catalogue",
+    "expect": "rejected",
+    "by": "database",
+    "says": "Part 9-99999999-9 is not in this branch’s catalogue. Import the parts file first, or check the number."
+  },
+  {
+    "file": "04_SAP_opening_stock_demo.csv",
+    "row": 2004,
+    "entity": "stock",
+    "what": "No value and no unit cost",
+    "expect": "rejected",
+    "by": "check",
+    "says": "No cost: give the stock value or the unit cost (stock is valued at what it cost)."
+  },
+  {
+    "file": "04_SAP_opening_stock_demo.csv",
+    "row": 2005,
+    "entity": "stock",
+    "what": "A batch-managed oil without its batch",
+    "expect": "rejected",
+    "by": "database",
+    "says": "This part is batch-tracked: give the batch number (SAP CHARG)."
+  },
+  {
+    "file": "07_PDI_register_demo.xlsx",
+    "row": 62,
+    "entity": "registers",
+    "what": "No VIN",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Chassis number (VIN) is required."
+  },
+  {
+    "file": "07_PDI_register_demo.xlsx",
+    "row": 63,
+    "entity": "registers",
+    "what": "30 February does not exist",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“30/02/2024” is not a date. Write it as 14.03.2019, 14/03/2019, 2019-03-14 or 20190314."
+  },
+  {
+    "file": "08_production_QC_register_demo.csv",
+    "row": 122,
+    "entity": "registers",
+    "what": "No date",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Date is required."
+  },
+  {
+    "file": "08_production_QC_register_demo.csv",
+    "row": 123,
+    "entity": "registers",
+    "what": "Register \"Paint shop\" is not Production, QC or PDI",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“Paint shop” is not Production, QC or PDI."
+  }
+]

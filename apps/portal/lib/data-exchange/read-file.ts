@@ -3,8 +3,10 @@
  * separator, UTF-8 or Windows-1252 as old systems write it) or Excel (.xlsx,
  * first sheet). Rows come back numbered as Excel numbers them (the header is
  * row 1), so a problem reported on "row 5,212" is row 5,212 in the file.
+ * An EJO export reads straight back in: its "About this file" sheet and its
+ * "#" lines above the header are passed over.
  */
-import { CsvReader, isBlankRow } from './csv-reader';
+import { CsvReader, isBlankRow, isNoteRow } from './csv-reader';
 import { readXlsx } from './xlsx-reader';
 
 export type FileKind = 'csv' | 'xlsx';
@@ -57,11 +59,16 @@ export async function readFileRows(
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
   let n = 0;
+  let header = false;
   const hand = async (rows: string[][]) => {
     const out: { rowNumber: number; cells: string[] }[] = [];
     for (const cells of rows) {
       n += 1;
-      if (!isBlankRow(cells)) out.push({ rowNumber: n, cells: cells.map((c) => String(c ?? '')) });
+      if (isBlankRow(cells)) continue;
+      // "#" notes above the header (an EJO export's About lines) are not the header; their rows keep their numbers.
+      if (!header && isNoteRow(cells)) continue;
+      header = true;
+      out.push({ rowNumber: n, cells: cells.map((c) => String(c ?? '')) });
     }
     if (out.length) await onRows(out);
   };

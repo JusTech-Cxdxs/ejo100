@@ -38,10 +38,20 @@ export function parseSharedStrings(xml: string): string[] {
   return out;
 }
 
-/** The workbook's first sheet, as a path inside the zip ("xl/worksheets/sheet1.xml"). */
+/**
+ * Sheets that describe a file rather than hold its rows: an EJO export's
+ * "About this file" and a template's "Instructions". The data is on the
+ * first sheet that is not one of these.
+ */
+export const NOTE_SHEETS = new Set(['about this file', 'instructions']);
+
+/** The workbook's first data sheet, as a path inside the zip ("xl/worksheets/sheet1.xml"). */
 export function firstSheetPath(workbookXml: string, relsXml: string): string {
-  const sheet = /<sheet\b[^>]*\br:id="([^"]+)"/.exec(workbookXml) ?? /<sheet\b[^>]*\bid="([^"]+)"/.exec(workbookXml);
-  const id = sheet?.[1];
+  const sheets = [...workbookXml.matchAll(/<sheet\b[^>]*>/g)].map((m) => ({
+    name: xmlText(/\bname="([^"]*)"/.exec(m[0])?.[1] ?? '').trim().toLowerCase(),
+    id: (/\br:id="([^"]+)"/.exec(m[0]) ?? /\bid="([^"]+)"/.exec(m[0]))?.[1],
+  }));
+  const id = (sheets.find((x) => !NOTE_SHEETS.has(x.name)) ?? sheets[0])?.id;
   if (id) {
     for (const m of relsXml.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
       const attrs = m[1]!;

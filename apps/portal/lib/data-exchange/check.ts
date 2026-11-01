@@ -60,7 +60,9 @@ const squash = (s: string) => s.replace(/\s+/g, ' ').trim();
 /** A cell as text: numbers Excel stored as 1.0E+10 come back as their digits; "N/A", "-", "null" are empty. */
 export function cellText(v: unknown): string {
   if (v === null || v === undefined) return '';
-  const s = squash(String(v));
+  // A leading apostrophe only says "this is text, not a formula or a number" (Excel's convention, and how EJO's
+  // own CSV exports write +234…, =…, -…): it is not part of the value. Exports add it back when written.
+  const s = squash(String(v)).replace(/^'(?=[=+\-@0-9])/, '');
   return /^(n\/?a|null|none|nil|-+|\.+)$/i.test(s) ? '' : s;
 }
 

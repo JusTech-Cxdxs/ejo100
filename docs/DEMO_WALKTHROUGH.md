@@ -5,8 +5,18 @@ Chanrai Group raised on 20 October 2026. Every step uses the real system and
 invented demo data (no real customer is in these files). It grows with each
 release; each section says which release it needs.
 
-**Demo files** are in [`docs/demo/`](demo/). Regenerate them (same content
-every time) with `npx tsx apps/portal/scripts/demo-files.ts`.
+**Demo files** are in [`docs/demo/`](demo/), in two folders from the same data:
+[`correct/`](demo/correct/) (every row loads cleanly) and
+[`with-mistakes/`](demo/with-mistakes/) (the same rows plus planted mistakes,
+each listed with its row and what EJO says in that folder's README). This
+script uses `with-mistakes/` to show the check catching problems; load
+`correct/` when you only want the data in. Regenerate them (same content
+every time) with `npx tsx apps/portal/scripts/demo-files.ts`. They tell one
+consistent story — each vehicle built, QC'd and through PDI before its first
+service, services in mileage order, the model year the year it was built,
+every customer a different person — so the vehicle page and the customer
+360 never show an impossible history; only the planted mistakes break it
+(a test checks this).
 
 **People you need** (create them under Users if they do not exist): one
 person who prepares imports (Group IT administrator or Administrator) and a
@@ -22,7 +32,7 @@ window, so both can be signed in at once.
 
 1. **Preparer** → menu **Data Exchange** → *Customers* → **Import customers**.
    Choose *SAP (an export or extract)* and drop
-   `docs/demo/01_SAP_customers_demo.csv` (33 rows, SAP field names:
+   `docs/demo/with-mistakes/01_SAP_customers_demo.csv` (33 rows, SAP field names:
    KUNNR, NAME1, TELF1, SMTP_ADDR, STRAS, ORT01, ERDAT…).
 2. **Match the columns**: point out that every SAP column matched itself.
    Choose *Leave it as it is* for existing customers, then *Save and check
@@ -52,7 +62,7 @@ window, so both can be signed in at once.
 ## 2. Their vehicles, from Excel (A1)
 
 1. **Preparer** → Data Exchange → *Vehicles* → drop
-   `docs/demo/02_vehicles_demo.xlsx` (Isuzu NQR, NPR, QLR, QMR and Soueast S07).
+   `docs/demo/with-mistakes/02_vehicles_demo.xlsx` (Isuzu NQR, NPR, QLR, QMR and Soueast S07).
 2. The check links each vehicle to its customer by the SAP customer number,
    works out *Commercial* (NQR/NPR/QLR/QMR) or *Passenger* (S07) from the
    model, and catches the planted mistakes: **the same VIN twice**, **a
@@ -81,22 +91,26 @@ People: the **preparer** (Group IT), a **Store Manager** of the branch, and
 someone in **Finance**.
 
 1. **Suppliers.** Preparer → Data Exchange → *Suppliers* → drop
-   `docs/demo/05_SAP_suppliers_demo.csv` (SAP vendor layout: LIFNR, NAME1…).
-   Send for approval; the **Store Manager** approves and loads. Open
+   `docs/demo/with-mistakes/05_SAP_suppliers_demo.csv` (SAP vendor layout:
+   LIFNR, NAME1…). The check rejects **a supplier with no name** and marks
+   **supplier number 0000300041 twice** as a duplicate. Send for approval; the **Store Manager** approves and loads. Open
    **Store → Suppliers**: the list, with SAP vendor numbers.
 2. **Parts.** Preparer → *Parts* → choose the branch → drop
-   `docs/demo/03_SAP_parts_50k.csv` — **50,000 SAP materials** (MATNR, MAKTX,
+   `docs/demo/correct/03_SAP_parts_50k.csv` — **50,000 SAP materials** (MATNR, MAKTX,
    MATKL, MEINS, XCHPF…). Point out:
    - SAP's unit codes become words (ST → Piece, L → Litre, CAR → Carton);
    - lubricants come in as **batch-tracked**, with *1 Drum = 208 Litre*;
    - Group IT cannot approve: only the Store Manager (or an administrator).
    Approve and load as the Store Manager and watch rows a second.
-   (For a quick first try, `03a_SAP_parts_200.csv` holds 200.)
+   (For a quick first try, `correct/03a_SAP_parts_200.csv` holds 200. Its
+   `with-mistakes/` copy adds **no part number**, **no description**, **a
+   part number twice** and **a negative price**, which loads without the
+   price and says so.)
 3. **Store → Parts Catalog**: *Showing 1–50 of 50,000 parts*, paged; search
    "NQR brake" — instant. **Record Goods Receipt**: the part picker searches
    as you type and suggests the imported suppliers.
 4. **Opening stock.** Preparer → *Opening stock* → same branch → **Counted
-   on** = the cut-over date → drop `docs/demo/04_SAP_opening_stock_demo.csv`
+   on** = the cut-over date → drop `docs/demo/with-mistakes/04_SAP_opening_stock_demo.csv`
    (MATNR, LABST, MEINS, SALK3, VERPR, CHARG, LGORT). The check:
    - shows **the lines, units and total value** that will load — "compare with
      the SAP stock report for the same plant and date";
@@ -131,7 +145,7 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    system, not to the business. (Customers loaded before this release:
    re-run section 1's file with *fill in only empty fields* to add the date.)
 2. **Invoice history.** Preparer → Data Exchange → *Invoice history* →
-   choose the branch → drop `docs/demo/06_SAP_invoice_history_demo.csv`
+   choose the branch → drop `docs/demo/with-mistakes/06_SAP_invoice_history_demo.csv`
    (SAP billing layout: VBELN, FKDAT, KUNAG, NETWR, MWSBK, WAERK, VHVIN,
    FKART). Point out:
    - net + tax (NETWR + MWSBK) is kept as the gross amount; credit notes
@@ -154,9 +168,11 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    beside them, not mixed in.
 6. **Registers.** Preparer → *Production, QC and PDI registers* → **Which
    register is this file? → PDI register** → drop
-   `docs/demo/07_PDI_register_demo.xlsx` (one row with no VIN is rejected).
-   Then the same for `08_production_QC_register_demo.csv` (it has a
-   *Register* column, so leave the choice empty). Workshop manager approves
+   `docs/demo/with-mistakes/07_PDI_register_demo.xlsx` (rejected: one row with
+   no VIN, one dated 30 February). Then the same for
+   `08_production_QC_register_demo.csv` (it has a *Register* column, so leave
+   the choice empty; rejected: a row with no date and one from a "Paint
+   shop" register). Workshop manager approves
    both.
 7. Open a vehicle from section 2 (Workshop → Vehicles): **Before EJO 100**
    shows its production stations, QC gates (one *Rework* with the reason) and
@@ -224,6 +240,20 @@ someone in **Finance**. Sections 1 and 2 loaded first.
 6. **Data Exchange → Exports**: every export, its filters, who downloaded it,
    rows and size. Type the **EXP-** number in search: it opens. *Day by day*
    shows today's exports beside the imports.
+7. **A file for SAP's team.** Customers → *Source: Created in EJO* →
+   **Export → CSV, SAP field names**. Open it: line 1 is
+   *KUNNR, NAME1, KTOKD, SMTP_ADDR, TELF1…*, KUNNR is empty (SAP does not
+   have these customers yet), days are YYYYMMDD, and ZZ_EJO_ID is the EJO
+   record. *"This is the list for your SAP team to create; EJO never writes
+   into SAP. When SAP gives them numbers, the next customers file from SAP
+   fills them in."* Do the same on Parts (MATNR, MAKTX, MEINS…) and on a
+   customer's SAP invoices (VBELN 0090001001, KUNAG 0001000101: SAP's own
+   form, zeros included).
+8. **It comes straight back in.** Data Exchange → *Customers* → drop the
+   Excel file you exported in step 1, as it is: the *About this file* sheet
+   is passed over, every column matches itself, and after the check every
+   row shows as *Already a customer* — recognised by its SAP number, never
+   added twice. Cancel it.
 
 ## 9. One label per vehicle: scan it, open its whole life
 
