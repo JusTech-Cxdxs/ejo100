@@ -282,11 +282,46 @@ Needs the production, QC and PDI registers of section 5 loaded (files 07 and 08)
 5. A vehicle still in the plant (VIN in the registers, no customer yet) has
    the same page and label: *Not sold yet*.
 
+## 10. Pre-delivery inspection on a tablet (D1)
+
+People: a **PDI Inspector** and a **PDI Supervisor** (or the **Plant
+Manager**). Give the branch its SAP plant code first (Branches → the branch
+→ *SAP plant code*, e.g. 1000).
+
+1. As the **PDI Inspector**, open **Assembly plant**. Scan a vehicle's label
+   (or type a new VIN, e.g. **JAANLR85EL7200001**) and press **Start the
+   PDI**. A VIN new to the plant asks for its model (NQR, NPR, QLR, QMR or
+   S07), variant, engine number and, if you have them, the SAP material,
+   production order and equipment numbers. The checklist for that model
+   opens: 54 items for the Isuzu trucks and 56 for the S07, with
+   truck-only checks (cab tilt) and SUV-only ones (camera, keyless).
+2. Tap through the items. Mark one **Not OK** — it asks what is wrong
+   first. Record the odometer, battery and tyre pressures, tick the
+   diagnostic scan and type a fault code (*P0401*): the PDI cannot go on
+   until the cause is fixed and the code cleared.
+3. **Send to rework**. Put the item right (say what was done), press
+   **Rechecked OK**, then **Send for approval**. The inspector cannot accept
+   their own PDI.
+4. As the **PDI Supervisor**, open **Approvals** → *Plant* → the PDI. Try
+   **Reject (R)** on one item with a reason: it goes back to the inspector
+   (their dashboard says *Put right PDI …*). After the recheck, **Accept
+   (A)**: the SAP usage decision is recorded and the vehicle moves to the
+   yard.
+5. Open the vehicle (its VIN): *Pre-delivery inspection* is **Done** with the
+   PDI number; the SAP numbers are on the page. Print the **PDI
+   certificate**: it now certifies from this PDI, with every item, and names
+   no staff. Search the **PDI-…** number: it opens.
+6. **Assembly plant → Vehicles in the plant**: by stage, with the SAP
+   numbers; **Export** gives the list (and *Export PDIs* every inspection)
+   for SAP or quality reports.
+
+How each record lines up with SAP is in [`docs/SAP_INTEGRATION.md`](SAP_INTEGRATION.md).
+
 ---
 
-*Coming in the next releases (each adds a section here):* recording PDI on
-screen for the Isuzu NQR, NPR, QLR and QMR and the Soueast S07, then kit
-arrival and QC, line stations, QA and the yard (D); round-trip updates from an
+*Coming in the next releases (each adds a section here):* kit arrival and
+QC, line stations and QA, the yard, sale and plant dashboards (D2–D4); a
+complete KCG-style demo organisation with a one-command reset; round-trip updates from an
 exported file with a preview of the changes (A4b); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
 reconciliation (C1); and inviting imported customers to the portal (B).

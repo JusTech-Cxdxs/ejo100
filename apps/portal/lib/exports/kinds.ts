@@ -544,6 +544,77 @@ const security: ExportKind<SecurityRecord> = {
   },
 };
 
+// ── Assembly plant ────────────────────────────────────────────────────
+
+const plantWhere = async (ctx: Ctx, p: Params): Promise<Prisma.PlantVehicleWhereInput> => {
+  const q = p.q?.trim().slice(0, 60);
+  const stage = ['KIT', 'LINE', 'QA', 'PDI', 'YARD', 'SOLD'].includes(String(p.stage)) ? p.stage : undefined;
+  return {
+    organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PlantVehicleWhereInput), ...(stage ? { stage } : {}),
+    ...(q ? { OR: [{ vinKey: { contains: q.toUpperCase().replace(/[\s.\-_/]/g, '') } }, { modelCode: { contains: q, mode: 'insensitive' } }, { modelName: { contains: q, mode: 'insensitive' } }, { engineNumber: { contains: q, mode: 'insensitive' } }, { sapProductionOrder: { contains: q } }, { sapEquipment: { contains: q } }] } : {}),
+  };
+};
+const plantVehicles: ExportKind = {
+  key: 'plant-vehicles', label: 'Vehicles in the plant', view: ['plant.view'], sensitive: false, page: '/plant/vehicles',
+  columns: [
+    { header: 'VIN', type: 'code', width: 20, get: (r) => r.vin },
+    { header: 'Make', type: 'text', width: 9, get: (r) => r.make },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.modelCode },
+    { header: 'Variant', type: 'text', width: 20, get: (r) => r.modelName },
+    { header: 'Engine number', type: 'code', width: 14, get: (r) => r.engineNumber },
+    { header: 'Colour', type: 'text', width: 10, get: (r) => r.colour },
+    { header: 'Model year', type: 'int', width: 7, get: (r) => r.modelYear },
+    { header: 'Stage', type: 'text', width: 12, get: (r) => words(r.stage) },
+    { header: 'Plant', type: 'text', width: 14, get: (r) => r.branch.name },
+    { header: 'SAP plant (WERKS)', type: 'code', width: 8, get: (r) => r.sapPlant },
+    { header: 'SAP material (MATNR)', type: 'code', width: 16, get: (r) => r.sapMaterial },
+    { header: 'SAP production order (AUFNR)', type: 'code', width: 14, get: (r) => r.sapProductionOrder },
+    { header: 'SAP equipment (EQUNR)', type: 'code', width: 14, get: (r) => r.sapEquipment },
+    { header: 'Registered', type: 'datetime', width: 16, get: (r) => r.createdAt },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/vehicles/${r.vinKey}`) },
+  ],
+  async *rows(ctx, p, from) {
+    const where = await plantWhere(ctx, p);
+    yield* blocks((c) => prisma.plantVehicle.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { branch: { select: { name: true } } } }), from);
+  },
+};
+const plantPdis: ExportKind = {
+  key: 'plant-pdis', label: 'Pre-delivery inspections', view: ['plant.view'], sensitive: false, page: '/plant',
+  columns: [
+    { header: 'PDI', type: 'code', width: 16, get: (r) => r.number },
+    { header: 'VIN', type: 'code', width: 20, get: (r) => r.vehicle.vin },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.vehicle.modelCode },
+    { header: 'Attempt', type: 'int', width: 7, get: (r) => r.attempt },
+    { header: 'Status', type: 'text', width: 12, get: (r) => words(r.status) },
+    { header: 'SAP usage decision', type: 'code', width: 8, get: (r) => r.sapUsageDecision },
+    { header: 'Checklist', type: 'text', width: 14, get: (r) => `${r.templateKey} v${r.templateVersion}` },
+    { header: 'Items Not OK', type: 'int', width: 8, get: (r) => r.items.filter((i: { result: string | null }) => i.result === 'NOT_OK').length },
+    { header: 'Items reworked', type: 'int', width: 8, get: (r) => r.items.filter((i: { reworkedAt: Date | null }) => i.reworkedAt).length },
+    { header: 'Odometer (km)', type: 'int', width: 8, get: (r) => r.odometerKm },
+    { header: 'Battery (V)', type: 'number', width: 8, get: (r) => r.batteryVolts },
+    { header: 'Tyres front (psi)', type: 'number', width: 8, get: (r) => r.tyreFrontPsi },
+    { header: 'Tyres rear (psi)', type: 'number', width: 8, get: (r) => r.tyreRearPsi },
+    { header: 'Fault codes', type: 'code', width: 16, get: (r) => r.faultCodes.join(' ') },
+    { header: 'Fault codes cleared', type: 'bool', width: 8, get: (r) => (r.faultCodes.length ? r.faultCodesCleared : null) },
+    { header: 'Inspector', type: 'text', width: 18, get: (r) => r.inspector },
+    { header: 'Started', type: 'datetime', width: 16, get: (r) => r.startedAt },
+    { header: 'Submitted', type: 'datetime', width: 16, get: (r) => r.submittedAt },
+    { header: 'Decided by', type: 'text', width: 18, get: (r) => r.decider },
+    { header: 'Decided', type: 'datetime', width: 16, get: (r) => r.decidedAt },
+    { header: 'SAP production order (AUFNR)', type: 'code', width: 14, get: (r) => r.vehicle.sapProductionOrder },
+    { header: 'SAP equipment (EQUNR)', type: 'code', width: 14, get: (r) => r.vehicle.sapEquipment },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/pdi/${r.id}`) },
+  ],
+  async *rows(ctx, _p, from) {
+    const where: Prisma.PdiInspectionWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PdiInspectionWhereInput) };
+    for await (const { rows: b, next } of blocks((c) => prisma.pdiInspection.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { vehicle: true, items: { select: { result: true, reworkedAt: true } } } }), from)) {
+      const ids = [...new Set(b.flatMap((r) => [r.inspectorId, r.decidedById]).filter((x): x is string => Boolean(x)))];
+      const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+      yield { next, rows: b.map((r) => ({ ...r, inspector: names.get(r.inspectorId) ?? null, decider: r.decidedById ? names.get(r.decidedById) ?? null : null })) };
+    }
+  },
+};
+
 // ── Headquarters ──────────────────────────────────────────────────────
 
 const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
@@ -570,7 +641,7 @@ const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
 };
 
 export const EXPORT_KINDS: Record<string, ExportKind> = Object.fromEntries(
-  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, headquarters].map((k) => [k.key, k]),
+  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, headquarters].map((k) => [k.key, k]),
 );
 
 /** May this person export this list (open it, export, and — for contact details or payments — export those)? */

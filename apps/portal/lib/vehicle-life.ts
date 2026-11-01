@@ -55,13 +55,13 @@ export type LifeStage = { key: LifeStageKey; label: string; hint: string; entrie
  * nothing is outstanding.
  */
 export function buildLife(input: {
-  records: { id: string; kind: string; date: string; stage: string | null; result: string | null; reference: string | null; notes: string | null; inspector: string | null }[];
+  records: { id: string; kind: string; date: string; stage: string | null; result: string | null; reference: string | null; notes: string | null; inspector: string | null; source?: 'register' | 'ejo'; href?: string }[];
   sale?: { date: string; label: string; href?: string } | null;
   warrantyStart?: { date: string; label: string; href?: string } | null;
 }): LifeStage[] {
   const by = new Map<LifeStageKey, LifeEntry[]>(LIFE_STAGES.map((s) => [s.key, []]));
   for (const r of input.records) {
-    by.get(lifeStageOf(r.kind, r.stage))!.push({ id: r.id, date: r.date, stage: r.stage, result: r.result, tone: resultTone(r.result), reference: r.reference, notes: r.notes, inspector: r.inspector, source: 'register' });
+    by.get(lifeStageOf(r.kind, r.stage))!.push({ id: r.id, date: r.date, stage: r.stage, result: r.result, tone: resultTone(r.result), reference: r.reference, notes: r.notes, inspector: r.inspector, source: r.source ?? 'register', ...(r.href ? { href: r.href } : {}) });
   }
   if (input.sale) by.get('sale')!.push({ id: 'sale', date: input.sale.date, stage: input.sale.label, result: null, tone: 'pass', reference: null, notes: null, inspector: null, source: 'ejo', href: input.sale.href });
   if (input.warrantyStart) by.get('sale')!.push({ id: 'warranty', date: input.warrantyStart.date, stage: input.warrantyStart.label, result: null, tone: 'pass', reference: null, notes: null, inspector: null, source: 'ejo', href: input.warrantyStart.href });

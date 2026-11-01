@@ -23,6 +23,7 @@ export const platformModules: PlatformModuleDescriptor[] = [
   { key: 'crm', name: 'Customers', status: 'LIVE', href: '/crm', icon: 'users' },
   { key: 'inventory', name: 'Inventory', status: 'LIVE', href: '/inventory', icon: 'boxes' },
   { key: 'warranty', name: 'Warranty', status: 'LIVE', href: '/warranty', icon: 'shield' },
+  { key: 'plant', name: 'Assembly plant', status: 'LIVE', href: '/plant', icon: 'factory' },
   { key: 'security', name: 'Security', status: 'LIVE', href: '/security', icon: 'shield' },
   { key: 'scheduling', name: 'Scheduling', status: 'LIVE', href: '/schedule', icon: 'calendar' },
   { key: 'analytics', name: 'Business Analytics', status: 'LIVE', href: '/analytics', icon: 'bar-chart' },

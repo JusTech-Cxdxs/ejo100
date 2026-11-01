@@ -73,6 +73,17 @@ export default async function BranchEditPage({
             />
           </div>
           <div>
+            <label htmlFor="branch-sap-plant" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">SAP plant code (WERKS)</label>
+            <input
+              id="branch-sap-plant"
+              name="sapPlant"
+              defaultValue={branch.sapPlant ?? ''}
+              maxLength={4}
+              placeholder="e.g. 1000 — when this branch is a plant or stock point in SAP"
+              className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 font-mono text-sm uppercase text-[var(--ejo-text)]"
+            />
+          </div>
+          <div>
             <label className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">Address</label>
             <textarea id="branches-id-text-1"
               name="address"

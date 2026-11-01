@@ -5,7 +5,7 @@
  * Items are recognised by the id prefixes their sources give them
  * (lib/actions/dashboard.ts, workflow-actions.ts, security.ts, warranty*.ts).
  */
-export type ApprovalArea = 'Workshop' | 'Store' | 'Money' | 'Warranty' | 'Security';
+export type ApprovalArea = 'Workshop' | 'Store' | 'Money' | 'Warranty' | 'Security' | 'Plant';
 
 const PREFIXES: [string, ApprovalArea][] = [
   ['service-cancel-', 'Workshop'],
@@ -28,6 +28,7 @@ const PREFIXES: [string, ApprovalArea][] = [
   ['exitpass-', 'Security'],
   ['roadtest-', 'Security'],
   ['ctr-d-', 'Security'],
+  ['pdi-approve-', 'Plant'],
 ];
 
 /** The area of an approval item, or null when the item is not a decision. */
@@ -42,4 +43,4 @@ export function isApproval(item: { id: string; title: string }): boolean {
   return approvalArea(item) !== null;
 }
 
-export const APPROVAL_AREAS: ApprovalArea[] = ['Workshop', 'Store', 'Money', 'Warranty', 'Security'];
+export const APPROVAL_AREAS: ApprovalArea[] = ['Workshop', 'Store', 'Money', 'Warranty', 'Security', 'Plant'];

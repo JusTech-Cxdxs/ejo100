@@ -25,7 +25,7 @@ import { buildLife, currentStage, type LifeStage } from '@/lib/vehicle-life';
 import { isChassisLike, normaliseVin, vinCheckDigitOk } from '@/lib/vin';
 
 /** Who may open a vehicle's page: anyone whose work touches vehicles. */
-const VIEWERS = ['workshop.view', 'warranty.view', 'security.view', 'crm.view'] as const;
+const VIEWERS = ['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view'] as const;
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 const words = (s: string) => s.toLowerCase().replace(/_/g, ' ').replace(/^./, (c) => c.toUpperCase());
@@ -47,8 +47,12 @@ export type VehiclePassport = {
     gateExits: { id: string; number: string; at: Date; branch: string }[] | null;
   };
   labels: { printed: number; lastAt: Date | null; mayPrint: boolean };
+  /** In the assembly plant (Phase D): its stage and the numbers SAP knows it by. */
+  plant: { id: string; stage: string; modelCode: string; modelName: string | null; engineNumber: string | null; colour: string | null; branch: string; sapPlant: string | null; sapMaterial: string | null; sapProductionOrder: string | null; sapEquipment: string | null } | null;
+  /** The latest PDI recorded on screen (it decides the PDI certificate when there is one). */
+  pdi: { id: string; number: string; status: string; at: Date; usageDecision: string | null; items: { section: string; label: string; result: string | null }[] } | null;
   /** Links the viewer may follow. */
-  may: { editVehicle: boolean; customers: boolean };
+  may: { editVehicle: boolean; customers: boolean; plant: boolean };
 };
 
 /** The vehicle with this VIN (or chassis number), for this person — null when EJO has nothing for it. */
@@ -72,10 +76,14 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
       select: { id: true, kind: true, eventDate: true, stage: true, result: true, inspector: true, reference: true, notes: true, model: true },
     }),
   ]);
-  if (!vehicle && records.length === 0) return null;
+  const plantVehicle = await prisma.plantVehicle.findFirst({
+    where: { ...fence, vinKey: vin },
+    include: { branch: { select: { name: true } }, pdis: { where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, include: { items: { orderBy: { sort: 'asc' }, select: { section: true, label: true, result: true } } } } },
+  });
+  if (!vehicle && records.length === 0 && !plantVehicle) return null;
 
-  const [canJobs, canWarranty, canSecurity, canCustomers, canPrint, canEdit] = await Promise.all([
-    allows('workshop.job_card.view'), allows('warranty.view'), allows('security.view'), allows('crm.view'), allows('vehicles.label.print'), allows('workshop.view'),
+  const [canJobs, canWarranty, canSecurity, canCustomers, canPrint, canEdit, canPlant] = await Promise.all([
+    allows('workshop.job_card.view'), allows('warranty.view'), allows('security.view'), allows('crm.view'), allows('vehicles.label.print'), allows('workshop.view'), allows('plant.view'),
   ]);
   const vid = vehicle?.id ?? '__none__';
   const [jobCards, services, warranties, claims, roadTests, gateExits] = await Promise.all([
@@ -90,7 +98,16 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
   // Sale: the vehicle's first owner in EJO; warranty start: its first vehicle warranty (Warranty sees the number).
   const vehicleWarranty = await prisma.warranty.findFirst({ where: { customer: fence, vehicleId: vid, kind: 'ASSET' }, orderBy: { startsAt: 'asc' }, select: { id: true, warrantyNumber: true, startsAt: true } });
   const stages = buildLife({
-    records: records.map((r) => ({ id: r.id, kind: r.kind, date: ymd(r.eventDate), stage: r.stage, result: r.result, reference: r.reference, notes: r.notes, inspector: r.inspector })),
+    records: [
+      ...records.map((r) => ({ id: r.id, kind: r.kind, date: ymd(r.eventDate), stage: r.stage, result: r.result, reference: r.reference, notes: r.notes, inspector: r.inspector })),
+      // PDIs recorded on screen: one check ("PDI checklist") whose latest attempt decides; the number links to it for the plant.
+      ...(plantVehicle?.pdis ?? []).map((d) => ({
+        id: d.id, kind: 'PDI', date: ymd(d.decidedAt ?? d.submittedAt ?? d.startedAt), stage: 'PDI checklist',
+        result: d.status === 'PASSED' ? 'PASS' : d.status === 'REWORK' ? 'REWORK' : 'OPEN', reference: d.number,
+        notes: d.status === 'PASSED' ? 'accepted (SAP usage decision A)' : d.status === 'SUBMITTED' ? 'waiting for approval' : d.status === 'REWORK' ? `rework${d.sapUsageDecision === 'R' ? ' (rejected, R)' : ''}` : 'in progress',
+        inspector: null, source: 'ejo' as const, ...(canPlant ? { href: `/plant/pdi/${d.id}` } : {}),
+      })),
+    ],
     sale: vehicle ? { date: ymd(vehicleWarranty && vehicleWarranty.startsAt < vehicle.createdAt ? vehicleWarranty.startsAt : vehicle.createdAt), label: canCustomers && vehicle.customer ? `Registered to ${vehicle.customer.fullName}` : 'Registered to its customer', href: canCustomers && vehicle.customer ? `/crm/customers/${vehicle.customer.id}` : undefined } : null,
     warrantyStart: vehicleWarranty ? { date: ymd(vehicleWarranty.startsAt), label: canWarranty ? `Warranty ${vehicleWarranty.warrantyNumber} starts` : 'Vehicle warranty starts', href: canWarranty ? `/warranty/${vehicleWarranty.id}` : undefined } : null,
   });
@@ -103,7 +120,7 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
   return {
     vin,
     checkDigitOk: vinCheckDigitOk(vin),
-    description: vehicle ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') : model,
+    description: vehicle ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') : plantVehicle ? [plantVehicle.make, plantVehicle.modelName ?? plantVehicle.modelCode].join(' ') : model,
     vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plateNumber, make: vehicle.make, model: vehicle.model, year: vehicle.year, engineNumber: vehicle.engineNumber, mileage: vehicle.mileage, customer: canCustomers && vehicle.customer ? { id: vehicle.customer.id, name: vehicle.customer.fullName } : null, registeredAt: vehicle.createdAt } : null,
     stages,
     now: currentStage(stages)?.label ?? null,
@@ -116,7 +133,9 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
       gateExits: gateExits?.map((x) => ({ id: x.id, number: x.exitNumber, at: x.exitedAt, branch: x.branch.name })) ?? null,
     },
     labels: { printed, lastAt: prints[0]?.createdAt ?? null, mayPrint: canPrint },
-    may: { editVehicle: Boolean(vehicle) && canEdit, customers: canCustomers },
+    plant: plantVehicle ? { id: plantVehicle.id, stage: plantVehicle.stage, modelCode: plantVehicle.modelCode, modelName: plantVehicle.modelName, engineNumber: plantVehicle.engineNumber, colour: plantVehicle.colour, branch: plantVehicle.branch.name, sapPlant: plantVehicle.sapPlant, sapMaterial: plantVehicle.sapMaterial, sapProductionOrder: plantVehicle.sapProductionOrder, sapEquipment: plantVehicle.sapEquipment } : null,
+    pdi: (() => { const d = plantVehicle?.pdis.at(-1); return d ? { id: d.id, number: d.number, status: d.status, at: d.decidedAt ?? d.submittedAt ?? d.startedAt, usageDecision: d.sapUsageDecision, items: d.items } : null; })(),
+    may: { editVehicle: Boolean(vehicle) && canEdit, customers: canCustomers, plant: canPlant },
   };
 }
 
@@ -135,7 +154,7 @@ export async function recordVehiclePrint(raw: string, kind: LabelKind): Promise<
   const vin = normaliseVin(raw);
   if (!isChassisLike(vin) || !LABEL_WORDS[kind]) throw new Error('That is not a vehicle EJO knows.');
   const fence = await orgWhere();
-  const known = (await prisma.customerVehicle.count({ where: { chassisNumber: { equals: vin, mode: 'insensitive' }, customer: fence } })) + (await prisma.vehicleHistoryRecord.count({ where: { ...fence, vinKey: vin, voidedAt: null } }));
+  const known = (await prisma.customerVehicle.count({ where: { chassisNumber: { equals: vin, mode: 'insensitive' }, customer: fence } })) + (await prisma.vehicleHistoryRecord.count({ where: { ...fence, vinKey: vin, voidedAt: null } })) + (await prisma.plantVehicle.count({ where: { ...fence, vinKey: vin } }));
   if (!known) throw new Error('That is not a vehicle EJO knows.');
   const p = await getPrincipal();
   const org = await myOrganisationId();

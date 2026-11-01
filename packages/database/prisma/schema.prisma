@@ -129,6 +129,8 @@ model Organisation {
   historicalInvoices    HistoricalInvoice[]
   vehicleHistoryRecords VehicleHistoryRecord[]
   exportJobs ExportJob[]
+  plantVehicles PlantVehicle[]
+  pdiInspections PdiInspection[]
 }
 
 model BusinessUnit {
@@ -201,6 +203,8 @@ model Branch {
   cityId         String
   name           String   // e.g. "Isolo Branch"
   code           String?  // short code used in document numbering, e.g. "KWL-WS"
+  /// SAP plant code (WERKS) when the branch is a plant or stock point in SAP.
+  sapPlant       String?
   address        String?
   // The branch's own hotlines, printed separately from the organisation's
   // (e.g. head office and a workshop branch on the same Job Card).
@@ -238,6 +242,8 @@ model Branch {
   securityIncidents SecurityIncident[]
   gateDeliveries GateDelivery[]
   contractorPasses ContractorPass[]
+  plantVehicles PlantVehicle[]
+  pdiInspections PdiInspection[]
 }
 
 model Department {
@@ -4520,3 +4526,115 @@ model ExportDownload {
   @@map("export_downloads")
 }
 
+
+// ----------------------------------------------------------------------------
+// ASSEMBLY PLANT (Phase D)
+// ----------------------------------------------------------------------------
+
+/// A vehicle in the plant, from kit arrival until it is sold: one per VIN per
+/// organisation. Carries the numbers SAP knows it by, so plant events post to
+/// SAP without reshaping (plant WERKS, material MATNR, production order AUFNR,
+/// equipment EQUNR).
+model PlantVehicle {
+  id                 String    @id @default(cuid())
+  organisationId     String
+  /// The plant (a branch).
+  branchId           String
+  vin                String
+  vinKey             String
+  make               String
+  /// NQR, NPR, QLR, QMR, S07 (lib/plant/pdi.ts PLANT_MODELS).
+  modelCode          String
+  modelName          String?
+  engineNumber       String?
+  colour             String?
+  modelYear          Int?
+  /// KIT | LINE | QA | PDI | YARD | SOLD
+  stage              String    @default("PDI")
+  sapPlant           String?
+  sapMaterial        String?
+  sapProductionOrder String?
+  sapEquipment       String?
+  /// The customer's vehicle once sold and registered.
+  customerVehicleId  String?
+  createdById        String
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  organisation Organisation    @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch          @relation(fields: [branchId], references: [id])
+  pdis         PdiInspection[]
+
+  @@unique([organisationId, vinKey])
+  @@index([organisationId, stage])
+  @@index([branchId])
+  @@map("plant_vehicles")
+}
+
+/// One pre-delivery inspection of one vehicle (a recheck after rework is the
+/// same inspection; a fresh one after a rejection is a new attempt).
+model PdiInspection {
+  id               String    @id @default(cuid())
+  /// PDI-2026-000001
+  number           String    @unique
+  organisationId   String
+  branchId         String
+  plantVehicleId   String
+  attempt          Int       @default(1)
+  templateKey      String
+  templateVersion  Int
+  /// IN_PROGRESS | REWORK | SUBMITTED | PASSED | CANCELLED
+  status           String    @default("IN_PROGRESS")
+  odometerKm       Int?
+  batteryVolts     Float?
+  tyreFrontPsi     Float?
+  tyreRearPsi      Float?
+  faultScanDone    Boolean   @default(false)
+  faultCodes       String[]  @default([])
+  faultCodesCleared Boolean  @default(false)
+  notes            String?
+  inspectorId      String
+  startedAt        DateTime  @default(now())
+  submittedAt      DateTime?
+  decidedById      String?
+  decidedAt        DateTime?
+  decisionNote     String?
+  /// SAP QM usage decision: A accepted, R rejected.
+  sapUsageDecision String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  vehicle      PlantVehicle @relation(fields: [plantVehicleId], references: [id], onDelete: Cascade)
+  items        PdiItem[]
+
+  @@index([organisationId, status])
+  @@index([plantVehicleId])
+  @@index([branchId, status])
+  @@map("pdi_inspections")
+}
+
+/// One checklist line of a PDI, as the checklist read when the PDI started.
+model PdiItem {
+  id           String    @id @default(cuid())
+  inspectionId String
+  code         String
+  section      String
+  label        String
+  sort         Int
+  allowNa      Boolean   @default(false)
+  /// OK | NOT_OK | NA
+  result       String?
+  defect       String?
+  reworkNote   String?
+  reworkedAt   DateTime?
+  reworkedById String?
+  checkedById  String?
+  checkedAt    DateTime?
+
+  inspection PdiInspection @relation(fields: [inspectionId], references: [id], onDelete: Cascade)
+
+  @@unique([inspectionId, code])
+  @@map("pdi_items")
+}

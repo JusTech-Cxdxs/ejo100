@@ -162,7 +162,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, pdis, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -205,6 +205,9 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     // Exports (Data Exchange): those who export lists, in their own organisation — their own, or everyone's for those who read the audit trail.
     find(allowed('dataexchange.export.run') && { ...sameOrg, ...(allowed('audit.view') ? {} : { createdById: user.id }) }, { numbers: [['EXP', 'number']], text: ['summary'] },
       (w) => prisma.exportJob.findMany({ where: W<Prisma.ExportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, format: true } })),
+    // Pre-delivery inspections: the plant team, in their own organisation and plant.
+    find(allowed('plant.view') && { AND: [sameOrg, await reachWhere('plant.view', { lens: false })] }, { numbers: [['PDI', 'number']] },
+      (w) => prisma.pdiInspection.findMany({ where: W<Prisma.PdiInspectionWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, status: true, vehicle: { select: { vin: true, modelCode: true } } } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
@@ -260,6 +263,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('BC', 'Broadcasts', broadcasts.map((r) => ({ label: r.broadcastNumber, sub: r.title, href: referenceUrl('BC', r.id) }))),
     ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
     ref('IMP', 'Imports', imports.map((r) => ({ label: r.number, sub: dot(r.fileName, words(r.status)), href: referenceUrl('IMP', r.id) }))),
+    ref('PDI', 'Pre-delivery inspections', pdis.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, r.vehicle.modelCode, words(r.status)), href: referenceUrl('PDI', r.id) }))),
     ref('EXP', 'Exports', exportJobs.map((r) => ({ label: r.number, sub: dot(words(r.kind.replace(/-/g, ' ')), r.format.toUpperCase()), href: referenceUrl('EXP', r.id) }))),
     // A vehicle with a VIN opens its one page (kit to latest visit); one without opens its workshop record.
     { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.chassisNumber, r.customer?.fullName), href: r.chassisNumber && isChassisLike(r.chassisNumber) ? vehiclePagePath(r.chassisNumber) : `/workshop/vehicles/${r.id}/edit` })) },
@@ -278,7 +282,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const sap = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), opens });
   if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
   // A VIN typed or scanned (a handheld scanner types it): that vehicle first — also before it is sold (plant registers only).
-  const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view']));
+  const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view']));
   if (vin.length) groups.splice(1, 0, { group: 'Vehicle (VIN)', hits: vin });
   return groups
     .map((g, i) => ({ g, i, rank: g.group === 'Vehicle (VIN)' ? -60 : g.group === 'SAP numbers' ? -50 : groupRank(plan, g.group) }))
@@ -291,12 +295,13 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
 async function vinHits(q: string, mineOrg: Where, mayOpen: boolean): Promise<SearchHit[]> {
   const v = normaliseVin(q);
   if (!mayOpen || v.length < 11 || !isChassisLike(v)) return [];
-  const [vehicle, record] = await Promise.all([
+  const [vehicle, record, plant] = await Promise.all([
     prisma.customerVehicle.findFirst({ where: { chassisNumber: { equals: v, mode: 'insensitive' }, customer: mineOrg as Prisma.CustomerWhereInput }, select: { make: true, model: true, plateNumber: true } }),
     prisma.vehicleHistoryRecord.findFirst({ where: { ...(mineOrg as { organisationId?: string }), vinKey: v, voidedAt: null }, orderBy: { eventDate: 'desc' }, select: { model: true, kind: true } }),
-  ]).catch(() => [null, null] as const);
-  if (!vehicle && !record) return [];
-  const what = vehicle ? [vehicle.make, vehicle.model].filter(Boolean).join(' ') : record?.model;
+    prisma.plantVehicle.findFirst({ where: { ...(mineOrg as { organisationId?: string }), vinKey: v }, select: { make: true, modelCode: true, modelName: true } }),
+  ]).catch(() => [null, null, null] as const);
+  if (!vehicle && !record && !plant) return [];
+  const what = vehicle ? [vehicle.make, vehicle.model].filter(Boolean).join(' ') : plant ? `${plant.make} ${plant.modelName ?? plant.modelCode}` : record?.model;
   return [{ label: `VIN ${v}`, sub: [what, vehicle?.plateNumber, vehicle ? null : 'not sold yet'].filter(Boolean).join(' · ') || undefined, href: vehiclePagePath(v) }];
 }
 

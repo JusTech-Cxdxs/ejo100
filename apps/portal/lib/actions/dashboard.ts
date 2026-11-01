@@ -16,6 +16,7 @@ import { getSchedulingDashboardItems } from './scheduling';
 import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { getPlantDashboardItems } from '@/lib/actions/plant';
 
 export type DashboardNotification = {
   id: string;
@@ -244,6 +245,8 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   for (const w of await myWorkP) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Data Exchange: imports waiting for this approver (never their own), and their own approved or sent back.
   for (const w of await getDataExchangeDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
+  // Assembly plant: PDIs waiting for this approver (never one they inspected), and their own PDIs sent back to rework.
+  for (const w of await getPlantDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Integrity watch reviewers: new alerts (never ones about themselves).
   const integrity = await countOpenIntegrityAlerts().catch(() => ({ open: 0, high: 0 }));
   if (integrity.open) {
