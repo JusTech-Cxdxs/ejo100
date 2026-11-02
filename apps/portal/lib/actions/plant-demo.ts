@@ -13,7 +13,7 @@ import { writeAuditLog } from '@/lib/workshop-core';
 import { prisma } from '@ejo/database';
 import { DEMO_SOURCE, loadPlantDemo, removePlantDemo, type DemoLoadResult } from '@/lib/plant/demo/load';
 
-export const DEMO_CONFIRM_WORDS = 'load the demo';
+const DEMO_CONFIRM_WORDS = 'load the demo';
 type Done<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 const fail = (error: string): { ok: false; error: string } => ({ ok: false, error });
 const ONLY = 'Loading the plant demo is for administrators.';
