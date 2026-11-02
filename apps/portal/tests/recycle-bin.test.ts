@@ -109,13 +109,17 @@ test('snapshot: parents first, stable within a table, nothing foreign, exactly o
   ];
   const s = orderedSnapshot('JobCard', rows);
   assert.deepEqual(s.rows.map((r) => r.data.id), ['jc', 'c1', 'e', 'l2', 'l1', 'cr']);
-  assert.throws(() => orderedSnapshot('JobCard', [...rows, { model: 'payment', data: { id: 'p' } }]), /cannot hold payment/);
+  assert.throws(() => orderedSnapshot('JobCard', [...rows, { model: 'refund', data: { id: 'p' } }]), /cannot hold refund/);
   assert.throws(() => orderedSnapshot('JobCard', rows.filter((r) => r.model !== 'jobCard')), /exactly one jobCard/);
-  // Every kind starts with its own table, and no money table is ever snapshotted (money is never deletable).
+  // Every kind starts with its own table, and no money table is ever snapshotted (money is never deletable) — with one exception:
+  // a job card brought in open at the cut-over (P5) carries the deposits taken in the old system, and undoing that import takes
+  // the job card and those opening payments to the bin together (the desk's own delete still refuses any job card with a payment).
   for (const e of BIN_ENTITIES) {
     assert.ok(SNAPSHOT_ORDER[e].length >= 1);
-    for (const m of SNAPSHOT_ORDER[e]) assert.doesNotMatch(m, /^(payment|refund|goodsReceipt|auditLog|warranty)/i, `${e}: ${m}`);
+    for (const m of SNAPSHOT_ORDER[e]) if (!(e === 'JobCard' && m === 'payment')) assert.doesNotMatch(m, /^(payment|refund|goodsReceipt|auditLog|warranty)/i, `${e}: ${m}`);
   }
+  assert.ok(SNAPSHOT_ORDER.JobCard.includes('payment'));
+  assert.equal(jobCardEligibility({ status: 'CHECKED_IN', payments: 1, refunds: 0, estimateStatus: null, partRequests: 0, outsidePurchases: 0, estimateLinesInUse: 0, warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, escalatedFromService: false, closeRequests: 0, approvalDecided: false, technicianAssigned: false }).eligible, false, 'the desk never deletes a job card with a payment');
   // Round trip through storage.
   assert.deepEqual(parseSnapshot(JSON.parse(JSON.stringify(s))), s);
   assert.equal(parseSnapshot({ v: 2, entity: 'JobCard', rows: [] }), null);

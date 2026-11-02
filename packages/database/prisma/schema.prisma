@@ -838,6 +838,11 @@ model JobCard {
   // Name of whoever collected the vehicle (the customer or someone they
   // sent). Free text: collectors usually have no account.
   collectedByName String?
+  // Brought in open from another system at the cut-over (P5): where from
+  // (SAP, LEGACY), its number there (kept and searchable) and the import.
+  externalSource String?
+  externalId     String?
+  importJobId    String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
@@ -866,6 +871,8 @@ model JobCard {
   @@index([vehicleId])
   @@index([assignedTechnicianId])
   @@index([supervisorId])
+  @@index([importJobId])
+  @@index([branchId, externalSource, externalId])
   @@map("job_cards")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]

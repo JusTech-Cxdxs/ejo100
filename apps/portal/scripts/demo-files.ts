@@ -277,6 +277,39 @@ emit('04_SAP_opening_stock_demo.csv', 'stock', ['MATNR', 'LABST', 'MEINS', 'SALK
   { cells: [partRow(14)[0]!, '208', 'L', '873600.00', '4200', '1', '', '0001'], what: 'A batch-managed oil without its batch', expect: 'rejected', by: 'database', says: 'This part is batch-tracked: give the batch number (SAP CHARG).' },
 ]);
 
+// ── 15: the job cards still open on the cut-over day (become live EJO job cards) ───
+// Eight vehicles from 02 are in the workshop when EJO takes over, at every stage. Opened in the last fortnight before a
+// fixed cut-over day; SAP statuses as the order list shows them; the estimate as approved there; the parts already issued
+// from the store (part numbers from 03a where the catalogue has them); deposits taken, with the receipt numbers.
+const CUTOVER = new Date(Date.UTC(2026, 10, 2)); // 2 November 2026
+const plateOf = (i: number) => `LND ${100 + i} ${String.fromCharCode(65 + (i % 26))}${String.fromCharCode(66 + (i % 24))}`;
+const sapDate = (d: Date) => `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`;
+const OPEN_JOBS: [number, number, string, string, string, string, string, string, string, string, string, string, string, string][] = [
+  // vehicle i, days before cut-over, STAT, complaint, findings, technician, labour, parts, approved, parts issued, paid, method, receipt
+  [1, 1, 'CRTD', 'Carry out service', '', '', '', '', '', '', '', '', '', 'Customer waiting for a call with the estimate'],
+  [2, 3, 'REL', 'Brakes squeal when stopping; steering pulls left', 'Front pads worn to the metal; left tie rod end loose', 'E. Okoro', '45000', '112200', 'Yes', `${partRow(0)[0]} x1 @${partRow(0)[6]}; ${partRow(12)[0]} x2 @${partRow(12)[6]}`, '60000', 'Bank transfer', 'RCPT-2026-1041', ''],
+  [3, 5, 'Awaiting parts', 'Engine warning lamp; loss of power uphill', 'Injector no. 3 failed; injector on order from Isuzu', 'B. Musa', '60000', '144000', 'Yes', '', '100000', 'Bank transfer', 'RCPT-2026-1046', 'Part expected Friday'],
+  [4, 2, 'REL', 'Carry out service', 'Service in progress', 'T. Adesanya', '35000', '71100', 'Yes', `${partRow(2)[0]} x1 @${partRow(2)[6]}; ${partRow(3)[0]} x1 @${partRow(3)[6]}; ${partRow(4)[0]} x1 @${partRow(4)[6]}; ${partRow(14)[0]} x8 @${partRow(14)[6]}`, '', '', '', ''],
+  [5, 4, 'QC', 'Clutch slipping', 'Clutch kit replaced; hydraulics bled; awaiting road test', 'K. Nwachukwu', '80000', '186000', 'Yes', `${partRow(1)[0]} x1 @${partRow(1)[6]}`, '150000', 'Cash', 'RCPT-2026-1039', ''],
+  [6, 6, 'Awaiting customer approval', 'Gearbox noisy in third and fourth', 'Gearbox needs an overhaul: bearings and synchro rings', 'S. Lawal', '120000', '310000', 'No', '', '', '', '', 'Estimate sent 29 Oct; customer to confirm'],
+  [7, 8, 'TECO', 'Carry out service; replace wiper blades', 'Service done; wiper blades fitted', 'E. Okoro', '30000', '41000', 'Yes', `${partRow(2)[0]} x1 @${partRow(2)[6]}; Wiper blade set x1 @9500`, '71000', 'Bank transfer', 'RCPT-2026-1033', ''],
+  [8, 9, 'Ready for collection', 'A/C not cooling', 'System recharged; cabin filter changed; leak test passed', 'B. Musa', '25000', '38000', 'Yes', `Cabin filter x1 @8500`, '63000', 'Cash', 'RCPT-2026-1030', 'Customer told; collecting Monday'],
+];
+const OPEN_HEADER = ['AUFNR', 'KUNUM', 'VHVIN', 'LICENSE_NUM', 'ERDAT', 'STAT', 'RECDV', 'KTEXT', 'LTXA1', 'Technician', 'Supervisor', 'Labour', 'Parts', 'Estimate approved', 'Parts issued', 'Paid', 'Payment method', 'Receipt', 'Paid on', 'Notes', 'Branch'];
+const openRows = OPEN_JOBS.map(([i, days, stat, complaint, findings, tech, labour, parts, approved, issued, paid, method, receipt, notes], k) => {
+  const opened = addDays(CUTOVER, -days);
+  const mileage = (lastServiceKm.get(vin(i)) ?? 5000) + 1500 + (i % 5) * 700; // the vehicles file's mileage: it came in at that reading
+  return [String(483_200 + k * 3 + (i % 2)), kunnr(i), vin(i), plateOf(i), sapDate(opened), stat, String(mileage), complaint, findings, tech, '', labour, parts, approved, issued, paid, method, receipt, paid ? sapDate(opened) : '', notes, 'Isolo Branch'];
+});
+emit('15_SAP_open_job_cards_demo.csv', 'openJobs', OPEN_HEADER, openRows, [
+  { cells: ['483290', kunnr(9), vin(9), plateOf(9), sapDate(addDays(CUTOVER, -20)), 'CLSD', '', 'Closed last month', 'Done and collected', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A job card already closed (CLSD): it belongs in the history file', expect: 'rejected', by: 'check', says: 'Stage “CLSD”: a closed, checked-out or cancelled job card belongs in the job card history file, not here.' },
+  { cells: ['483291', kunnr(10), vin(10), plateOf(10), sapDate(addDays(CUTOVER, -2)), 'Somewhere', '', 'Unknown stage', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A stage EJO does not know', expect: 'rejected', by: 'check', says: '“Somewhere” is not a stage EJO knows: use Checked in, In progress, Awaiting parts, Quality check, Awaiting customer approval, Completed or Ready for collection (or SAP’s CRTD, REL, TECO).' },
+  { cells: ['483292', kunnr(11), '', '', sapDate(addDays(CUTOVER, -2)), 'REL', '', 'No vehicle', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'No chassis number or plate', expect: 'rejected', by: 'check', says: 'Which vehicle is it? Give the chassis number (VIN) or the plate: an open job card is on a vehicle that is in EJO.' },
+  { cells: ['483293', kunnr(2), vin(2), plateOf(2), sapDate(addDays(CUTOVER, -1)), 'CRTD', '', 'A second job card on the same vehicle', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: `Vehicle ${vin(2)} a second time (row 3 has it): one open job card per vehicle`, expect: 'duplicate', by: 'file', says: 'Same chassis number as row 3 of the file; only the first is loaded.' },
+  { cells: ['483294', kunnr(12), vin(12), plateOf(12), '15.03.2027', 'REL', '', 'Opened in the future', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'Opened on a date in the future', expect: 'rejected', by: 'check', says: 'The opening date 2027-03-15 is in the future.' },
+  { cells: ['483295', '0009999999', 'JAANLR85EL7999999', 'XYZ 999 ZZ', sapDate(addDays(CUTOVER, -2)), 'REL', '', 'Vehicle not in EJO', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate.' },
+]);
+
 // ── The plant's registers (Excel, as kept on the line today) ────────────
 // PDI register: one workbook, no "register" column (chosen when importing). Two steps per vehicle.
 const INSPECTORS = ['A. Bello', 'C. Okoro', 'F. Adebayo', 'M. Yusuf'];
@@ -390,6 +423,7 @@ this order (later files refer to earlier ones):
 5. \`04_SAP_opening_stock_demo.csv\` — Opening stock (needs the 50,000 parts)
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
 6a. \`14_SAP_job_card_history_demo.csv\` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
+6b. \`15_SAP_open_job_cards_demo.csv\` — Open job cards at the cut-over (into Isolo Branch): eight vehicles from 02 in the workshop at every stage, with estimates, parts issued and deposits; they become live EJO job cards
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
 8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 9. \`10_plant_shipments_demo.csv\`, \`11_plant_kits_demo.csv\`, \`12_plant_kit_issues_demo.csv\`, \`13_plant_vehicles_demo.csv\` — the plant's six demo weeks as files (the same records \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.

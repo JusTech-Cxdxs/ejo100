@@ -98,6 +98,17 @@ The workshop's job cards before EJO: one service order per visit, its
 
 Export **SAP job card history** writes these names back as column headers.
 
+### Open job cards at the cut-over — SAP service orders still open (IW38)
+
+The same order list as the history, filtered to orders not yet closed, loads
+as **live EJO job cards** (P5): AUFNR kept as the old number, ERDAT the
+opening day, the system/user status mapped to EJO's stage (CRTD → checked
+in, REL → in progress, TECO → completed; see DATA_MIGRATION.md §7a3), the
+order's costs as the approved estimate, issued components (RESB/MSEG) as
+*issued before EJO* lines without moving stock, down payments as opening
+payments Finance confirms. Closed orders (CLSD/TECO with billing done and the
+vehicle collected) go to the history import instead.
+
 ### Invoice history — SAP billing (VBRK) / accounting (BKPF, BSID)
 
 | EJO field | SAP field | Notes |

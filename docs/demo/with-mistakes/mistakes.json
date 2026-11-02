@@ -243,6 +243,60 @@
     "says": "This part is batch-tracked: give the batch number (SAP CHARG)."
   },
   {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 10,
+    "entity": "openJobs",
+    "what": "A job card already closed (CLSD): it belongs in the history file",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Stage “CLSD”: a closed, checked-out or cancelled job card belongs in the job card history file, not here."
+  },
+  {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 11,
+    "entity": "openJobs",
+    "what": "A stage EJO does not know",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“Somewhere” is not a stage EJO knows: use Checked in, In progress, Awaiting parts, Quality check, Awaiting customer approval, Completed or Ready for collection (or SAP’s CRTD, REL, TECO)."
+  },
+  {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 12,
+    "entity": "openJobs",
+    "what": "No chassis number or plate",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Which vehicle is it? Give the chassis number (VIN) or the plate: an open job card is on a vehicle that is in EJO."
+  },
+  {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 13,
+    "entity": "openJobs",
+    "what": "Vehicle JAANLR85EL7100002 a second time (row 3 has it): one open job card per vehicle",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same chassis number as row 3 of the file; only the first is loaded."
+  },
+  {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 14,
+    "entity": "openJobs",
+    "what": "Opened on a date in the future",
+    "expect": "rejected",
+    "by": "check",
+    "says": "The opening date 2027-03-15 is in the future."
+  },
+  {
+    "file": "15_SAP_open_job_cards_demo.csv",
+    "row": 15,
+    "entity": "openJobs",
+    "what": "A vehicle EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate."
+  },
+  {
     "file": "07_PDI_register_demo.xlsx",
     "row": 62,
     "entity": "registers",
