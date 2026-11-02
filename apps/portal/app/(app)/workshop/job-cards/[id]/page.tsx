@@ -32,9 +32,10 @@ import { EstimateLinesTable, EstimateLineEditLink, EstimateLineRemoveButton, Est
 import { requestStoreMatchingFormAction } from '@/lib/actions/store-form-handlers';
 import { COMMON_ESTIMATE_LINE_DESCRIPTIONS, MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { assignTechnicianFormAction, approveJobCardFormAction, rejectJobCardFormAction, acceptTechnicianAssignmentFormAction, rejectTechnicianAssignmentFormAction, reassignSupervisorFormAction, updateEstimateLineItemFormAction, deleteEstimateLineItemFormAction, notifySupervisorAboutEstimateFormAction, notifyTechnicianAboutEstimateFormAction, submitEstimateForValidationFormAction, approveEstimateFormAction, approveEstimateAsManagerFormAction, returnEstimateForChangesFormAction, notifyCustomerOfApprovedEstimateFormAction, recordPaymentFormAction, requestJobCardCancellationFormAction, approveCancellationRequestFormAction, declineCancellationRequestFormAction, requestJobCardCloseFormAction, approveCloseRequestFormAction, declineCloseRequestFormAction, updateJobCardStatusFormAction } from '@/lib/actions/workshop-form-handlers';
-import { formatDateTime } from '@/lib/utils/format-date';
+import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { SubmitButton } from '@/components/SubmitButton';
 import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
+import { getImportOrigin } from '@/lib/actions/data-exchange';
 import { RecycleBinPanel } from '@/components/RecycleBinPanel';
 import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
@@ -371,6 +372,7 @@ export default async function JobCardDetailPage({
     getRecycleBinOffer('JobCard', id),
   ]);
   if (!jobCard) notFound();
+  const origin = jobCard.importJobId ? await getImportOrigin(jobCard.importJobId).catch(() => null) : null;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
   // Round 2: what needs the branch or the estimate.
@@ -499,6 +501,14 @@ export default async function JobCardDetailPage({
         </div>
       ) : null}
 
+      {jobCard.externalId ? (
+        <div className="mt-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-4 py-3 text-sm text-[var(--ejo-text)]" role="note" data-testid="job-card-origin">
+          <span className="font-semibold">Brought in from {jobCard.externalSource === 'LEGACY' ? 'the old system' : 'SAP'} as job card {jobCard.externalId}.</span>{' '}
+          Opened there on {formatDateOnly(jobCard.createdAt)}{origin ? <>, brought into EJO by import {origin.mayOpen ? <LoadingLink href={`/data-exchange/imports/${jobCard.importJobId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{origin.number}</LoadingLink> : origin.number}{origin.loadedAt ? ` on ${formatDateOnly(origin.loadedAt)}` : ''}</> : null}.
+          {jobCard.approvalStatus === 'APPROVED' && jobCard.approvalNotes?.includes('before EJO') ? ' The estimate was approved before EJO; EJO’s approval was not asked again.' : ''}
+          {payments.some((p) => p.notes?.startsWith('Paid before EJO')) ? ' Payments marked “Paid before EJO” were taken in the old system and confirmed by Finance.' : ''}
+        </div>
+      ) : null}
       <div className="ejo-hero relative mt-3 mb-6 flex flex-wrap items-center gap-3 overflow-hidden rounded-[var(--ejo-radius-xl)] border border-[var(--ejo-border)] p-4 sm:p-5">
         <div className="ejo-orb pointer-events-none absolute -right-12 -top-16 h-40 w-40 rounded-full bg-[var(--ejo-primary)]/15 blur-3xl" aria-hidden="true" />
         <PageTitle icon="clipboard" className="relative mr-1">{jobCard.jobNumber}</PageTitle>

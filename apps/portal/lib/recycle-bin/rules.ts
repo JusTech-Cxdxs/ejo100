@@ -281,7 +281,7 @@ export function mayDeleteOther(r: DeleterRights): boolean {
 
 /** Every model a snapshot may hold, in the order rows are re-inserted (parents first). */
 export const SNAPSHOT_ORDER: Record<BinEntity, string[]> = {
-  JobCard: ['jobCard', 'jobCardComplaint', 'estimate', 'estimateLineItem', 'cancellationRequest', 'closeRequest'],
+  JobCard: ['jobCard', 'jobCardComplaint', 'estimate', 'estimateLineItem', 'cancellationRequest', 'closeRequest', 'payment'],
   VehicleService: ['vehicleService', 'vehicleServiceComplaint', 'vehicleInspection', 'vehicleInspectionItem', 'serviceEstimate', 'serviceEstimateLineItem', 'vehicleServiceCancellationRequest', 'vehicleServiceCloseRequest'],
   Customer: ['customer', 'customerCompany', 'customerAddress', 'customerContact', 'customerNote', 'customerNotificationRead', 'customerVehicle', 'serviceReminderLog'],
   CustomerVehicle: ['customerVehicle', 'serviceReminderLog'],

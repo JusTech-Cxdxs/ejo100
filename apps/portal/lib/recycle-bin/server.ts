@@ -223,13 +223,15 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   if (entity === 'JobCard') {
     const root = await tx.jobCard.findUniqueOrThrow({ where: { id } });
     const estimate = await tx.estimate.findUnique({ where: { jobCardId: id } });
-    const [complaints, lines, cancels, closes] = await Promise.all([
+    const [complaints, lines, cancels, closes, payments] = await Promise.all([
       tx.jobCardComplaint.findMany({ where: { jobCardId: id }, orderBy: [{ sequenceNumber: 'asc' }, { createdAt: 'asc' }] }),
       estimate ? tx.estimateLineItem.findMany({ where: { estimateId: estimate.id }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] }) : Promise.resolve([]),
       tx.cancellationRequest.findMany({ where: { jobCardId: id }, orderBy: { createdAt: 'asc' } }),
       tx.closeRequest.findMany({ where: { jobCardId: id }, orderBy: { createdAt: 'asc' } }),
+      // Payments: only an undone import of open job cards bins a job card with any (opening payments brought in with it).
+      tx.payment.findMany({ where: { jobCardId: id }, orderBy: { createdAt: 'asc' } }),
     ]);
-    return [...plain([root], 'jobCard'), ...plain(complaints, 'jobCardComplaint'), ...plain(estimate ? [estimate] : [], 'estimate'), ...plain(lines, 'estimateLineItem'), ...plain(cancels, 'cancellationRequest'), ...plain(closes, 'closeRequest')];
+    return [...plain([root], 'jobCard'), ...plain(complaints, 'jobCardComplaint'), ...plain(estimate ? [estimate] : [], 'estimate'), ...plain(lines, 'estimateLineItem'), ...plain(cancels, 'cancellationRequest'), ...plain(closes, 'closeRequest'), ...plain(payments, 'payment')];
   }
   if (entity === 'VehicleService') {
     const root = await tx.vehicleService.findUniqueOrThrow({ where: { id } });
@@ -325,6 +327,33 @@ export async function moveToBin(entity: BinEntity, id: string, reason: string, a
 }
 
 // ── Many at once (an undone import) ───────────────────────────────────
+
+/**
+ * Moves imported open job cards (P5) to the bin inside the caller's
+ * transaction — the undo of that import. These job cards carry an approved
+ * estimate, a technician and opening payments, which the bin's own rules
+ * would refuse; the caller has checked instead that nobody has worked on
+ * them since the import (open-jobs-server.ts, untouchedSinceImport), and
+ * their snapshot carries the estimate and payments so each restores whole.
+ */
+export async function moveImportedJobCardsToBinInTx(tx: Tx, ids: string[], importJobId: string, reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+  if (!ids.length) return [];
+  await lockExisting(tx, 'jobCard', ids).catch(() => undefined);
+  const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  const moved: string[] = [];
+  for (const id of ids) {
+    const record = await binRecord('JobCard', id, tx);
+    const j = await tx.jobCard.findUnique({ where: { id }, select: { importJobId: true } });
+    if (!record || !j || j.importJobId !== importJobId) continue;
+    const snapshot = orderedSnapshot('JobCard', await snapshotRows(tx, 'JobCard', id));
+    await tx.recycleBinItem.create({
+      data: { organisationId: record.organisationId, branchId: record.branchId, entityType: 'JobCard', entityId: id, reference: record.reference, label: record.label, reason, snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter },
+    });
+    await deleteRoot(tx, 'JobCard', id);
+    moved.push(id);
+  }
+  return moved;
+}
 
 const group = <T extends Record<string, unknown>>(rows: T[], key: keyof T) => {
   const m = new Map<string, T[]>();

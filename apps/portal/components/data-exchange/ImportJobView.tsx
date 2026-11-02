@@ -229,6 +229,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare these with SAP’s billing or customer line-item report for the same period before sending it for approval. Invoices already in the history are not counted again.</p>
             </div>
           ) : null}
+          {job.entity === 'openJobs' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
+              <p className="font-medium">To open in {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} job cards{job.totals.check.estimates ? <> · estimates <span className="tabular-nums">{naira(job.totals.check.estimates)}</span></> : null}{job.totals.check.value ? <> · <span className="tabular-nums">{naira(job.totals.check.value)}</span> already paid</> : null}{job.totals.check.from && job.totals.check.to ? ` · opened ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes a live job card at its stage, with its old number kept, its estimate marked approved before EJO and its deposit as an opening payment that Finance confirms after the load. Nobody is emailed. Compare the count with the workshop’s open orders in SAP (IW38) before sending it for approval.</p>
+            </div>
+          ) : null}
           {job.entity === 'jobs' && job.totals?.check ? (
             <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
               <p className="font-medium">To load as history of {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} past jobs{job.totals.check.value ? <> · <span className="tabular-nums">{naira(job.totals.check.value)}</span> charged</> : null}{job.totals.check.from && job.totals.check.to ? ` · opened ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
@@ -308,7 +314,9 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
           </div>
           {def.financeSignOff && job.totals?.loaded ? (
             <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm">
-              {job.entity === 'invoices' ? (
+              {job.entity === 'openJobs' ? (
+                <p className="font-medium text-[var(--ejo-text)]">Opening payments now on the {nf(job.totals.loaded.lines)} job cards this import opened in {job.branch?.name ?? 'the branch'}: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> (deposits taken before EJO). Finance confirms them against the old system’s receipts.</p>
+              ) : job.entity === 'invoices' ? (
                 <p className="font-medium text-[var(--ejo-text)]">Invoice history now in EJO 100 from this import: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> on {nf(job.totals.loaded.lines)} invoices. It counts in each customer’s spend and last visit, the <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/crm">CRM</a> and <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/headquarters">Headquarters</a>, marked “from SAP, before EJO”.</p>
               ) : (
                 <p className="font-medium text-[var(--ejo-text)]">Stock value now in {job.branch?.name ?? 'the branch'}: <span className="tabular-nums">{naira(job.totals.loaded.value)}</span> ({qf(job.totals.loaded.quantity)} units on {nf(job.totals.loaded.lines)} lines)</p>
@@ -321,11 +329,11 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               {job.totals.receipts?.length ? <p className="text-xs text-[var(--ejo-text-muted)]">Opening-balance receipts: {job.totals.receipts.slice(0, 12).map((r, i) => <span key={r.id}>{i ? ', ' : ''}<a className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/inventory/goods-receipts/${r.id}`}>{r.number}</a></span>)}{job.totals.receipts.length > 12 ? ` and ${job.totals.receipts.length - 12} more` : ''}. They feed stock value, FIFO costs and the <a className="font-medium text-[var(--ejo-primary)] hover:underline" href="/inventory/analytics">inventory analytics</a>.</p> : null}
               <div className="border-t border-[var(--ejo-border)] pt-2">
                 {job.signedOff ? (
-                  <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> {job.entity === 'invoices' ? 'Totals' : 'Value'} confirmed by {job.signedOff.by} (Finance), {new Date(job.signedOff.at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' })}.</p>
+                  <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> {job.entity === 'invoices' || job.entity === 'openJobs' ? 'Totals' : 'Value'} confirmed by {job.signedOff.by} (Finance), {new Date(job.signedOff.at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos', dateStyle: 'medium', timeStyle: 'short' })}.</p>
                 ) : job.status === 'COMPLETED' ? (
                   job.me.canSignOff ? (
-                    <button type="button" className={primary} disabled={pending} onClick={() => act(() => signOffImportTotals(job.id))}><Icon name="check" size={14} /> {job.entity === 'invoices' ? 'Confirm the totals (Finance)' : 'Confirm the value (Finance)'}</button>
-                  ) : <p className="text-xs text-[var(--ejo-warning)]">Waiting for Finance to confirm the {job.entity === 'invoices' ? 'totals' : 'value'}.</p>
+                    <button type="button" className={primary} disabled={pending} onClick={() => act(() => signOffImportTotals(job.id))}><Icon name="check" size={14} /> {job.entity === 'invoices' || job.entity === 'openJobs' ? 'Confirm the totals (Finance)' : 'Confirm the value (Finance)'}</button>
+                  ) : <p className="text-xs text-[var(--ejo-warning)]">Waiting for Finance to confirm the {job.entity === 'invoices' || job.entity === 'openJobs' ? 'totals' : 'value'}.</p>
                 ) : null}
               </div>
             </div>
