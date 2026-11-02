@@ -45,6 +45,10 @@ export const PERMISSIONS = {
   'plant.pdi.approve': { module: 'Assembly plant', label: 'Approve or reject a PDI result — never one they inspected (the SAP usage decision)' },
   'plant.kit.receive': { module: 'Assembly plant', label: 'Record arriving shipments and kits, check them against the packing list, and raise shortages and damage' },
   'plant.kit.release': { module: 'Assembly plant', label: 'Release a kit to the line, hold it or reject it — never one they checked (the SAP usage decision)' },
+  'plant.line.operate': { module: 'Assembly plant', label: 'Work the line: record each station’s checks and times, raise defects and record their rework' },
+  'plant.quality.gate': { module: 'Assembly plant', label: 'Pass a vehicle through the final quality gate and verify reworked defects — never a check they recorded' },
+  'plant.qa.audit': { module: 'Assembly plant', label: 'Audit finished vehicles (the daily QA sample) and score them' },
+  'plant.route.manage': { module: 'Assembly plant', label: 'Edit the line’s routes: stations, checks and standard times (a new version each time)' },
   'vehicles.label.print': { module: 'Workshop', label: 'Print a vehicle’s label (QR code and VIN barcode), traveller sheet and PDI certificate' },
   'workshop.job_card.view': { module: 'Workshop', label: 'View Job Cards and Vehicle Services' },
   'workshop.job_card.create': { module: 'Workshop', label: 'Open Job Cards and Vehicle Services (front desk)' },
@@ -200,7 +204,7 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Runs the plant: every vehicle in it, registers vehicles, approves PDI results (never their own).
   'plant-manager': {
     'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'plant.pdi.approve': B, 'vehicles.label.print': B,
-    'plant.kit.receive': B, 'plant.kit.release': B,
+    'plant.kit.receive': B, 'plant.kit.release': B, 'plant.line.operate': B, 'plant.quality.gate': B, 'plant.qa.audit': B, 'plant.route.manage': B,
     'warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'schedule.view': 'OWN',
   },
   // Leads the PDI bay: inspects, and approves colleagues' inspections (never their own).
@@ -208,7 +212,15 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   // Inspects vehicles before delivery: the checklist, fault codes, readings and rework.
   'pdi-inspector': { 'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'vehicles.label.print': B, 'schedule.view': 'OWN' },
   // Leads quality at the plant: releases, holds or rejects arriving kits (never one they checked).
-  'quality-supervisor': { 'plant.view': B, 'plant.kit.receive': B, 'plant.kit.release': B, 'vehicles.label.print': B, 'dataexchange.export.run': B, 'schedule.view': 'OWN' },
+  'quality-supervisor': { 'plant.view': B, 'plant.kit.receive': B, 'plant.kit.release': B, 'plant.line.operate': B, 'plant.quality.gate': B, 'plant.qa.audit': B, 'plant.route.manage': B, 'vehicles.label.print': B, 'dataexchange.export.run': B, 'schedule.view': 'OWN' },
+  // Runs the line: every station, its times and defects; assigns rework. Does not pass the gate (quality does).
+  'production-supervisor': { 'plant.view': B, 'plant.line.operate': B, 'plant.route.manage': B, 'vehicles.label.print': B, 'dataexchange.export.run': B, 'schedule.view': 'OWN' },
+  // Builds at a station: records its checks and times, raises defects, records rework.
+  'line-operator': { 'plant.view': B, 'plant.line.operate': B, 'schedule.view': 'OWN' },
+  // Quality on the line: end-of-line tests, the final gate and defect verification (never a check they recorded).
+  'qc-inspector': { 'plant.view': B, 'plant.line.operate': B, 'plant.quality.gate': B, 'vehicles.label.print': B, 'schedule.view': 'OWN' },
+  // The daily audit of finished vehicles: a sample re-inspected and scored.
+  'qa-auditor': { 'plant.view': B, 'plant.qa.audit': B, 'schedule.view': 'OWN' },
   // Receives kits: records the shipment, opens each kit, checks it against the packing list, raises shortages and damage.
   'kit-inspector': { 'plant.view': B, 'plant.kit.receive': B, 'schedule.view': 'OWN' },
   // ── People & security ────────────────────────────────────────────
@@ -342,11 +354,11 @@ export const ROLE_LABELS: Record<string, string> = {
   'security-officer': 'Security Officer', receptionist: 'Front Desk (Receptionist)', 'calendar-user': 'Calendar User', 'scheduling-admin': 'Scheduling Admin', broadcaster: 'Broadcaster',
   'branch-assistant': 'Branch Assistant (IT support)',
   'customer-care': 'Customer Care', 'customer-care-lead': 'Customer Care Lead', executive: 'Executive (director / general manager)', 'it-administrator': 'IT Administrator',
-  'plant-manager': 'Plant Manager', 'pdi-supervisor': 'PDI Supervisor', 'pdi-inspector': 'PDI Inspector', 'quality-supervisor': 'Quality Supervisor', 'kit-inspector': 'Kit Inspector',
+  'plant-manager': 'Plant Manager', 'pdi-supervisor': 'PDI Supervisor', 'pdi-inspector': 'PDI Inspector', 'quality-supervisor': 'Quality Supervisor', 'kit-inspector': 'Kit Inspector', 'production-supervisor': 'Production Supervisor', 'line-operator': 'Line Operator', 'qc-inspector': 'QC Inspector', 'qa-auditor': 'QA Auditor',
 };
 
 /** The role a person is shown with (their most senior one), e.g. "Justice Enefola (Manager)". */
-const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'plant-manager', 'warranty-hod', 'department-head', 'quality-supervisor', 'pdi-supervisor', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'pdi-inspector', 'kit-inspector', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
+const ROLE_SENIORITY = ['executive', 'administrator', 'it-administrator', 'branch-administrator', 'workshop-manager', 'customer-care-lead', 'chief-security-officer', 'store-manager', 'plant-manager', 'warranty-hod', 'department-head', 'quality-supervisor', 'production-supervisor', 'pdi-supervisor', 'finance-officer', 'workshop-supervisor', 'customer-care', 'store-officer', 'warranty-officer', 'qa-auditor', 'qc-inspector', 'pdi-inspector', 'kit-inspector', 'line-operator', 'receptionist', 'technician', 'security-officer', 'scheduling-admin', 'broadcaster', 'branch-assistant', 'calendar-user'];
 export function primaryRoleLabel(slugs: string[], isSuperAdmin = false): string | null {
   if (isSuperAdmin) return 'Master Administrator';
   const best = ROLE_SENIORITY.find((s) => slugs.includes(s)) ?? slugs[0];
@@ -397,6 +409,10 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Branch decisions stay with the managers who own them; the Executive approves what is escalated (IT and administrator passes) and their own passes on the spot. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
   'plant-manager': 'Runs the assembly plant: every vehicle in it from kit to yard, registers vehicles with their SAP numbers, releases arriving kits to the line and approves pre-delivery inspections (never one they checked). Prints vehicle labels and PDI certificates.',
   'quality-supervisor': 'Leads quality at the plant: checks arriving kits and releases colleagues\' kits to the line, holds them or rejects them (never one they checked), and follows shortages and damage to their supplier claims.',
+  'production-supervisor': 'Runs the line: every vehicle at its station, each station’s checks and times, the defects and their rework; edits the routes (stations, checks, standard times). Does not pass the gate — quality does.',
+  'line-operator': 'Builds at a station on the line: records its checks (pass/fail and measurements against limits) and times, raises defects and records the rework done.',
+  'qc-inspector': 'Quality on the line: the end-of-line tests, the road test, the final quality gate and the verification of reworked defects — never a check they recorded themselves.',
+  'qa-auditor': 'The daily QA audit: a sample of finished vehicles re-inspected and scored (demerits by severity); a failed audit goes back to rework.',
   'kit-inspector': 'Receives kits at the plant: records each shipment, opens every kit and checks it against the packing list — cases, seals, identity, body and parts — and raises shortages, damage, wrong parts and excess.',
   'pdi-supervisor': 'Leads the PDI bay: carries out pre-delivery inspections and approves colleagues\' results — accepted, or rejected back to rework (never their own).',
   'pdi-inspector': 'Carries out pre-delivery inspections on a tablet: every checklist item, the diagnostic scan and fault codes, the readings, and rechecks after rework. Prints the vehicle label.',
@@ -408,7 +424,7 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
 export const APPROVAL_PERMISSIONS: PermissionKey[] = [
   'workshop.job.supervise', 'workshop.estimate.approve', 'workshop.estimate.final_approve', 'workshop.close.approve', 'store.prs.approve_hod',
   'store.prs.release', 'procurement.epr.review', 'procurement.epr.approve', 'procurement.epr.disburse', 'warranty.claim.approve', 'security.pass.approve',
-  'plant.pdi.approve', 'plant.kit.release',
+  'plant.pdi.approve', 'plant.kit.release', 'plant.quality.gate',
 ];
 
 /** Store pages that show purchase costs and margins (goods receipts, pricing

@@ -21,6 +21,7 @@ import { prisma, Prisma } from '@ejo/database';
 import { allows, authorize, getPrincipal, myOrganisationId, refuseDuringAssist, typedBranchWithinReach, typedReach, type TypedReach } from '@/lib/authz/server';
 import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { writeAuditLog } from '@/lib/workshop-core';
+import { startBuildFor } from '@/lib/plant/build-server';
 import { lagosYear } from '@/lib/utils/format-date';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { normaliseVin } from '@/lib/vin';
@@ -548,6 +549,8 @@ export async function releaseKit(kitId: string, note?: string): Promise<Done<{ v
     return { vehicleId: vehicle.id, created };
   });
   if (!out) return fail('This kit changed meanwhile. Refresh the page.');
+  // On the line: the live route for its family becomes its stations (D3).
+  await startBuildFor({ vehicleId: out.vehicleId, branchId: k.branchId, organisationId: k.organisationId, modelCode: k.modelCode, vin: k.vin, stage: 'LINE', existingVisits: await prisma.plantStationVisit.count({ where: { plantVehicleId: out.vehicleId } }), userId: me.userId });
   const open = k.issues.filter((i) => ISSUE_UNRESOLVED.includes(i.status as IssueStatus));
   await writeAuditLog({ userId: me.userId, action: verdict.withShortages ? 'plant.kit_released_with_shortages' : 'plant.kit_released', entityType: 'PlantKit', entityId: k.id, metadata: { number: k.number, vin: k.vin, usageDecision: 'A', inspectorId: k.inspectorId, ...(verdict.withShortages ? { openIssues: open.length, concession: words } : {}) } });
   if (out.created) await writeAuditLog({ userId: me.userId, action: 'plant.vehicle_registered', entityType: 'PlantVehicle', entityId: out.vehicleId, metadata: { vin: k.vin, model: k.modelCode, engineNumber: k.engineNumber, from: k.number } });

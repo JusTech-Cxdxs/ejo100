@@ -133,6 +133,10 @@ model Organisation {
   pdiInspections PdiInspection[]
   plantShipments PlantShipment[]
   plantKits     PlantKit[]
+  plantRoutes   PlantRoute[]
+  plantStationVisits PlantStationVisit[]
+  plantDefects  PlantDefect[]
+  plantQaAudits PlantQaAudit[]
 }
 
 model BusinessUnit {
@@ -260,6 +264,10 @@ model Branch {
   pdiInspections PdiInspection[]
   plantShipments PlantShipment[]
   plantKits     PlantKit[]
+  plantRoutes   PlantRoute[]
+  plantStationVisits PlantStationVisit[]
+  plantDefects  PlantDefect[]
+  plantQaAudits PlantQaAudit[]
 }
 
 model Department {
@@ -4571,6 +4579,13 @@ model PlantVehicle {
   sapMaterial        String?
   sapProductionOrder String?
   sapEquipment       String?
+  /// D3: the route (and its version) this vehicle's build follows; the station it is at now.
+  routeId            String?
+  routeVersion       Int?
+  currentStation     String?
+  /// When the build started on the line and when it passed the final gate.
+  lineStartedAt      DateTime?
+  gatePassedAt       DateTime?
   /// The customer's vehicle once sold and registered.
   customerVehicleId  String?
   createdById        String
@@ -4581,6 +4596,10 @@ model PlantVehicle {
   branch       Branch          @relation(fields: [branchId], references: [id])
   pdis         PdiInspection[]
   kits         PlantKit[]
+  stationVisits PlantStationVisit[]
+  defects      PlantDefect[]
+  qaAudits     PlantQaAudit[]
+  route        PlantRoute?   @relation(fields: [routeId], references: [id])
 
   @@unique([organisationId, vinKey])
   @@index([organisationId, stage])
@@ -4771,6 +4790,146 @@ model PlantKitIssue {
   @@index([kitId])
   @@index([organisationId, status])
   @@map("plant_kit_issues")
+}
+
+/// D3: a model family's route down the line — the stations and their checks —
+/// in versions. The live route is edited by the plant manager; a vehicle
+/// keeps the station list it started with (its visits are the snapshot).
+model PlantRoute {
+  id             String   @id @default(cuid())
+  organisationId String
+  branchId       String
+  /// isuzu-n | soueast-s07 (lib/plant/pdi.ts families).
+  familyKey      String
+  version        Int      @default(1)
+  name           String
+  /// [{ code, name, kind, standardMinutes, checks: [{ code, label, type, unit?, min?, max? }] }]
+  stations       Json
+  isActive       Boolean  @default(true)
+  createdById    String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  vehicles     PlantVehicle[]
+
+  @@unique([branchId, familyKey, version])
+  @@index([organisationId, familyKey])
+  @@map("plant_routes")
+}
+
+/// D3: one vehicle at one station — the checks as the route read when the
+/// build started, their results, who did them and how long it took.
+model PlantStationVisit {
+  id             String    @id @default(cuid())
+  organisationId String
+  branchId       String
+  plantVehicleId String
+  code           String
+  name           String
+  /// STATION | TEST | GATE
+  kind           String
+  sort           Int
+  standardMinutes Int
+  /// The station's checks as snapshotted: [{ code, label, type, unit?, min?, max? }]
+  checks         Json
+  /// [{ code, pass, value?, note? }]
+  results        Json      @default("[]")
+  /// PENDING | IN_PROGRESS | DONE | FAILED | PASSED
+  status         String    @default("PENDING")
+  operatorId     String?
+  startedAt      DateTime?
+  finishedAt     DateTime?
+  /// The gate: who passed it (never who recorded its checks).
+  passedById     String?
+  passedAt       DateTime?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  vehicle      PlantVehicle @relation(fields: [plantVehicleId], references: [id], onDelete: Cascade)
+  defects      PlantDefect[]
+
+  @@unique([plantVehicleId, code])
+  @@index([organisationId, status])
+  @@index([branchId, code, status])
+  @@map("plant_station_visits")
+}
+
+/// D3: a defect found on the line (from the catalogue: location × type ×
+/// cause), severity A/B/C, its rework and the second person's verification.
+/// Never deleted.
+model PlantDefect {
+  id             String    @id @default(cuid())
+  /// DEF-2026-000001
+  number         String    @unique
+  organisationId String
+  branchId       String
+  plantVehicleId String
+  visitId        String?
+  stationCode    String?
+  checkCode      String?
+  location       String
+  type           String
+  cause          String
+  /// A | B | C
+  severity       String
+  description    String
+  /// OPEN | REWORKED | CLOSED
+  status         String    @default("OPEN")
+  raisedById     String
+  raisedAt       DateTime  @default(now())
+  reworkNote     String?
+  reworkedById   String?
+  reworkedAt     DateTime?
+  verifiedById   String?
+  verifiedAt     DateTime?
+  verifyNote     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organisation Organisation       @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch             @relation(fields: [branchId], references: [id])
+  vehicle      PlantVehicle       @relation(fields: [plantVehicleId], references: [id], onDelete: Cascade)
+  visit        PlantStationVisit? @relation(fields: [visitId], references: [id], onDelete: SetNull)
+
+  @@index([organisationId, status])
+  @@index([plantVehicleId])
+  @@index([branchId, severity, status])
+  @@map("plant_defects")
+}
+
+/// D3: the QA audit — a sample of finished vehicles re-inspected and scored
+/// (demerits by severity). A failed audit sends the vehicle back to rework.
+model PlantQaAudit {
+  id             String    @id @default(cuid())
+  /// QAA-2026-000001
+  number         String    @unique
+  organisationId String
+  branchId       String
+  plantVehicleId String
+  auditorId      String
+  /// [{ section, severity, description }]
+  findings       Json      @default("[]")
+  demerits       Int       @default(0)
+  /// PASS | FAIL (null while in progress)
+  result         String?
+  notes          String?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+  branch       Branch       @relation(fields: [branchId], references: [id])
+  vehicle      PlantVehicle @relation(fields: [plantVehicleId], references: [id], onDelete: Cascade)
+
+  @@index([organisationId, result])
+  @@index([plantVehicleId])
+  @@map("plant_qa_audits")
 }
 
 /// One checklist line of a PDI, as the checklist read when the PDI started.
