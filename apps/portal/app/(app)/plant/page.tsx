@@ -4,6 +4,8 @@ import { getPlantOverview, getPlantReach, listPlantBranches } from '@/lib/action
 import { PlantReachNotice } from '@/components/plant/PlantReachNotice';
 import { allows } from '@/lib/authz/server';
 import { getKitOverview } from '@/lib/actions/plant-kits';
+import { getPlantDemoState } from '@/lib/actions/plant-demo';
+import { PlantDemoCard } from '@/components/plant/PlantDemoCard';
 import { KitList } from '@/components/plant/KitList';
 import { getPrincipal } from '@/lib/authz/server';
 import { EmptyState, HeaderAction, PageHeader, SectionCard, StatusChip } from '@/components/ui';
@@ -20,6 +22,7 @@ const STATUS_TONE: Record<PdiStatus, 'info' | 'warning' | 'success' | 'neutral' 
 export default async function PlantPage() {
   await guardPage('plant.view', '/plant');
   const [o, k, branches, me, reach, canStructure] = await Promise.all([getPlantOverview(), getKitOverview(), listPlantBranches(), getPrincipal(), getPlantReach(), allows('admin.structure.manage')]);
+  const demo = canStructure ? await getPlantDemoState() : null;
   if (reach.reason !== 'ok') {
     return (
       <div className="w-full space-y-6 p-4 sm:p-8">
@@ -75,6 +78,7 @@ export default async function PlantPage() {
           </ul>
         )}
       </SectionCard>
+      {demo ? <PlantDemoCard state={demo} /> : null}
     </div>
   );
 }

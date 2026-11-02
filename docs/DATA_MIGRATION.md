@@ -307,6 +307,36 @@ production history comes in as register rows (above) and the plant records
 import (PR 8). The three lists leave as exports — **Line stations**, **Line
 defects**, **QA audits** — with SAP names ([SAP_INTEGRATION.md](SAP_INTEGRATION.md)).
 
+## 7b. The plant demo: six weeks in one tap
+
+For showing the plant (and for testing every plant page on a full board),
+EJO can load six invented weeks into an organisation's assembly plant:
+shipments, kits with their checks and shortages, vehicles at every stage
+with their stations, defects, QA audits and PDIs, as of the moment of
+loading (`apps/portal/lib/plant/demo/plan.ts` — the same plan every time;
+no real person or vehicle in it).
+
+- **In EJO:** an administrator, on **Assembly plant → Demo records**, types
+  *load the demo* (or *remove the demo*). Audited as `demo.plant_loaded` /
+  `demo.plant_removed`.
+- **From a terminal:** `npm run demo:reset` (`-- --org <slug>` when several
+  organisations have a plant; `-- --remove` to take it out). Against a
+  hosted database (Supabase, Render, Neon, RDS, or `NODE_ENV=production`)
+  it refuses unless `DEMO_RESET_CONFIRM="replace the demo records"` is set.
+- Every demo record carries `externalSource = EJO-DEMO`; a reload or a
+  removal deletes exactly those records (and what hangs off them: checks,
+  issues, station visits, defects, audits, PDI items) and never a record a
+  person made. The demo people (13 invented staff on the plant, employee
+  numbers AP-001…AP-013, addresses on the reserved `.example` domain) are
+  kept and have no sign-in.
+- The same records are written as files by `npx tsx
+  apps/portal/scripts/demo-files.ts` into `docs/demo/correct/`:
+  `10_plant_shipments_demo.csv`, `11_plant_kits_demo.csv`,
+  `12_plant_kit_issues_demo.csv`, `13_plant_vehicles_demo.csv` (Lagos
+  times, a `Branch` column, SAP names where SAP has them: EBELN, VBELN,
+  PRUEFLOS, MBLNR, WERKS, MATNR, AUFNR, EQUNR). They are the layouts the
+  plant records import (PR 8) reads and the exports write.
+
 ## 7c. Undoing history
 
 Undo of an invoice-history or register import **voids** what it loaded: the

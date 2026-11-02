@@ -1,7 +1,8 @@
 # Demo files
 
 Invented data only (no real customer), the same on every run of
-`npx tsx apps/portal/scripts/demo-files.ts`.
+`npx tsx apps/portal/scripts/demo-files.ts`. The plant files (10–13) are the same six
+weeks `npm run demo:reset` loads straight into the plant (DATA_MIGRATION.md §7b).
 
 | Folder | Use it to |
 | --- | --- |
