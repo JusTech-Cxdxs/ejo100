@@ -89,7 +89,7 @@ test('the operator works C1: a torque outside its limits fails and needs a defec
   await field(page, 'Cause').selectOption('TQ');
   await page.locator('label').filter({ hasText: /^Describe it/ }).locator('input').fill('Cross-member bolts at 150 N·m, below the 180 minimum');
   await page.getByRole('button', { name: 'Raise it' }).click();
-  await expect(page.getByText(/DEF-\d{4}-\d{6}/).first()).toBeVisible();
+  await expect(page.locator('li[data-defect]')).toHaveCount(1); // the notifications bar also shows DEF numbers, so wait for this vehicle's row
   defectNumber = (await db().plantDefect.findFirstOrThrow({ where: { plantVehicleId: vehicleId }, orderBy: { raisedAt: 'desc' } })).number;
   await expect(page.locator(`li[data-defect="${defectNumber}"]`)).toContainText('A · safety');
   await expect(page.locator(`li[data-defect="${defectNumber}"]`)).toContainText('Open');
@@ -218,12 +218,15 @@ test('the routes: the production supervisor saves a new version with a problem r
   await box.fill(`${text}\n\n# X9 | Extra station with no checks | STATION | 10`);
   await expect(card.getByText('Station X9 (Extra station with no checks) has no checks.')).toBeVisible();
   await expect(card.getByRole('button', { name: 'Save as a new version' })).toBeDisabled();
-  await box.fill(text.replace('# C1 | Chassis frame dress | STATION | 45 min', '# C1 | Chassis frame dress | STATION | 50 min'));
+  // C1's standard time goes up by five minutes in a new version; the vehicle already on the line keeps the time it started with.
+  const current = Number(/# C1 \| Chassis frame dress \| STATION \| (\d+) min/.exec(text)![1]);
+  const visitBefore = (await db().plantStationVisit.findFirstOrThrow({ where: { plantVehicleId: vehicleId, code: 'C1' } })).standardMinutes;
+  await box.fill(text.replace(`# C1 | Chassis frame dress | STATION | ${current} min`, `# C1 | Chassis frame dress | STATION | ${current + 5} min`));
   await card.getByRole('button', { name: 'Save as a new version' }).click();
-  await expect(card.getByText('Saved as version 1.')).toBeVisible();
+  await expect(card.getByText(/Saved as version \d+\./)).toBeVisible();
   const route = await db().plantRoute.findFirstOrThrow({ where: { familyKey: 'isuzu-n', isActive: true }, orderBy: { version: 'desc' } });
-  expect((route.stations as { code: string; standardMinutes: number }[])[0]).toMatchObject({ code: 'C1', standardMinutes: 50 });
-  expect((await db().plantStationVisit.findFirstOrThrow({ where: { plantVehicleId: vehicleId, code: 'C1' } })).standardMinutes).toBe(45);
+  expect((route.stations as { code: string; standardMinutes: number }[])[0]).toMatchObject({ code: 'C1', standardMinutes: current + 5 });
+  expect((await db().plantStationVisit.findFirstOrThrow({ where: { plantVehicleId: vehicleId, code: 'C1' } })).standardMinutes).toBe(visitBefore);
 });
 
 test('a QA auditor cannot work the line, and an operator cannot edit routes', async ({ page }) => {
