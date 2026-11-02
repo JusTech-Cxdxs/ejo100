@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
-    "better-auth": "~1.6.33"
+    "better-auth": "~1.7.15"
   },
   "devDependencies": {
     "prisma": "5.22.0",

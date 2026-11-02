@@ -23,7 +23,12 @@
   },
   "overrides": {
     "typescript": "5.9.3",
-    "next": "15.5.27",
+    "next": {
+      ".": "15.5.28",
+      "postcss": "^8.5.30"
+    },
+    "multer": "^2.5.0",
+    "nodemailer": "^10.3.1",
     "postcss": "^8.5.30"
   },
   "engines": {
