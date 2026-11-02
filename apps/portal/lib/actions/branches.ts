@@ -2,6 +2,7 @@
 import { orMasterAdmins } from '@/lib/master-fallback';
 import { portalBaseUrl } from '@/lib/portal-url';
 
+import { AREA_BRANCH_TYPES, BRANCH_TYPE_WORDS, departmentsFor, isBranchType } from '@/lib/branch-types';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -44,6 +45,15 @@ export async function getBranch(id: string) {
   });
 }
 
+/** Records that tie a branch to its kind: plant records (kits, vehicles, PDIs) and workshop records (job cards, services, stock). */
+async function recordsHeld(branchId: string): Promise<{ plant: number; workshop: number }> {
+  const [kits, shipments, vehicles, pdis, jobs, services, receipts] = await Promise.all([
+    prisma.plantKit.count({ where: { branchId } }), prisma.plantShipment.count({ where: { branchId } }), prisma.plantVehicle.count({ where: { branchId } }), prisma.pdiInspection.count({ where: { branchId } }),
+    prisma.jobCard.count({ where: { branchId } }), prisma.vehicleService.count({ where: { branchId } }), prisma.goodsReceipt.count({ where: { branchId } }),
+  ]);
+  return { plant: kits + shipments + vehicles + pdis, workshop: jobs + services + receipts };
+}
+
 export type UpdateBranchInput = {
   name: string;
   code?: string;
@@ -55,6 +65,8 @@ export type UpdateBranchInput = {
   bankAccountNumber?: string;
   /** SAP plant code (WERKS), 4 letters or digits; undefined leaves it as it is. */
   sapPlant?: string;
+  /** What kind of place it is (lib/branch-types.ts). */
+  type?: string;
 };
 
 /** Edits a branch's printed identity: the address and hotlines on a Job
@@ -67,7 +79,7 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
   const [me, principal, before] = await Promise.all([
     prisma.user.findUnique({ where: { id: user.id }, select: { organisationId: true } }),
     getPrincipal(),
-    prisma.branch.findUnique({ where: { id: branchId }, select: { name: true, bankName: true, bankAccountName: true, bankAccountNumber: true, businessUnit: { select: { organisationId: true } } } }),
+    prisma.branch.findUnique({ where: { id: branchId }, select: { name: true, type: true, sapPlant: true, bankName: true, bankAccountName: true, bankAccountNumber: true, businessUnit: { select: { organisationId: true } } } }),
   ]);
   if (!before || (!principal.isSuperAdmin && before.businessUnit.organisationId !== me?.organisationId)) {
     throw new BranchActionError('Branch not found.');
@@ -90,6 +102,17 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
     throw new BranchActionError('The account number must be exactly 10 digits.');
   }
   const sapPlant = input.sapPlant === undefined ? undefined : input.sapPlant.trim().toUpperCase() || null;
+  const type = input.type === undefined ? undefined : isBranchType(input.type) ? input.type : before.type;
+  if ((type ?? before.type) === 'ASSEMBLY_PLANT' && !(sapPlant === undefined ? before.sapPlant : sapPlant)) {
+    throw new BranchActionError('An assembly plant needs its SAP plant code (WERKS), e.g. 1100.');
+  }
+  // Changing the kind: refused while records of the old kind live here (they
+  // would be stranded: a workshop's job cards are never plant records).
+  if (type && type !== before.type) {
+    const held = await recordsHeld(branchId);
+    const stranded = before.type === 'ASSEMBLY_PLANT' && type !== 'ASSEMBLY_PLANT' ? held.plant : AREA_BRANCH_TYPES.workshop.includes(before.type) && !AREA_BRANCH_TYPES.workshop.includes(type) ? held.workshop : 0;
+    if (stranded) throw new BranchActionError(`${before.name} holds ${stranded.toLocaleString('en-NG')} ${before.type === 'ASSEMBLY_PLANT' ? 'plant' : 'workshop'} records, so it stays ${BRANCH_TYPE_WORDS[before.type].toLowerCase()}. Open the new kind of place as its own branch.`);
+  }
   if (sapPlant && !/^[A-Z0-9]{4}$/.test(sapPlant)) {
     throw new BranchActionError('The SAP plant code is 4 letters or digits (WERKS), e.g. 1000.');
   }
@@ -105,8 +128,15 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       bankAccountName,
       bankAccountNumber,
       ...(sapPlant !== undefined ? { sapPlant } : {}),
+      ...(type !== undefined ? { type } : {}),
     },
   });
+  if (type && type !== before.type) {
+    // A branch that becomes an assembly plant gets the plant's departments (missing ones only).
+    const add = departmentsFor(type);
+    if (add.length) await prisma.department.createMany({ data: add.map((d) => ({ branchId, name: d.name, slug: d.slug })), skipDuplicates: true });
+    await writeAuditLog({ userId: user.id, action: 'branch.type_changed', entityType: 'Branch', entityId: branchId, metadata: { branch: trimmedName, from: BRANCH_TYPE_WORDS[before.type], to: BRANCH_TYPE_WORDS[type] } });
+  }
   await writeAuditLog({
     userId: user.id,
     action: 'branch.updated',
@@ -153,4 +183,60 @@ export async function updateBranch(branchId: string, input: UpdateBranchInput): 
       }
     });
   }
+}
+
+// ── Plant records that sit on a branch that is not an assembly plant ──────
+
+export type StrandedPlantRecords = { branches: { id: string; name: string; type: string; kits: number; shipments: number; vehicles: number; pdis: number }[]; plants: { id: string; name: string; sapPlant: string | null }[] };
+
+/**
+ * Plant records recorded before branches had kinds (or on the wrong branch):
+ * which branches hold them, and the assembly plants they can move to. For
+ * the organisation's administrators.
+ */
+export async function getStrandedPlantRecords(): Promise<StrandedPlantRecords> {
+  await authorize('admin.structure.manage', undefined, 'getStrandedPlantRecords');
+  const where = await myOrganisationBranches();
+  const branches = await prisma.branch.findMany({
+    where: { ...where, type: { not: 'ASSEMBLY_PLANT' } },
+    orderBy: { name: 'asc' },
+    select: { id: true, name: true, type: true, _count: { select: { plantKits: true, plantShipments: true, plantVehicles: true, pdiInspections: true } } },
+  });
+  const plants = await prisma.branch.findMany({ where: { ...where, type: 'ASSEMBLY_PLANT', isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, sapPlant: true } });
+  return {
+    branches: branches.filter((b) => b._count.plantKits + b._count.plantShipments + b._count.plantVehicles + b._count.pdiInspections > 0).map((b) => ({ id: b.id, name: b.name, type: b.type, kits: b._count.plantKits, shipments: b._count.plantShipments, vehicles: b._count.plantVehicles, pdis: b._count.pdiInspections })),
+    plants,
+  };
+}
+
+/**
+ * Moves every plant record of one branch to an assembly plant of the same
+ * organisation: kits, shipments, vehicles in the plant and PDIs, in one
+ * transaction, with the SAP plant code they now belong under. Audited with
+ * the counts; nothing is deleted.
+ */
+export async function movePlantRecords(fromBranchId: string, toBranchId: string): Promise<{ ok: true; moved: { kits: number; shipments: number; vehicles: number; pdis: number } } | { ok: false; error: string }> {
+  await authorize('admin.structure.manage', undefined, 'movePlantRecords');
+  const user = await requireUser();
+  const where = await myOrganisationBranches();
+  const [from, to] = await Promise.all([
+    prisma.branch.findFirst({ where: { ...where, id: String(fromBranchId ?? '').slice(0, 40) }, select: { id: true, name: true, type: true } }),
+    prisma.branch.findFirst({ where: { ...where, id: String(toBranchId ?? '').slice(0, 40) }, select: { id: true, name: true, type: true, sapPlant: true, isActive: true } }),
+  ]);
+  if (!from) return { ok: false, error: 'Choose the branch the records are on now.' };
+  if (!to || !to.isActive) return { ok: false, error: 'Choose the assembly plant to move them to.' };
+  if (to.type !== 'ASSEMBLY_PLANT') return { ok: false, error: `${to.name} is ${BRANCH_TYPE_WORDS[to.type].toLowerCase()}, not an assembly plant.` };
+  if (from.id === to.id) return { ok: false, error: 'The records are already there.' };
+  const moved = await prisma.$transaction(async (tx) => {
+    const w = { branchId: from.id };
+    const [kits, shipments, vehicles, pdis] = await Promise.all([
+      tx.plantKit.updateMany({ where: w, data: { branchId: to.id } }),
+      tx.plantShipment.updateMany({ where: w, data: { branchId: to.id } }),
+      tx.plantVehicle.updateMany({ where: w, data: { branchId: to.id, sapPlant: to.sapPlant } }),
+      tx.pdiInspection.updateMany({ where: w, data: { branchId: to.id } }),
+    ]);
+    return { kits: kits.count, shipments: shipments.count, vehicles: vehicles.count, pdis: pdis.count };
+  });
+  await writeAuditLog({ userId: user.id, action: 'branch.plant_records_moved', entityType: 'Branch', entityId: to.id, metadata: { from: from.name, to: to.name, sapPlant: to.sapPlant, ...moved } });
+  return { ok: true, moved };
 }

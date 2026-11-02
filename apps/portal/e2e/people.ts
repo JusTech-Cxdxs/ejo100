@@ -2,7 +2,8 @@
 export const E2E_PASSWORD = 'E2e-Test-Pass-2026!';
 export const MASTER = { email: 'master@e2e.test', password: 'E2e-Master-Pass-2026!' };
 
-export type Person = { email: string; name: string; role: string; dept?: string; extraRoles?: string[] };
+/** `branch: 'plant'` puts the person on the assembly-plant branch (Afprint); everyone else works at the workshop branch. */
+export type Person = { email: string; name: string; role: string; dept?: string; extraRoles?: string[]; branch?: 'plant' };
 
 /** One account per role (the FIRST person with a role is the one `who(role)` returns). */
 export const PEOPLE: readonly Person[] = [
@@ -30,12 +31,12 @@ export const PEOPLE: readonly Person[] = [
   { email: 'itadmin@e2e.test', name: 'Ifeoma Itadmin', role: 'it-administrator' },
   { email: 'care@e2e.test', name: 'Chidi Care', role: 'customer-care' },
   // The assembly plant: PDI inspector, PDI supervisor (approves colleagues' PDIs) and the plant manager.
-  { email: 'pdi@e2e.test', name: 'Pius Pdiinspector', role: 'pdi-inspector' },
-  { email: 'pdisupervisor@e2e.test', name: 'Peace Pdisupervisor', role: 'pdi-supervisor' },
-  { email: 'plantmanager@e2e.test', name: 'Paul Plantmanager', role: 'plant-manager' },
+  { email: 'pdi@e2e.test', name: 'Pius Pdiinspector', role: 'pdi-inspector', branch: 'plant', dept: 'plant-pdi' },
+  { email: 'pdisupervisor@e2e.test', name: 'Peace Pdisupervisor', role: 'pdi-supervisor', branch: 'plant', dept: 'plant-pdi' },
+  { email: 'plantmanager@e2e.test', name: 'Paul Plantmanager', role: 'plant-manager', branch: 'plant' },
   // Kits arriving at the plant: the kit inspector checks them, the quality supervisor releases them (never one they checked).
-  { email: 'kitinspector@e2e.test', name: 'Kemi Kitinspector', role: 'kit-inspector' },
-  { email: 'qualitysupervisor@e2e.test', name: 'Quincy Qualitysupervisor', role: 'quality-supervisor' },
+  { email: 'kitinspector@e2e.test', name: 'Kemi Kitinspector', role: 'kit-inspector', branch: 'plant', dept: 'plant-kit-receiving' },
+  { email: 'qualitysupervisor@e2e.test', name: 'Quincy Qualitysupervisor', role: 'quality-supervisor', branch: 'plant', dept: 'plant-quality' },
   // Holds BOTH Workshop Supervisor and Workshop Manager — for the
   // segregation-of-duties checks (approves as supervisor, so may not also
   // give the Manager's final approval).
@@ -80,3 +81,6 @@ export const SEED_PARTS = {
 } as const;
 export const SEED_CATEGORY = { name: 'E2E Seed Parts', code: 'E2ES' };
 export const SEED_WARRANTY = { provider: 'E2E Parts Warranty Co', policyCode: 'E2E-PART-12', policyName: 'E2E 12-month part warranty', vehiclePolicyCode: 'E2E-VEH-24', vehiclePolicyName: 'E2E 24-month vehicle warranty' };
+
+/** The assembly plant branch the seed creates (prisma/seed.ts): Afprint, SAP plant 1100. */
+export const PLANT_BRANCH = 'Afprint Assembly Plant';

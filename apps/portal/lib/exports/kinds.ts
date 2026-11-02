@@ -10,8 +10,9 @@
  * carries the EJO number, the SAP (or old-system) number where there is one,
  * and a link back to the record.
  */
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { prisma, type Prisma } from '@ejo/database';
-import { allows, branchWithinReach, myOrganisationId, orgWhere, reachWhere } from '@/lib/authz/server';
+import { allows, branchWithinReach, myOrganisationId, orgWhere, reachWhere, typedReach } from '@/lib/authz/server';
 import type { PermissionKey } from '@/lib/authz/catalogue';
 import { portalBaseUrl } from '@/lib/portal-url';
 import { getCrmHub, type CrmHubParams } from '@/lib/actions/crm';
@@ -550,7 +551,7 @@ const plantWhere = async (ctx: Ctx, p: Params): Promise<Prisma.PlantVehicleWhere
   const q = p.q?.trim().slice(0, 60);
   const stage = ['KIT', 'LINE', 'QA', 'PDI', 'YARD', 'SOLD'].includes(String(p.stage)) ? p.stage : undefined;
   return {
-    organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PlantVehicleWhereInput), ...(stage ? { stage } : {}),
+    organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantVehicleWhereInput), ...(stage ? { stage } : {}),
     ...(q ? { OR: [{ vinKey: { contains: q.toUpperCase().replace(/[\s.\-_/]/g, '') } }, { modelCode: { contains: q, mode: 'insensitive' } }, { modelName: { contains: q, mode: 'insensitive' } }, { engineNumber: { contains: q, mode: 'insensitive' } }, { sapProductionOrder: { contains: q } }, { sapEquipment: { contains: q } }] } : {}),
   };
 };
@@ -606,7 +607,7 @@ const plantPdis: ExportKind = {
     { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/pdi/${r.id}`) },
   ],
   async *rows(ctx, _p, from) {
-    const where: Prisma.PdiInspectionWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PdiInspectionWhereInput) };
+    const where: Prisma.PdiInspectionWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PdiInspectionWhereInput) };
     for await (const { rows: b, next } of blocks((c) => prisma.pdiInspection.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { vehicle: true, items: { select: { result: true, reworkedAt: true } } } }), from)) {
       const ids = [...new Set(b.flatMap((r) => [r.inspectorId, r.decidedById]).filter((x): x is string => Boolean(x)))];
       const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
@@ -619,7 +620,7 @@ const kitWhere = async (ctx: Ctx, p: Params): Promise<Prisma.PlantKitWhereInput>
   const q = p.q?.trim().slice(0, 60);
   const status = ['ARRIVED', 'INSPECTING', 'SUBMITTED', 'ON_HOLD', 'RELEASED', 'REJECTED', 'CANCELLED'].includes(String(p.status)) ? p.status : undefined;
   return {
-    organisationId: ctx.organisationId ?? '__none__', ...((await reachWhere('plant.view')) as Prisma.PlantKitWhereInput), ...(status ? { status } : {}),
+    organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantKitWhereInput), ...(status ? { status } : {}),
     ...(p.status === 'issues' ? { issues: { some: { status: { in: ['OPEN', 'CLAIMED'] } } } } : {}),
     ...(q ? { OR: [{ vinKey: { contains: q.toUpperCase().replace(/[\s.\-_/]/g, '') } }, { number: { contains: q.toUpperCase() } }, { lotNumber: { contains: q, mode: 'insensitive' } }, { engineNumber: { contains: q, mode: 'insensitive' } }, { modelCode: { contains: q, mode: 'insensitive' } }, { shipment: { number: { contains: q.toUpperCase() } } }] } : {}),
   };
@@ -692,7 +693,7 @@ const plantKitIssues: ExportKind = {
   ],
   async *rows(ctx, p, from) {
     const open = p.status === 'issues';
-    const where: Prisma.PlantKitIssueWhereInput = { organisationId: ctx.organisationId ?? '__none__', kit: (await reachWhere('plant.view')) as Prisma.PlantKitWhereInput, ...(open ? { status: { in: ['OPEN', 'CLAIMED'] } } : {}) };
+    const where: Prisma.PlantKitIssueWhereInput = { organisationId: ctx.organisationId ?? '__none__', kit: (await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantKitWhereInput, ...(open ? { status: { in: ['OPEN', 'CLAIMED'] } } : {}) };
     yield* blocks((c) => prisma.plantKitIssue.findMany({ where, orderBy: [{ raisedAt: 'desc' }, { id: 'desc' }], ...page(c), include: { kit: { select: { id: true, number: true, vin: true, modelCode: true, lotNumber: true, shipment: { select: { number: true, supplier: true, billOfLading: true, sapPurchaseOrder: true } } } } } }), from);
   },
 };

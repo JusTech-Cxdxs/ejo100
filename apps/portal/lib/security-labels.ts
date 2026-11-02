@@ -119,6 +119,8 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'plant.pdi_passed': 'PDI accepted (A)',
   'plant.pdi_rejected': 'PDI rejected to rework (R)',
   'plant.pdi_cancelled': 'PDI cancelled',
+  'branch.type_changed': 'Branch kind changed',
+  'branch.plant_records_moved': 'Plant records moved to the assembly plant',
   'plant.shipment_recorded': 'Shipment of kits recorded',
   'plant.kits_added': 'Kits added to a shipment',
   'plant.kit_check_not_ok': 'Kit check Not OK',
@@ -264,6 +266,10 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return [s('number'), s('item'), s('note')].filter(Boolean).join(' · ') || null;
     case 'plant.vehicle_registered':
       return [s('vin'), s('model'), s('from') ? `from ${s('from')}` : null].filter(Boolean).join(' · ') || null;
+    case 'branch.type_changed':
+      return [s('branch'), s('from') && s('to') ? `${s('from')} → ${s('to')}` : null].filter(Boolean).join(' · ') || null;
+    case 'branch.plant_records_moved':
+      return [s('from') && s('to') ? `${s('from')} → ${s('to')}` : null, v('kits') ? `${v('kits')} kits` : null, v('vehicles') ? `${v('vehicles')} vehicles` : null, v('pdis') ? `${v('pdis')} PDIs` : null].filter(Boolean).join(' · ') || null;
     case 'plant.shipment_recorded':
       return [s('number'), s('supplier'), v('kits') ? `${v('kits')} kits` : null].filter(Boolean).join(' · ') || null;
     case 'plant.kits_added':

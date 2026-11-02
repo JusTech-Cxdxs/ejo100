@@ -1,9 +1,10 @@
 'use server';
 
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { prisma, type Prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { navigationFor } from '@/lib/authz/navigation';
-import { firstReach, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere } from '@/lib/authz/server';
+import { firstReach, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere, typedReach } from '@/lib/authz/server';
 import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
@@ -206,12 +207,12 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     find(allowed('dataexchange.export.run') && { ...sameOrg, ...(allowed('audit.view') ? {} : { createdById: user.id }) }, { numbers: [['EXP', 'number']], text: ['summary'] },
       (w) => prisma.exportJob.findMany({ where: W<Prisma.ExportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, format: true } })),
     // Pre-delivery inspections: the plant team, in their own organisation and plant.
-    find(allowed('plant.view') && { AND: [sameOrg, await reachWhere('plant.view', { lens: false })] }, { numbers: [['PDI', 'number']] },
+    find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['PDI', 'number']] },
       (w) => prisma.pdiInspection.findMany({ where: W<Prisma.PdiInspectionWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, status: true, vehicle: { select: { vin: true, modelCode: true } } } })),
     // Kits and shipments arriving at the plant (D2): the plant team, in their own organisation and plant.
-    find(allowed('plant.view') && { AND: [sameOrg, await reachWhere('plant.view', { lens: false })] }, { numbers: [['KIT', 'number']], codes: ['lotNumber', 'engineNumber'] },
+    find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['KIT', 'number']], codes: ['lotNumber', 'engineNumber'] },
       (w) => prisma.plantKit.findMany({ where: W<Prisma.PlantKitWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, status: true, vin: true, modelCode: true } })),
-    find(allowed('plant.view') && { AND: [sameOrg, await reachWhere('plant.view', { lens: false })] }, { numbers: [['SHP', 'number']], text: ['supplier'], codes: ['billOfLading', 'sapPurchaseOrder', 'sapInboundDelivery'] },
+    find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['SHP', 'number']], text: ['supplier'], codes: ['billOfLading', 'sapPurchaseOrder', 'sapInboundDelivery'] },
       (w) => prisma.plantShipment.findMany({ where: W<Prisma.PlantShipmentWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, supplier: true, billOfLading: true } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, customer: { select: { fullName: true } } } })),
@@ -299,6 +300,9 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
 }
 
 /** The vehicle with exactly this VIN (or chassis number, 11 characters or more), inside the person's organisation. */
+/** Plant records: the assembly-plant branches in reach (a record opened from a link is never hidden by the lens). */
+const plantReach = async () => (await typedReach('plant.view', AREA_BRANCH_TYPES.plant, { lens: false })).where;
+
 async function vinHits(q: string, mineOrg: Where, mayOpen: boolean): Promise<SearchHit[]> {
   const v = normaliseVin(q);
   if (!mayOpen || v.length < 11 || !isChassisLike(v)) return [];

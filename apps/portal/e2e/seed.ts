@@ -12,7 +12,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from 'better-auth/crypto';
-import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, OTHER_BRANCH_TECH, SECOND_BRANCH, CUSTOMER, PORTAL_CUSTOMERS, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
+import { E2E_PASSWORD, PEOPLE, RESET, OTHER_ORG_ADMIN, OTHER_BRANCH_TECH, SECOND_BRANCH, PLANT_BRANCH, CUSTOMER, PORTAL_CUSTOMERS, SEED_PARTS, SEED_CATEGORY, SEED_WARRANTY, type Person } from './people';
 
 const prisma = new PrismaClient();
 
@@ -47,8 +47,14 @@ async function customerAccount(customerId: string, password: string) {
 
 async function main() {
   const org = await prisma.organisation.findUniqueOrThrow({ where: { slug: 'kewalram-nigeria' } });
-  const branch = await prisma.branch.findFirstOrThrow({ where: { businessUnit: { organisationId: org.id } }, orderBy: { createdAt: 'asc' } });
-  for (const p of [...PEOPLE, RESET]) await person(org.id, branch.id, p);
+  const branch = await prisma.branch.findFirstOrThrow({ where: { businessUnit: { organisationId: org.id }, type: 'WORKSHOP' }, orderBy: { createdAt: 'asc' } });
+  // The plant team works at the assembly plant (the seed's Afprint, or one made here).
+  const plant = (await prisma.branch.findFirst({ where: { businessUnitId: branch.businessUnitId, type: 'ASSEMBLY_PLANT' }, orderBy: { createdAt: 'asc' } }))
+    ?? (await prisma.branch.create({ data: { businessUnitId: branch.businessUnitId, cityId: branch.cityId, name: PLANT_BRANCH, code: 'KWL-AP', type: 'ASSEMBLY_PLANT', sapPlant: '1100' } }));
+  for (const d of [['plant-kit-receiving', 'Kit receiving & plant store'], ['plant-production', 'Production (the line)'], ['plant-quality', 'Quality (QC and QA audit)'], ['plant-pdi', 'PDI'], ['plant-yard', 'Yard & dispatch']] as const) {
+    await prisma.department.upsert({ where: { branchId_slug: { branchId: plant.id, slug: d[0] } }, update: {}, create: { branchId: plant.id, name: d[1], slug: d[0] } });
+  }
+  for (const p of [...PEOPLE, RESET]) await person(org.id, p.branch === 'plant' ? plant.id : branch.id, p);
 
   const frontDesk = await prisma.user.findUniqueOrThrow({ where: { email: PEOPLE.find((p) => p.role === 'receptionist')!.email } });
   const store = await prisma.user.findUniqueOrThrow({ where: { email: PEOPLE.find((p) => p.role === 'store-manager')!.email } });

@@ -246,6 +246,52 @@ export async function reachWhere(key: PermissionKey, opts: { lens?: boolean } = 
   return p.orgBranchIds ? { branchId: { in: p.orgBranchIds } } : {};
 }
 
+/**
+ * The branches of one kind within the person's reach (lib/branch-types.ts):
+ * the plant pages see only assembly-plant branches, the workshop only
+ * workshop branches. `branchIds` is what the lists filter on (empty: nothing
+ * is shown, never someone else's data); `reason` says why it is empty, in
+ * plain words, so a page can explain instead of looking broken; `lensOff`
+ * is the plant branch the person could switch their lens to.
+ */
+export type TypedReach = {
+  where: { branchId: { in: string[] } };
+  branchIds: string[];
+  branches: { id: string; name: string; sapPlant: string | null }[];
+  reason: 'ok' | 'no-access' | 'no-branch-of-type' | 'lens-elsewhere';
+  /** When the lens points at a branch of another kind: the branches of this kind the person could look at instead. */
+  elsewhere: { id: string; name: string }[];
+};
+export async function typedReach(key: PermissionKey, types: readonly string[], opts: { lens?: boolean } = {}): Promise<TypedReach> {
+  const p = await getPrincipal();
+  const d = decide(p, key);
+  const none = (reason: TypedReach['reason'], elsewhere: { id: string; name: string }[] = []): TypedReach => ({ where: { branchId: { in: [] } }, branchIds: [], branches: [], reason, elsewhere });
+  if (!d.allowed) return none('no-access');
+  const sel = { id: true, name: true, sapPlant: true } as const;
+  const ofType = { type: { in: types as BranchTypeName[] }, isActive: true } as const;
+  if (d.scope === 'BRANCH' && p.branchId) {
+    const b = await prisma.branch.findMany({ where: { id: p.branchId, ...ofType }, select: sel });
+    return b.length ? { where: { branchId: { in: b.map((x) => x.id) } }, branchIds: b.map((x) => x.id), branches: b, reason: 'ok', elsewhere: [] } : none('no-branch-of-type');
+  }
+  const mine = p.orgBranchIds ? { id: { in: p.orgBranchIds } } : {};
+  const all = await prisma.branch.findMany({ where: { ...mine, ...ofType }, orderBy: { name: 'asc' }, select: sel, take: 200 });
+  if (!all.length) return none('no-branch-of-type');
+  if (d.scope === 'ALL' && p.lensBranchId && opts.lens !== false) {
+    const b = all.filter((x) => x.id === p.lensBranchId);
+    if (!b.length) return none('lens-elsewhere', all.map((x) => ({ id: x.id, name: x.name })));
+    return { where: { branchId: { in: b.map((x) => x.id) } }, branchIds: b.map((x) => x.id), branches: b, reason: 'ok', elsewhere: [] };
+  }
+  return { where: { branchId: { in: all.map((x) => x.id) } }, branchIds: all.map((x) => x.id), branches: all, reason: 'ok', elsewhere: [] };
+}
+type BranchTypeName = 'WORKSHOP' | 'ASSEMBLY_PLANT' | 'SALES' | 'HEAD_OFFICE' | 'WAREHOUSE';
+
+/** A branch id from a request is usable for this area only if it is in the person's reach AND of a fitting kind. */
+export async function typedBranchWithinReach(key: PermissionKey, types: readonly string[], branchId: string | null | undefined): Promise<{ id: string; name: string; sapPlant: string | null } | null> {
+  if (!branchId) return null;
+  const r = await typedReach(key, types, { lens: false });
+  return r.branches.find((b) => b.id === branchId) ?? null;
+}
+
 /** Records owned by an organisation directly (customers, staff, roles,
  * broadcasts, warranty providers and policies): the person's own
  * organisation; the platform team sees all. */

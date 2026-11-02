@@ -17,7 +17,8 @@
  * never the inspector, nor anyone who checked an item.
  */
 import { prisma, Prisma } from '@ejo/database';
-import { allows, authorize, branchWithinReach, getPrincipal, myOrganisationId, reachWhere, refuseDuringAssist } from '@/lib/authz/server';
+import { allows, authorize, getPrincipal, myOrganisationId, refuseDuringAssist, typedBranchWithinReach, typedReach, type TypedReach } from '@/lib/authz/server';
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { lagosYear } from '@/lib/utils/format-date';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
@@ -39,11 +40,24 @@ async function nextPdiNumber(): Promise<string> {
   return `${prefix}${String(highestSequence(prefix, rows.map((r) => r.number)) + 1).padStart(6, '0')}`;
 }
 
-/** The plant's records this person may see: their organisation and branch reach. */
-async function plantFence(): Promise<{ organisationId: string; branch: Awaited<ReturnType<typeof reachWhere>> }> {
+/**
+ * The plant's records this person may see: their organisation, and the
+ * assembly-plant branches in their reach (lib/branch-types.ts) — never a
+ * workshop's records, and never another plant's. `reach` says why it is
+ * empty, so the pages can explain.
+ */
+async function plantFence(): Promise<{ organisationId: string; branch: TypedReach['where']; reach: TypedReach }> {
   const organisationId = await myOrganisationId();
   if (!organisationId) throw new Error('The assembly plant belongs to an organisation: you are not in one.');
-  return { organisationId, branch: await reachWhere('plant.view') };
+  const reach = await typedReach('plant.view', AREA_BRANCH_TYPES.plant);
+  return { organisationId, branch: reach.where, reach };
+}
+
+/** Where this person stands with the plant: which plant branches they see, or why none. */
+export async function getPlantReach(): Promise<Pick<TypedReach, 'branches' | 'reason' | 'elsewhere'>> {
+  await authorize('plant.view', undefined, 'getPlantReach', 'The assembly plant is for the plant team.');
+  const { reach } = await plantFence();
+  return { branches: reach.branches, reason: reach.reason, elsewhere: reach.elsewhere };
 }
 
 /** One PDI, inside the person's organisation and plant reach (null otherwise). */
@@ -114,8 +128,8 @@ export async function listPlantVehicles(q?: string, stage?: string): Promise<Pla
 /** The plants this person may register a vehicle in (their branch, or every branch for organisation-wide roles). */
 export async function listPlantBranches(): Promise<{ id: string; name: string; sapPlant: string | null }[]> {
   await authorize('plant.view', undefined, 'listPlantBranches');
-  const f = await plantFence();
-  return prisma.branch.findMany({ where: { ...('branchId' in f.branch && f.branch.branchId ? { id: f.branch.branchId as never } : {}), businessUnit: { organisationId: f.organisationId } }, orderBy: { name: 'asc' }, select: { id: true, name: true, sapPlant: true } });
+  // The plants in reach, whatever the lens shows: registering is a write.
+  return (await typedReach('plant.vehicle.register', AREA_BRANCH_TYPES.plant, { lens: false })).branches;
 }
 
 /** A vehicle already in the plant, by VIN (for the start-a-PDI screen). */
@@ -193,15 +207,16 @@ export async function startPdi(input: StartPdiInput): Promise<Done<{ id: string;
   if (kit) return fail(kit.status === 'REJECTED' ? `This VIN’s kit ${kit.number} was rejected: it is not built.` : `This VIN’s kit ${kit.number} has not been released to the line yet (${KIT_STATUS_WORDS[kit.status as KitStatus] ?? kit.status}).`);
   if (vehicle) {
     // A vehicle in another plant of the organisation is that plant's to inspect.
-    try { await branchWithinReach('plant.pdi.perform', vehicle.branchId); } catch { return fail('This vehicle is in another plant.'); }
+    if (!(await typedBranchWithinReach('plant.pdi.perform', AREA_BRANCH_TYPES.plant, vehicle.branchId))) return fail('This vehicle is in another plant.');
   } else {
     if (!(await allows('plant.vehicle.register'))) return fail('This VIN is not in the plant yet, and registering vehicles is not part of your role.');
     const model = modelByCode(input.modelCode);
     if (!model) return fail('Choose the model (NQR, NPR, QLR, QMR or S07).');
-    let branchId = input.branchId || me.branchId || '';
-    try { branchId = await branchWithinReach('plant.vehicle.register', branchId); } catch { return fail('Choose the plant this vehicle is in.'); }
-    const branch = await prisma.branch.findFirst({ where: { id: branchId, businessUnit: { organisationId: f.organisationId } }, select: { sapPlant: true } });
-    if (!branch) return fail('Choose the plant this vehicle is in.');
+    // One plant in reach and none chosen: that one (a tablet in the plant never asks).
+    const plants = (await typedReach('plant.vehicle.register', AREA_BRANCH_TYPES.plant, { lens: false })).branches;
+    const branch = await typedBranchWithinReach('plant.vehicle.register', AREA_BRANCH_TYPES.plant, input.branchId || (plants.length === 1 ? plants[0]!.id : me.branchId));
+    if (!branch) return fail(plants.length ? 'Choose the assembly plant this vehicle is in.' : 'Your branch is not an assembly plant, so vehicles cannot be registered from it. Ask an administrator to add the plant under Branches.');
+    const branchId = branch.id;
     const year = Number(input.modelYear);
     const thisYear = new Date().getFullYear();
     // The same VIN as a customer's vehicle already in EJO: a re-inspection of a stock vehicle is fine; say so in the audit.

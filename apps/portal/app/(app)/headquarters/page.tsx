@@ -1,3 +1,5 @@
+import Link from 'next/link';
+import { BRANCH_TYPE_WORDS, isBranchType } from '@/lib/branch-types';
 import { guardPage } from '@/lib/authz/server';
 import { HistoryToggle } from '@/components/HistoryToggle';
 import { getHeadquarters, type HqRow } from '@/lib/actions/headquarters';
@@ -68,7 +70,7 @@ function BranchTable({ rows, period }: { rows: HqRow[]; period: string }) {
         <tbody>
           {rows.map((b) => (
             <tr key={b.id} className="border-b border-[var(--ejo-border)] last:border-0 hover:bg-[var(--ejo-bg)]">
-              <th scope="row" className="px-4 py-3 font-medium text-[var(--ejo-text)]">{b.name}<span className="block text-xs font-normal text-[var(--ejo-text-muted)]">{pluralize(b.staff, 'person', 'people')}</span></th>
+              <th scope="row" className="px-4 py-3 font-medium text-[var(--ejo-text)]">{b.name}<span className="block text-xs font-normal text-[var(--ejo-text-muted)]">{isBranchType(b.type) && b.type !== 'WORKSHOP' ? `${BRANCH_TYPE_WORDS[b.type]} · ` : ''}{pluralize(b.staff, 'person', 'people')}</span>{b.plant ? <span className="mt-1 block text-xs font-normal text-[var(--ejo-text-muted)]"><Link href="/plant" className="text-[var(--ejo-primary)] hover:underline">{b.plant.kits} kits at arrival · {b.plant.line} on the line · {b.plant.pdi} at PDI · {b.plant.yard} in the yard</Link>{b.plant.releaseWaiting ? ` · ${b.plant.releaseWaiting} waiting for release` : ''}</span> : null}</th>
               <td className="px-3 py-3 text-right tabular-nums">{b.opened}</td>
               <td className="px-3 py-3 text-right tabular-nums">{b.finished}</td>
               <td className="px-3 py-3 text-right tabular-nums">{naira(b.collected)}{b.fromSap ? <span className="block text-xs text-[var(--ejo-text-muted)]" title="Invoiced in SAP before EJO 100, dated in this period">+ {naira(b.fromSap)} in SAP</span> : null}</td>

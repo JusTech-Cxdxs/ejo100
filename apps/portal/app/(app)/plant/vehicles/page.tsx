@@ -1,5 +1,7 @@
 import Link from 'next/link';
-import { guardPage } from '@/lib/authz/server';
+import { allows, guardPage } from '@/lib/authz/server';
+import { getPlantReach } from '@/lib/actions/plant';
+import { PlantReachNotice } from '@/components/plant/PlantReachNotice';
 import { listPlantVehicles } from '@/lib/actions/plant';
 import { EmptyState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
@@ -12,12 +14,14 @@ export const dynamic = 'force-dynamic';
 /** Every vehicle in the plant: its stage, latest PDI and SAP numbers. Search by VIN, model, engine number, production order or equipment number. */
 export default async function PlantVehiclesPage({ searchParams }: { searchParams: Promise<{ q?: string; stage?: string }> }) {
   await guardPage('plant.view', '/plant/vehicles');
+  const [reach, canStructure] = await Promise.all([getPlantReach(), allows('admin.structure.manage')]);
   const sp = await searchParams;
   const stage = PLANT_STAGES.includes(sp.stage as PlantStage) ? (sp.stage as PlantStage) : undefined;
   const rows = await listPlantVehicles(sp.q, stage);
   return (
     <div className="w-full space-y-6 p-4 sm:p-8">
       <PageHeader icon="garage" back={{ href: '/plant', label: 'Back to the plant' }} title="Vehicles in the plant" description="From kit arrival to sale, with the numbers SAP knows them by." actions={<ExportAction kind="plant-vehicles" params={sp} />} />
+      {reach.reason !== 'ok' ? <PlantReachNotice reach={reach} canManageStructure={canStructure} /> : null}
       <form className="flex flex-wrap gap-2" action="/plant/vehicles">
         {stage ? <input type="hidden" name="stage" value={stage} /> : null}
         <LiveSearchInput name="q" defaultValue={sp.q ?? ''} placeholder="VIN, model, engine number, production order, equipment…" className="w-full max-w-md rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]" />

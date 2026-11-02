@@ -25,8 +25,13 @@ test('periods are Lagos calendar ranges; anything unknown is this month', () => 
 });
 
 test('branch health: action for old decisions or late customers; watch for queues and slow jobs', () => {
-  const base: HqBranch = { id: 'b', name: 'B', staff: 3, opened: 1, finished: 1, collected: 0, fromSap: 0, inWorkshop: 2, ready: 0, waiting: 0, oldestWaitingHours: null, supportOpen: 0, supportLate: 0, turnaroundHours: 20 };
+  const base: HqBranch = { id: 'b', name: 'B', staff: 3, opened: 1, finished: 1, collected: 0, fromSap: 0, inWorkshop: 2, ready: 0, waiting: 0, oldestWaitingHours: null, supportOpen: 0, supportLate: 0, turnaroundHours: 20, type: 'WORKSHOP', plant: null };
   assert.equal(branchHealth(base).tone, 'good');
+  // An assembly plant: a kit waiting two days for release needs action; a full yard is watched.
+  const plant = { kits: 4, line: 12, pdi: 5, yard: 15, releaseWaiting: 1, oldestReleaseHours: 10 };
+  assert.equal(branchHealth({ ...base, type: 'ASSEMBLY_PLANT', plant }).tone, 'good');
+  assert.equal(branchHealth({ ...base, type: 'ASSEMBLY_PLANT', plant: { ...plant, oldestReleaseHours: 49 } }).tone, 'act');
+  assert.equal(branchHealth({ ...base, type: 'ASSEMBLY_PLANT', plant: { ...plant, yard: 20 } }).tone, 'watch');
   assert.equal(branchHealth({ ...base, waiting: 1, oldestWaitingHours: 50 }).tone, 'act');
   assert.equal(branchHealth({ ...base, supportLate: 1 }).tone, 'act');
   assert.equal(branchHealth({ ...base, ready: 5 }).tone, 'watch');

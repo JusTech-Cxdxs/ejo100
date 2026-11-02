@@ -33,6 +33,7 @@ import { checkPartRow, checkSupplierRow } from '@/lib/data-exchange/check-invent
 import { findCustomers } from '@/lib/data-exchange/lookup-server';
 import { measureStagedBytes, refreshStagedBytes, releaseStagedRows, releaseState, stagingDays } from '@/lib/data-exchange/staging-server';
 import { readDatabaseSpace } from '@/lib/database-space';
+import { AREA_BRANCH_TYPES, branchTypeMismatch } from '@/lib/branch-types';
 import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space } from '@/lib/database-space-core';
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
@@ -283,8 +284,11 @@ export async function createImportJob(input: { entity: string; fileName: string;
   // Parts and stock load into one branch of the person's own organisation.
   let branchId: string | null = null;
   if (ENTITIES[entity].branch) {
-    const b = typeof input.branchId === 'string' && input.branchId ? await prisma.branch.findFirst({ where: { id: input.branchId, businessUnit: { organisationId } }, select: { id: true } }) : null;
+    const b = typeof input.branchId === 'string' && input.branchId ? await prisma.branch.findFirst({ where: { id: input.branchId, businessUnit: { organisationId } }, select: { id: true, name: true, type: true } }) : null;
     if (!b) throw new DataExchangeError(entity === 'invoices' ? 'Choose the branch whose sales these invoices were.' : 'Choose the branch whose Store this file belongs to.');
+    // Parts, stock and invoices belong to a branch that keeps a store: never an assembly plant (lib/branch-types.ts).
+    const mismatch = branchTypeMismatch('store', b.name, b.type);
+    if (mismatch) throw new DataExchangeError(mismatch);
     branchId = b.id;
   }
   // Opening stock: the cut-over date it was counted at (not in the future).
@@ -1091,11 +1095,11 @@ export async function reopenUndoneImport(jobId: string): Promise<void> {
   await writeAuditLog({ userId, action: 'data_exchange.reopened', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number } });
 }
 
-/** The branches an import can load into (parts, stock): the person's own organisation. */
+/** The branches an import can load into (parts, stock, invoices): the person's own organisation's branches that keep a store (lib/branch-types.ts) — never an assembly plant. */
 export async function listImportBranches(): Promise<{ id: string; name: string }[]> {
   await authorize('dataexchange.import.run', undefined, 'listImportBranches', 'Only the people who bring records into the system can start an import.');
   const { organisationId } = await exchangeOrg();
-  return prisma.branch.findMany({ where: { businessUnit: { organisationId } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES.store } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 }
 
 // ── Dashboard ───────────────────────────────────────────────────────────

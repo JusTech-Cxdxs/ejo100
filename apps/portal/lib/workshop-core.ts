@@ -3,6 +3,7 @@ import { logFailure } from '@/lib/log';
 import { cache } from 'react';
 import { unstable_cache } from 'next/cache';
 import { after } from 'next/server';
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { prisma, currentAuditActor, type Prisma } from '@ejo/database';
 import { announceChange } from '@/lib/realtime-ping';
 import { headers } from 'next/headers';
@@ -29,19 +30,22 @@ class WorkshopActionError extends Error {}
 const departmentBranchShared = unstable_cache(
   async (slug: 'workshop' | 'store', branchId: string | null, organisationId: string | null) => {
     const sel = { branchId: true } as const;
+    // Only a branch of a fitting kind anchors the work (lib/branch-types.ts): a
+    // department named "Workshop" on an assembly plant never takes job cards.
+    const fitting = { type: { in: AREA_BRANCH_TYPES[slug] } } as const;
     if (branchId) {
-      const own = await prisma.department.findFirst({ where: { slug, branchId }, select: sel });
+      const own = await prisma.department.findFirst({ where: { slug, branchId, branch: fitting }, select: sel });
       if (own) return own;
     }
     if (organisationId) {
-      const inOrg = await prisma.department.findFirst({ where: { slug, branch: { businessUnit: { organisationId } } }, orderBy: { createdAt: 'asc' }, select: sel });
+      const inOrg = await prisma.department.findFirst({ where: { slug, branch: { ...fitting, businessUnit: { organisationId } } }, orderBy: { createdAt: 'asc' }, select: sel });
       if (inOrg) return inOrg;
       // A person who belongs to an organisation never falls through to another organisation's branch.
       return null;
     }
-    return prisma.department.findFirst({ where: { slug }, orderBy: { createdAt: 'asc' }, select: sel });
+    return prisma.department.findFirst({ where: { slug, branch: fitting }, orderBy: { createdAt: 'asc' }, select: sel });
   },
-  ['department-branch-v1'],
+  ['department-branch-v2'],
   { revalidate: 300, tags: ['org-structure'] },
 );
 

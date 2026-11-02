@@ -45,7 +45,7 @@ export async function getHeadquarters(periodKey?: string, opts: { history?: bool
   const now = Date.now();
 
   // The branches in reach, always inside the viewer's own organisation.
-  const all = org ? await prisma.branch.findMany({ where: { businessUnit: { organisationId: org }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true } }) : [];
+  const all = org ? await prisma.branch.findMany({ where: { businessUnit: { organisationId: org }, isActive: true }, orderBy: { name: 'asc' }, select: { id: true, name: true, type: true } }) : [];
   const rb = reach.branchId;
   const branches = typeof rb === 'string' ? all.filter((b) => b.id === rb) : rb && typeof rb === 'object' && 'in' in rb ? all.filter((b) => (rb.in as string[]).includes(b.id)) : all;
   const ids = branches.map((b) => b.id);
@@ -122,11 +122,22 @@ export async function getHeadquarters(periodKey?: string, opts: { history?: bool
   const turn = new Map<string, number[]>();
   for (const j of outs) if (j.checkedOutAt) turn.set(j.branchId, [...(turn.get(j.branchId) ?? []), (j.checkedOutAt.getTime() - j.createdAt.getTime()) / 3_600_000]);
 
+  // An assembly plant's own figures (lib/branch-types.ts): its vehicles by stage and the kits waiting for release.
+  const plantIds = branches.filter((b) => b.type === 'ASSEMBLY_PLANT').map((b) => b.id);
+  const [stages, kitsOpen, kitsWaiting] = plantIds.length ? await Promise.all([
+    prisma.plantVehicle.groupBy({ by: ['branchId', 'stage'], where: { branchId: { in: plantIds } }, _count: { _all: true } }),
+    prisma.plantKit.groupBy({ by: ['branchId'], where: { branchId: { in: plantIds }, status: { in: ['ARRIVED', 'INSPECTING', 'SUBMITTED', 'ON_HOLD'] } }, _count: { _all: true } }),
+    prisma.plantKit.findMany({ where: { branchId: { in: plantIds }, status: 'SUBMITTED' }, select: { branchId: true, submittedAt: true } }),
+  ]) : [[], [], []];
+  const stageN = (id: string, st: string[]) => stages.filter((x) => x.branchId === id && st.includes(x.stage)).reduce((n, x) => n + x._count._all, 0);
   const rows: HqRow[] = branches.map((b) => {
     const o = oldest.get(b.id);
     const t = median(turn.get(b.id) ?? []);
+    const waitingKits = kitsWaiting.filter((k) => k.branchId === b.id);
+    const oldestKit = waitingKits.reduce<number | null>((m, k) => (k.submittedAt && (m === null || k.submittedAt.getTime() < m) ? k.submittedAt.getTime() : m), null);
     const row: HqBranch = {
-      id: b.id, name: b.name, staff: staffB.get(b.id) ?? 0,
+      id: b.id, name: b.name, staff: staffB.get(b.id) ?? 0, type: b.type,
+      plant: b.type === 'ASSEMBLY_PLANT' ? { kits: kitsOpen.find((k) => k.branchId === b.id)?._count._all ?? 0, line: stageN(b.id, ['LINE', 'QA']), pdi: stageN(b.id, ['PDI']), yard: stageN(b.id, ['YARD']), releaseWaiting: waitingKits.length, oldestReleaseHours: oldestKit === null ? null : Math.max(0, Math.round((now - oldestKit) / 3_600_000)) } : null,
       opened: (opJ.get(b.id) ?? 0) + (opV.get(b.id) ?? 0),
       finished: (dnJ.get(b.id) ?? 0) + (dnV.get(b.id) ?? 0),
       collected: Math.round(money.get(b.id) ?? 0),

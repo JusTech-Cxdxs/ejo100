@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import { as, open } from './helpers';
 import { db } from './db';
+import { PLANT_BRANCH } from './people';
 
 /**
  * D2 — kits arriving at the plant, on screen, end to end:
@@ -36,7 +37,7 @@ test('the kit inspector records a shipment from the packing list: all or nothing
   await open(page, '/plant');
   await page.getByRole('link', { name: 'Record a shipment' }).click();
   await page.waitForURL(/\/plant\/shipments\/new$/);
-  await page.getByLabel(/^Plant/).selectOption({ label: 'Isolo Branch' });
+  await page.getByLabel(/^Plant/).selectOption((await db().branch.findFirstOrThrow({ where: { name: PLANT_BRANCH }, select: { id: true } })).id);
   await page.getByLabel('Supplier').fill('Isuzu Motors Ltd');
   await page.getByLabel('Shipped from (optional)').fill('Japan, Tokyo');
   await page.getByLabel('Bill of lading (optional)').fill(BL);
@@ -66,7 +67,7 @@ test('the kit inspector records a shipment from the packing list: all or nothing
   await expect(page.getByRole('link', { name: kit1.number })).toBeVisible();
   // The same bill of lading again: refused, pointing at the shipment.
   await open(page, '/plant/shipments/new');
-  await page.getByLabel(/^Plant/).selectOption({ label: 'Isolo Branch' });
+  await page.getByLabel(/^Plant/).selectOption((await db().branch.findFirstOrThrow({ where: { name: PLANT_BRANCH }, select: { id: true } })).id);
   await page.getByLabel('Supplier').fill('Isuzu Motors Ltd');
   await page.getByLabel('Bill of lading (optional)').fill(BL);
   await page.getByLabel(/The kits, one per line/).fill(`${VIN1},,NQR`);

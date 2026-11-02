@@ -42,7 +42,7 @@ export async function createBranchFormAction(f: FormData) {
   let e = '';
   let id = '';
   try {
-    id = (await createBranch({ businessUnitId: s(f, 'businessUnitId'), name: s(f, 'name'), code: s(f, 'code') || undefined, city: s(f, 'city'), state: s(f, 'state'), standardDepartments: f.get('standardDepartments') === 'on' })).id;
+    id = (await createBranch({ businessUnitId: s(f, 'businessUnitId'), name: s(f, 'name'), code: s(f, 'code') || undefined, city: s(f, 'city'), state: s(f, 'state'), standardDepartments: f.get('standardDepartments') === 'on', type: s(f, 'type') || undefined, sapPlant: s(f, 'sapPlant') || undefined })).id;
   } catch (err) { e = friendlyError(err, 'Could not open the branch.', 'structure'); }
   if (e) back(f, e, '');
   redirect(`/branches/${id}?status=branch_opened`);
