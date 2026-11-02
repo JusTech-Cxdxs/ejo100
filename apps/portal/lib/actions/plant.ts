@@ -236,6 +236,11 @@ export async function startPdi(input: StartPdiInput): Promise<Done<{ id: string;
     }
     await writeAuditLog({ userId: me.userId, action: 'plant.vehicle_registered', entityType: 'PlantVehicle', entityId: vehicle.id, metadata: { vin, model: vehicle.modelCode, engineNumber: vehicle.engineNumber, sapProductionOrder: vehicle.sapProductionOrder, sapEquipment: vehicle.sapEquipment } });
   }
+  // A vehicle built on the line (D3) reaches PDI only through the final quality gate.
+  if (vehicle.stage === 'LINE' || (vehicle.stage === 'KIT' && !vehicle.gatePassedAt)) {
+    const onLine = await prisma.plantStationVisit.count({ where: { plantVehicleId: vehicle.id } });
+    if (onLine) return fail(`This vehicle is still on the line (${vehicle.currentStation ?? 'in build'}): it reaches PDI once it passes the final quality gate.`);
+  }
   const pdis = await prisma.pdiInspection.findMany({ where: { plantVehicleId: vehicle.id }, orderBy: { createdAt: 'desc' }, select: { id: true, number: true, status: true, decidedAt: true } });
   const open = pdis.find((p) => ['IN_PROGRESS', 'REWORK', 'SUBMITTED'].includes(p.status));
   if (open) return { ok: true, id: open.id, reused: true };

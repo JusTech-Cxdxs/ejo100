@@ -163,7 +163,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, pdis, kits, shipments, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, pdis, kits, shipments, defects, audits, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -214,6 +214,10 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
       (w) => prisma.plantKit.findMany({ where: W<Prisma.PlantKitWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, status: true, vin: true, modelCode: true } })),
     find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['SHP', 'number']], text: ['supplier'], codes: ['billOfLading', 'sapPurchaseOrder', 'sapInboundDelivery'] },
       (w) => prisma.plantShipment.findMany({ where: W<Prisma.PlantShipmentWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, supplier: true, billOfLading: true } })),
+    find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['DEF', 'number']], text: ['description'] },
+      (w) => prisma.plantDefect.findMany({ where: W<Prisma.PlantDefectWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, plantVehicleId: true, severity: true, status: true, description: true, vehicle: { select: { vin: true } } } })),
+    find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['QAA', 'number']] },
+      (w) => prisma.plantQaAudit.findMany({ where: W<Prisma.PlantQaAuditWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, result: true, demerits: true, vehicle: { select: { vin: true } } } })),
     find(canWorkshop && { customer: mineOrg }, { text: ['make', 'model'], codes: ['plateNumber', 'chassisNumber', 'engineNumber'] },
       (w) => prisma.customerVehicle.findMany({ where: W<Prisma.CustomerVehicleWhereInput>(w), take, select: { id: true, make: true, model: true, plateNumber: true, chassisNumber: true, customer: { select: { fullName: true } } } })),
     find(canCustomers && mineOrg, { text: ['fullName', 'email'], phones: ['phone', 'altPhone'] },
@@ -270,6 +274,8 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('SUP', 'Support tickets', tickets.map((r) => ({ label: r.number, sub: dot(r.contactName, words(r.status)), href: referenceUrl('SUP', r.id) }))),
     ref('IMP', 'Imports', imports.map((r) => ({ label: r.number, sub: dot(r.fileName, words(r.status)), href: referenceUrl('IMP', r.id) }))),
     ref('KIT', 'Kits', kits.map((r) => ({ label: r.number, sub: dot(r.vin, r.modelCode, words(r.status)), href: referenceUrl('KIT', r.id) }))),
+    ref('DEF', 'Line defects', defects.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, `${r.severity} · ${r.description}`, words(r.status)), href: referenceUrl('DEF', r.plantVehicleId) }))),
+    ref('QAA', 'QA audits', audits.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, r.result ? `${words(r.result)} · ${r.demerits} demerits` : 'in progress'), href: referenceUrl('QAA', r.id) }))),
     ref('SHP', 'Shipments', shipments.map((r) => ({ label: r.number, sub: dot(r.supplier, r.billOfLading), href: referenceUrl('SHP', r.id) }))),
     ref('PDI', 'Pre-delivery inspections', pdis.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, r.vehicle.modelCode, words(r.status)), href: referenceUrl('PDI', r.id) }))),
     ref('EXP', 'Exports', exportJobs.map((r) => ({ label: r.number, sub: dot(words(r.kind.replace(/-/g, ' ')), r.format.toUpperCase()), href: referenceUrl('EXP', r.id) }))),

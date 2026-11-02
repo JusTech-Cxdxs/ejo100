@@ -68,6 +68,8 @@ const READ_FENCES = [
   'myPdi(', 'plantFence(',
   // Kits and shipments (lib/actions/plant-kits.ts): where { id, organisationId, branch reach } (myKit / myShipment / kitFence).
   'myKit(', 'myShipment(', 'kitFence(',
+  // The line (lib/actions/plant-line.ts): where { id, organisationId, plant reach } (myBuild / lineFence).
+  'myBuild(', 'lineFence(',
 ];
 
 /** Reads that need no record fence, with the reason. */

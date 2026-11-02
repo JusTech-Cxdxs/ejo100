@@ -18,6 +18,7 @@ import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } 
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getPlantDashboardItems } from '@/lib/actions/plant';
 import { getKitDashboardItems } from '@/lib/actions/plant-kits';
+import { getLineDashboardItems } from '@/lib/actions/plant-line';
 
 export type DashboardNotification = {
   id: string;
@@ -250,6 +251,8 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   for (const w of await getPlantDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Kits waiting for this supervisor's release (never one they checked), and the inspector's own kits on hold.
   for (const w of await getKitDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
+  // The line: gates waiting for this inspector, reworked defects to verify, A-defects open.
+  for (const w of await getLineDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Integrity watch reviewers: new alerts (never ones about themselves).
   const integrity = await countOpenIntegrityAlerts().catch(() => ({ open: 0, high: 0 }));
   if (integrity.open) {

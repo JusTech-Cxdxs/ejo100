@@ -79,7 +79,7 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
   ]);
   const plantVehicle = await prisma.plantVehicle.findFirst({
     where: { ...fence, vinKey: vin },
-    include: { branch: { select: { name: true } }, pdis: { where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, include: { items: { orderBy: { sort: 'asc' }, select: { section: true, label: true, result: true } } } } },
+    include: { branch: { select: { name: true } }, pdis: { where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, include: { items: { orderBy: { sort: 'asc' }, select: { section: true, label: true, result: true } } } }, stationVisits: { orderBy: { sort: 'asc' }, select: { id: true, code: true, name: true, kind: true, status: true, startedAt: true, finishedAt: true, passedAt: true, _count: { select: { defects: true } } } }, qaAudits: { orderBy: { startedAt: 'asc' }, select: { id: true, number: true, result: true, demerits: true, startedAt: true, finishedAt: true } } },
   });
   // Its kit(s) as they arrived at the plant (D2): found by VIN, released or not (never a cancelled one).
   const kits = await prisma.plantKit.findMany({ where: { ...fence, vinKey: vin, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, take: 5, include: { shipment: { select: { number: true, arrivedAt: true } }, issues: { select: { status: true } } } });
@@ -113,6 +113,17 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
           inspector: null, source: 'ejo' as const, ...(canPlant ? { href: `/plant/kits/${k.id}` } : {}),
         };
       }),
+      // The line (D3): each station visited, as a check in Assembly stations (tests and the gate in Quality audit), and each QA audit.
+      ...(plantVehicle?.stationVisits ?? []).filter((v) => v.status !== 'PENDING').map((v) => ({
+        id: v.id, kind: v.kind === 'STATION' ? 'PRODUCTION' : 'QC', date: ymd(v.passedAt ?? v.finishedAt ?? v.startedAt ?? new Date()), stage: `${v.code} ${v.name}`,
+        result: v.status === 'PASSED' ? 'PASS' : v.status === 'FAILED' ? 'REWORK' : 'OPEN', reference: null,
+        notes: [v.status === 'PASSED' ? 'passed' : v.status === 'FAILED' ? 'in rework' : v.status === 'DONE' ? 'recorded, waiting for the gate' : 'in progress', v._count.defects ? `${v._count.defects} ${v._count.defects === 1 ? 'defect' : 'defects'}` : null].filter(Boolean).join(' · '),
+        inspector: null, source: 'ejo' as const, ...(canPlant ? { href: `/plant/line/${plantVehicle!.id}` } : {}),
+      })),
+      ...(plantVehicle?.qaAudits ?? []).map((a) => ({
+        id: a.id, kind: 'QC', date: ymd(a.finishedAt ?? a.startedAt), stage: 'QA audit', result: a.result === 'PASS' ? 'PASS' : a.result === 'FAIL' ? 'FAIL' : 'OPEN', reference: a.number,
+        notes: a.result ? `${a.demerits} demerits` : 'in progress', inspector: null, source: 'ejo' as const, ...(canPlant ? { href: `/plant/qa/${a.id}` } : {}),
+      })),
       // PDIs recorded on screen: one check ("PDI checklist") whose latest attempt decides; the number links to it for the plant.
       ...(plantVehicle?.pdis ?? []).map((d) => ({
         id: d.id, kind: 'PDI', date: ymd(d.decidedAt ?? d.submittedAt ?? d.startedAt), stage: 'PDI checklist',

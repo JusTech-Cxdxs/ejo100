@@ -135,6 +135,19 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'plant.kit_held': 'Kit put on hold',
   'plant.kit_rejected': 'Kit rejected (R)',
   'plant.kit_cancelled': 'Kit cancelled',
+  'plant.route_saved': 'Line route saved (new version)',
+  'plant.build_started': 'Build started on the line',
+  'plant.check_failed': 'Station check failed',
+  'plant.station_passed': 'Station passed',
+  'plant.station_failed': 'Station failed (rework)',
+  'plant.defect_raised': 'Defect raised',
+  'plant.defect_reworked': 'Defect reworked',
+  'plant.defect_closed': 'Defect verified and closed',
+  'plant.defect_reopened': 'Defect sent back to rework',
+  'plant.gate_passed': 'Final quality gate passed',
+  'plant.audit_started': 'QA audit started',
+  'plant.audit_passed': 'QA audit passed',
+  'plant.audit_failed': 'QA audit failed (back to the line)',
   'vehicle.label_printed': 'Vehicle label or paper printed',
   // Data Exchange exports.
   'data_exchange.export_created': 'List exported',
@@ -270,6 +283,28 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return [s('branch'), s('from') && s('to') ? `${s('from')} → ${s('to')}` : null].filter(Boolean).join(' · ') || null;
     case 'branch.plant_records_moved':
       return [s('from') && s('to') ? `${s('from')} → ${s('to')}` : null, v('kits') ? `${v('kits')} kits` : null, v('vehicles') ? `${v('vehicles')} vehicles` : null, v('pdis') ? `${v('pdis')} PDIs` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.route_saved':
+      return [s('family'), v('version') ? `version ${v('version')}` : null, v('stations') ? `${v('stations')} stations` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.build_started':
+      return [s('vin'), s('route')].filter(Boolean).join(' · ') || null;
+    case 'plant.check_failed':
+      return [s('vin'), s('station'), s('check'), s('why')].filter(Boolean).join(' · ') || null;
+    case 'plant.station_passed':
+    case 'plant.station_failed':
+      return [s('vin'), s('station'), v('minutes') !== null ? `${v('minutes')} of ${v('standard')} min` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.defect_raised':
+      return [s('number'), s('vin'), s('defect'), s('severity') ? `severity ${s('severity')}` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.defect_reworked':
+      return [s('number'), s('rework')].filter(Boolean).join(' · ') || null;
+    case 'plant.defect_closed':
+    case 'plant.defect_reopened':
+      return [s('number'), s('note') ?? s('why')].filter(Boolean).join(' · ') || null;
+    case 'plant.gate_passed':
+      return [s('vin'), v('minutesOnLine') !== null ? `${v('minutesOnLine')} min on the line` : null, v('defects') !== null ? `${v('defects')} defects` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.audit_started':
+    case 'plant.audit_passed':
+    case 'plant.audit_failed':
+      return [s('number'), s('vin'), v('demerits') !== null ? `${v('demerits')} demerits` : null].filter(Boolean).join(' · ') || null;
     case 'plant.shipment_recorded':
       return [s('number'), s('supplier'), v('kits') ? `${v('kits')} kits` : null].filter(Boolean).join(' · ') || null;
     case 'plant.kits_added':
