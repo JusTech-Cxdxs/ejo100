@@ -7,6 +7,7 @@ import { StagingSettings } from '@/components/data-exchange/StagingSettings';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { EmptyState, HeaderAction, Icon, PageHeader, ResponsiveTable, SectionCard, StatusChip } from '@/components/ui';
 import { ExportAction } from '@/components/ExportAction';
+import { DatabaseSpaceCard } from '@/components/data-exchange/DatabaseSpaceCard';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,7 +18,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
   await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve'], '/data-exchange');
   const canExport = await allows('dataexchange.export.run');
   const { before } = await searchParams;
-  const { jobs, canRun, staging } = await listImportJobs({ take: 30, before });
+  const { jobs, canRun, staging, space } = await listImportJobs({ take: 30, before });
   return (
     <div className="w-full space-y-6 p-4 sm:p-8">
       <PageHeader
@@ -53,6 +54,8 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
           );
         })}
       </div>
+
+      <DatabaseSpaceCard space={space} />
 
       <SectionCard icon="layers" title="Space used by staged files" description={`Each import keeps a copy of its file while it is checked, approved and loaded. Once it is finished — and Finance has confirmed the totals, where needed — the copy is released after ${staging.days === 0 ? 'no set period (kept for ever)' : `${staging.days} days`}. The summary, every row’s outcome, rejected rows and what undo needs are kept.`}>
         <div className="flex flex-wrap items-end justify-between gap-4">

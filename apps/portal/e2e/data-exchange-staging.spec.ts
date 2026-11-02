@@ -26,6 +26,12 @@ test('the administrator sets how long finished imports keep their file; the hub 
   await as(page, 'administrator');
   await open(page, '/data-exchange');
   await expect(page.getByRole('heading', { name: 'Space used by staged files' })).toBeVisible();
+  // The database's space against its plan (500 MB, the free plan, unless DATABASE_SPACE_LIMIT_MB says otherwise).
+  const space = page.locator('#database-space');
+  await expect(space.getByRole('heading', { name: 'Database space' })).toBeVisible();
+  await expect(space).toContainText(/of [\d,]+ MB used \(\d+%\)/);
+  await expect(space).toContainText(/more parts, or [\d,]+ more customers/);
+  await expect(space.getByRole('meter', { name: 'Database space used' })).toBeVisible();
   await page.getByLabel('Release a finished import’s file after (days)').fill('45');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText('Saved.')).toBeVisible();

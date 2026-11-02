@@ -337,11 +337,21 @@ All 800,000 materials were created: none rejected, none duplicated, and
 far smaller (one line per part held, one per vendor).
 
 **Database space** after the run: the 800,000 parts take **475 MB** (with
-their indexes); the staged rows of that import take **513 MB**. Plan for
-about **1.3 KB per material** in total while the import is kept. The free
-development tier of Supabase (500 MB) is therefore too small for a full
-material master; the demo keeps **50,000** parts (`docs/demo/correct/03_SAP_parts_50k.csv`),
-which fits comfortably. On the organisation's paid plan this is routine.
+their indexes); the staged rows of that import take **513 MB**. Each loaded
+record also keeps its entry in the audit trail, which is append-only and
+never deleted: measured on 50,000 parts, that is about **1.0 KB a part** on
+top of the part's own 0.7 KB. So plan for about **1.7 KB per material** for
+good, plus the staged file until it is released. A full material master
+therefore needs about **1.3 GB**, and the free Supabase plan (500 MB) is too
+small for it. The demo keeps **50,000** parts
+(`docs/demo/correct/03_SAP_parts_50k.csv`, about 85 MB), which fits. On the
+organisation's paid plan this is routine.
+
+**Guarded:** the Data Exchange page shows the database's space against its
+plan (`DATABASE_SPACE_LIMIT_MB`, default 500). An import that would take it
+past 95% is refused before it is sent for approval, approved or started,
+with how many records still fit. A load that reaches 97% pauses until there
+is room. See [FREE_PLAN.md](FREE_PLAN.md).
 
 ### What keeps it fast at any size
 

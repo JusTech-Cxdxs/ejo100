@@ -5,12 +5,14 @@ import { useRouter } from 'next/navigation';
 import { appendImportRows, createImportJob, finishImportUpload } from '@/lib/actions/data-exchange';
 import { fingerprint, readFileRows, sniffKind } from '@/lib/data-exchange/read-file';
 import { Icon } from '@/components/ui';
+import { BLOCK_BYTES, ROW_BYTES_MAX, rowBytes } from '@/lib/data-exchange/block-size';
 
 type Phase = 'idle' | 'reading' | 'sending' | 'finishing' | 'error';
 
-/** Rows are sent in blocks small enough for one request (~600 KB of text, at most 5,000 rows). */
-const BLOCK_CHARS = 600_000;
+/** Rows are sent in blocks small enough for one request (at most ~700 KB as sent, and 5,000 rows: lib/data-exchange/block-size.ts). */
 const BLOCK_ROWS = 5000;
+/** The server keeps at most this many characters of a cell, so longer text is cut here before it is sent. */
+const MAX_CELL = 2000;
 
 /**
  * Tries a send again after a dropped connection or a busy server, for about
@@ -67,18 +69,19 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
       let jobId: string | null = null;
       let headers: string[] | null = null;
       let block: { rowNumber: number; cells: string[] }[] = [];
-      let chars = 0;
+      let bytes = 0;
       let count = 0;
       let lastSend = 0;
       const flush = async () => {
         if (!block.length || !jobId) return;
         const send = block;
         const id = jobId;
-        block = []; chars = 0;
+        block = []; bytes = 0;
         const gap = MIN_SEND_GAP_MS - (Date.now() - lastSend);
         if (gap > 0) await new Promise((r) => setTimeout(r, gap));
         lastSend = Date.now();
-        await withRetry(() => appendImportRows(id, send));
+        const res = await withRetry(() => appendImportRows(id, send));
+        if (res.stop) throw new Error(res.stop);
         count += send.length;
         setSent(count);
       };
@@ -92,9 +95,14 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
             setPhase('sending');
             continue;
           }
-          block.push(r);
-          chars += r.cells.reduce((n, c) => n + c.length + 3, 8);
-          if (chars >= BLOCK_CHARS || block.length >= BLOCK_ROWS) await flush();
+          const row = { rowNumber: r.rowNumber, cells: r.cells.map((c) => (c.length > MAX_CELL ? c.slice(0, MAX_CELL) : c)) };
+          const size = rowBytes(row);
+          if (size > ROW_BYTES_MAX) throw new Error(`Row ${r.rowNumber.toLocaleString('en-NG')} is too large to send (over ${Math.round(ROW_BYTES_MAX / 1000)} KB). Check that the file’s columns are split correctly.`);
+          // A row that would take this block past the limit goes in the next one.
+          if (block.length && bytes + size > BLOCK_BYTES) await flush();
+          block.push(row);
+          bytes += size;
+          if (bytes >= BLOCK_BYTES || block.length >= BLOCK_ROWS) await flush();
         }
       }, (f) => setRead(f));
       await flush();

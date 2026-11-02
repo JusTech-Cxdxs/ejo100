@@ -178,6 +178,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
     <div className="space-y-6">
       <Steps step={st.step} />
       {job.error ? <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/10 p-3 text-sm text-[var(--ejo-text)]">{job.error}</p> : null}
+      {!job.room.ok && job.room.message ? <p role="alert" data-testid="import-room" className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/40 bg-[var(--ejo-error)]/10 p-3 text-sm text-[var(--ejo-text)]">{job.room.message} <a href="/data-exchange#database-space" className="font-medium text-[var(--ejo-primary)] hover:underline">Database space</a></p> : null}
       {job.sameFileBefore ? <p className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/30 bg-[var(--ejo-info)]/5 p-3 text-sm text-[var(--ejo-text)]">The same file was imported before as <a className="font-medium text-[var(--ejo-primary)] hover:underline" href={`/data-exchange/imports/${job.sameFileBefore.id}`}>{job.sameFileBefore.number}</a>. Records already in the system are recognised and are not added twice.</p> : null}
       {error ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-error)]/30 bg-[var(--ejo-error)]/5 p-3 text-sm text-[var(--ejo-error)]">
@@ -256,7 +257,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
           ) : null}
           {job.status === 'VALIDATED' && job.me.canRun ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              <button type="button" className={primary} disabled={pending || job.goodRows + job.warningRows === 0} onClick={() => act(() => submitImportForApproval(job.id))}><Icon name="check" size={14} /> Send for approval ({nf(job.goodRows + job.warningRows)} to load)</button>
+              <button type="button" className={primary} disabled={pending || job.goodRows + job.warningRows === 0 || !job.room.ok} onClick={() => act(() => submitImportForApproval(job.id))}><Icon name="check" size={14} /> Send for approval ({nf(job.goodRows + job.warningRows)} to load)</button>
               <button type="button" className={secondary} disabled={pending} onClick={() => setShowMapping(true)}>Change the columns</button>
               <button type="button" className={danger} disabled={pending} onClick={() => act(() => cancelImport(job.id))}>Cancel this import</button>
             </div>
@@ -278,9 +279,9 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
           {!progress ? <Bar done={job.createdRows + job.updatedRows + job.skippedRows} total={job.goodRows + job.warningRows} label={`${nf(job.createdRows + job.updatedRows + job.skippedRows)} of ${nf(job.goodRows + job.warningRows)} rows loaded`} /> : null}
           {mayLoad ? (
             <div className="mt-4 flex flex-wrap gap-2">
-              {job.status === 'APPROVED' ? <button type="button" className={primary} disabled={pending} onClick={() => void runLoad()}><Icon name="rocket" size={14} /> Start loading</button> : null}
+              {job.status === 'APPROVED' ? <button type="button" className={primary} disabled={pending || !job.room.ok} onClick={() => void runLoad()}><Icon name="rocket" size={14} /> Start loading</button> : null}
               {job.status === 'LOADING' ? <button type="button" className={secondary} disabled={pending} onClick={() => act(() => pauseImport(job.id))}>Pause</button> : null}
-              {job.status === 'PAUSED' ? <button type="button" className={primary} disabled={pending} onClick={() => act(async () => { await resumeImport(job.id); })}>Resume</button> : null}
+              {job.status === 'PAUSED' ? <button type="button" className={primary} disabled={pending || !job.room.ok} onClick={() => act(async () => { await resumeImport(job.id); })}>Resume</button> : null}
               {job.status === 'APPROVED' && mayApprove ? <SendBack job={job} pending={pending} act={act} /> : null}
             </div>
           ) : <p className="mt-3 text-sm text-[var(--ejo-text-muted)]">The person who prepared it, or an approver, loads it.</p>}
@@ -370,7 +371,7 @@ function ApprovePanel({ job, pending, act }: { job: ImportJobDetail; pending: bo
       </p>
       {job.me.id === job.createdById ? <p className="text-xs text-[var(--ejo-warning)]">You prepared this import. As the platform administrator you may approve it while nobody else holds the role; this is recorded.</p> : null}
       <div className="flex flex-wrap gap-2">
-        <button type="button" className={primary} disabled={pending} onClick={() => act(() => approveImport(job.id))}><Icon name="check" size={14} /> Approve</button>
+        <button type="button" className={primary} disabled={pending || !job.room.ok} onClick={() => act(() => approveImport(job.id))}><Icon name="check" size={14} /> Approve</button>
         <SendBack job={job} pending={pending} act={act} />
       </div>
     </div>
