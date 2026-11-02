@@ -29,6 +29,7 @@ const PREFIXES: [string, ApprovalArea][] = [
   ['roadtest-', 'Security'],
   ['ctr-d-', 'Security'],
   ['pdi-approve-', 'Plant'],
+  ['kit-release-', 'Plant'],
 ];
 
 /** The area of an approval item, or null when the item is not a decision. */

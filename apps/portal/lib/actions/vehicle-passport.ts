@@ -17,6 +17,7 @@
  * customer's name for those with the CRM. A VIN EJO has never seen is "not
  * found" — never a hint about another organisation's vehicles.
  */
+import { modelByCode } from '@/lib/plant/pdi';
 import { prisma } from '@ejo/database';
 import { allows, authorize, getPrincipal, myOrganisationId, orgWhere, reachWhere, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -80,7 +81,9 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
     where: { ...fence, vinKey: vin },
     include: { branch: { select: { name: true } }, pdis: { where: { status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, include: { items: { orderBy: { sort: 'asc' }, select: { section: true, label: true, result: true } } } } },
   });
-  if (!vehicle && records.length === 0 && !plantVehicle) return null;
+  // Its kit(s) as they arrived at the plant (D2): found by VIN, released or not (never a cancelled one).
+  const kits = await prisma.plantKit.findMany({ where: { ...fence, vinKey: vin, status: { not: 'CANCELLED' } }, orderBy: { createdAt: 'asc' }, take: 5, include: { shipment: { select: { number: true, arrivedAt: true } }, issues: { select: { status: true } } } });
+  if (!vehicle && records.length === 0 && !plantVehicle && !kits.length) return null;
 
   const [canJobs, canWarranty, canSecurity, canCustomers, canPrint, canEdit, canPlant] = await Promise.all([
     allows('workshop.job_card.view'), allows('warranty.view'), allows('security.view'), allows('crm.view'), allows('vehicles.label.print'), allows('workshop.view'), allows('plant.view'),
@@ -100,6 +103,16 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
   const stages = buildLife({
     records: [
       ...records.map((r) => ({ id: r.id, kind: r.kind, date: ymd(r.eventDate), stage: r.stage, result: r.result, reference: r.reference, notes: r.notes, inspector: r.inspector })),
+      // Kits recorded on screen: the arrival check, released (A), held, rejected (R) or still being checked; the number links to it for the plant.
+      ...kits.map((k) => {
+        const open = k.issues.filter((i) => i.status !== 'RESOLVED').length;
+        return {
+          id: k.id, kind: 'KIT', date: ymd(k.decidedAt ?? k.submittedAt ?? k.shipment.arrivedAt), stage: 'Kit arrival check',
+          result: k.status === 'RELEASED' ? 'PASS' : k.status === 'REJECTED' ? 'REJECTED' : k.status === 'ON_HOLD' ? 'HOLD' : 'OPEN', reference: k.number,
+          notes: [k.status === 'RELEASED' ? (k.releasedWithShortages ? 'released to the line with shortages (SAP usage decision A)' : 'released to the line (SAP usage decision A)') : k.status === 'REJECTED' ? 'rejected (R): not built' : k.status === 'ON_HOLD' ? 'on hold' : k.status === 'SUBMITTED' ? 'waiting for release' : 'being checked', `${k.kitType} kit, shipment ${k.shipment.number}`, open ? `${open} open ${open === 1 ? 'issue' : 'issues'}` : null].filter(Boolean).join(' · '),
+          inspector: null, source: 'ejo' as const, ...(canPlant ? { href: `/plant/kits/${k.id}` } : {}),
+        };
+      }),
       // PDIs recorded on screen: one check ("PDI checklist") whose latest attempt decides; the number links to it for the plant.
       ...(plantVehicle?.pdis ?? []).map((d) => ({
         id: d.id, kind: 'PDI', date: ymd(d.decidedAt ?? d.submittedAt ?? d.startedAt), stage: 'PDI checklist',
@@ -120,7 +133,7 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
   return {
     vin,
     checkDigitOk: vinCheckDigitOk(vin),
-    description: vehicle ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') : plantVehicle ? [plantVehicle.make, plantVehicle.modelName ?? plantVehicle.modelCode].join(' ') : model,
+    description: vehicle ? [vehicle.make, vehicle.model, vehicle.year].filter(Boolean).join(' ') : plantVehicle ? [plantVehicle.make, plantVehicle.modelName ?? plantVehicle.modelCode].join(' ') : kits[0] ? (modelByCode(kits[0].modelCode)?.name.replace(/ \(.*\)$/, '') ?? kits[0].modelCode) : model,
     vehicle: vehicle ? { id: vehicle.id, plate: vehicle.plateNumber, make: vehicle.make, model: vehicle.model, year: vehicle.year, engineNumber: vehicle.engineNumber, mileage: vehicle.mileage, customer: canCustomers && vehicle.customer ? { id: vehicle.customer.id, name: vehicle.customer.fullName } : null, registeredAt: vehicle.createdAt } : null,
     stages,
     now: currentStage(stages)?.label ?? null,
@@ -154,7 +167,7 @@ export async function recordVehiclePrint(raw: string, kind: LabelKind): Promise<
   const vin = normaliseVin(raw);
   if (!isChassisLike(vin) || !LABEL_WORDS[kind]) throw new Error('That is not a vehicle EJO knows.');
   const fence = await orgWhere();
-  const known = (await prisma.customerVehicle.count({ where: { chassisNumber: { equals: vin, mode: 'insensitive' }, customer: fence } })) + (await prisma.vehicleHistoryRecord.count({ where: { ...fence, vinKey: vin, voidedAt: null } })) + (await prisma.plantVehicle.count({ where: { ...fence, vinKey: vin } }));
+  const known = (await prisma.customerVehicle.count({ where: { chassisNumber: { equals: vin, mode: 'insensitive' }, customer: fence } })) + (await prisma.vehicleHistoryRecord.count({ where: { ...fence, vinKey: vin, voidedAt: null } })) + (await prisma.plantVehicle.count({ where: { ...fence, vinKey: vin } })) + (await prisma.plantKit.count({ where: { ...fence, vinKey: vin, status: { not: 'CANCELLED' } } }));
   if (!known) throw new Error('That is not a vehicle EJO knows.');
   const p = await getPrincipal();
   const org = await myOrganisationId();

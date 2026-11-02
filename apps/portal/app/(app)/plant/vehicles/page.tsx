@@ -24,10 +24,10 @@ export default async function PlantVehiclesPage({ searchParams }: { searchParams
       </form>
       <nav aria-label="Stage" className="flex flex-wrap gap-2 text-xs">
         <Link href={`/plant/vehicles${sp.q ? `?q=${encodeURIComponent(sp.q)}` : ''}`} aria-current={!stage ? 'page' : undefined} className={`rounded-full px-3 py-1 font-medium ${!stage ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>Every stage</Link>
-        {PLANT_STAGES.map((s) => <Link key={s} href={`/plant/vehicles?stage=${s}${sp.q ? `&q=${encodeURIComponent(sp.q)}` : ''}`} aria-current={stage === s ? 'page' : undefined} className={`rounded-full px-3 py-1 font-medium ${stage === s ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{PLANT_STAGE_WORDS[s]}</Link>)}
+        {PLANT_STAGES.map((s) => <Link key={s} href={s === 'KIT' ? '/plant/kits' : `/plant/vehicles?stage=${s}${sp.q ? `&q=${encodeURIComponent(sp.q)}` : ''}`} aria-current={stage === s ? 'page' : undefined} className={`rounded-full px-3 py-1 font-medium ${stage === s ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)]'}`}>{PLANT_STAGE_WORDS[s]}</Link>)}
       </nav>
       <SectionCard icon="car" title={`${rows.length} ${rows.length === 1 ? 'vehicle' : 'vehicles'}`} flush>
-        {rows.length === 0 ? <div className="p-4"><EmptyState compact icon="garage" title="No vehicle matches.">Vehicles join the plant when their PDI starts (and, next, when their kit arrives).</EmptyState></div> : (
+        {rows.length === 0 ? <div className="p-4"><EmptyState compact icon="garage" title="No vehicle matches.">Vehicles join the plant when their kit is released to the line, or when their PDI starts. Kits still at arrival are under Kits.</EmptyState></div> : (
           <ul className="divide-y divide-[var(--ejo-border)]">
             {rows.map((r) => (
               <li key={r.id} className="flex flex-wrap items-start justify-between gap-2 px-4 py-2.5 text-sm">

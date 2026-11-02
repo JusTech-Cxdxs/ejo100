@@ -33,6 +33,9 @@ export const PEOPLE: readonly Person[] = [
   { email: 'pdi@e2e.test', name: 'Pius Pdiinspector', role: 'pdi-inspector' },
   { email: 'pdisupervisor@e2e.test', name: 'Peace Pdisupervisor', role: 'pdi-supervisor' },
   { email: 'plantmanager@e2e.test', name: 'Paul Plantmanager', role: 'plant-manager' },
+  // Kits arriving at the plant: the kit inspector checks them, the quality supervisor releases them (never one they checked).
+  { email: 'kitinspector@e2e.test', name: 'Kemi Kitinspector', role: 'kit-inspector' },
+  { email: 'qualitysupervisor@e2e.test', name: 'Quincy Qualitysupervisor', role: 'quality-supervisor' },
   // Holds BOTH Workshop Supervisor and Workshop Manager — for the
   // segregation-of-duties checks (approves as supervisor, so may not also
   // give the Manager's final approval).

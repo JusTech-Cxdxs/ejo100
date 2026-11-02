@@ -50,8 +50,10 @@ test('a store manager adds a category, a part type and a part', async ({ page })
   await waitOutcome(page, /status=part_created/);
   expectNoUrlError(page);
   await page.goto(`/inventory/parts?q=${encodeURIComponent(S.part)}`);
-  await page.getByRole('link', { name: S.part }).first().click();
-  await page.waitForURL(/\/inventory\/parts\/[^/?]+$/);
+  // Opened by its address: a click that lands while the list is still hydrating can be lost.
+  const href = await page.getByRole('link', { name: S.part }).first().getAttribute('href');
+  expect(href).toMatch(/^\/inventory\/parts\/[^/?]+$/);
+  await page.goto(href!);
   S.partUrl = new URL(page.url()).pathname;
   await expect(page.getByRole('heading', { name: S.part, level: 1 })).toBeVisible();
   // Its part number comes from the category code.

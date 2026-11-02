@@ -119,6 +119,20 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'plant.pdi_passed': 'PDI accepted (A)',
   'plant.pdi_rejected': 'PDI rejected to rework (R)',
   'plant.pdi_cancelled': 'PDI cancelled',
+  'plant.shipment_recorded': 'Shipment of kits recorded',
+  'plant.kits_added': 'Kits added to a shipment',
+  'plant.kit_check_not_ok': 'Kit check Not OK',
+  'plant.kit_cases_differ': 'Kit cases differ from the packing list',
+  'plant.kit_sap_numbers': 'Kit SAP numbers recorded',
+  'plant.kit_issue_raised': 'Kit shortage or damage raised',
+  'plant.kit_issue_claimed': 'Kit issue claimed from the supplier',
+  'plant.kit_issue_resolved': 'Kit issue resolved',
+  'plant.kit_submitted': 'Kit sent for release',
+  'plant.kit_released': 'Kit released to the line (A)',
+  'plant.kit_released_with_shortages': 'Kit released to the line with shortages (A)',
+  'plant.kit_held': 'Kit put on hold',
+  'plant.kit_rejected': 'Kit rejected (R)',
+  'plant.kit_cancelled': 'Kit cancelled',
   'vehicle.label_printed': 'Vehicle label or paper printed',
   // Data Exchange exports.
   'data_exchange.export_created': 'List exported',
@@ -133,6 +147,8 @@ export function securityActionLabel(action: string): string {
 export function securityActionDetail(action: string, meta: Record<string, unknown> | null): string | null {
   if (!meta) return null;
   const s = (k: string) => (typeof meta[k] === 'string' ? (meta[k] as string) : null);
+  /** Text, numbers and yes/no values, as words (counts and flags). */
+  const v = (k: string) => (typeof meta[k] === 'string' || typeof meta[k] === 'number' || typeof meta[k] === 'boolean' ? String(meta[k]) : null);
   switch (action) {
     case 'assist.ended':
       return s('summary');
@@ -247,7 +263,32 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
     case 'plant.pdi_item_reworked':
       return [s('number'), s('item'), s('note')].filter(Boolean).join(' · ') || null;
     case 'plant.vehicle_registered':
-      return [s('vin'), s('model')].filter(Boolean).join(' · ') || null;
+      return [s('vin'), s('model'), s('from') ? `from ${s('from')}` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.shipment_recorded':
+      return [s('number'), s('supplier'), v('kits') ? `${v('kits')} kits` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.kits_added':
+      return s('number');
+    case 'plant.kit_submitted':
+    case 'plant.kit_released':
+      return [s('number'), s('vin')].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_released_with_shortages':
+      return [s('number'), s('vin'), s('concession')].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_held':
+    case 'plant.kit_rejected':
+    case 'plant.kit_cancelled':
+      return [s('number'), s('reason')].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_check_not_ok':
+      return [s('number'), s('check'), s('note')].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_cases_differ':
+      return [s('number'), v('received') !== null && v('expected') !== null ? `${v('received')} of ${v('expected')} cases` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_sap_numbers':
+      return [s('number'), s('inspectionLot') ? `inspection lot ${s('inspectionLot')}` : null, s('materialDocument') ? `material document ${s('materialDocument')}` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_issue_raised':
+      return [s('number'), s('partNumber'), s('description'), v('stopsLine') === 'true' ? 'stops the line' : null].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_issue_claimed':
+      return [s('number'), s('part'), s('claim') ? `claim ${s('claim')}` : null].filter(Boolean).join(' · ') || null;
+    case 'plant.kit_issue_resolved':
+      return [s('number'), s('part'), s('resolution')].filter(Boolean).join(' · ') || null;
     case 'vehicle.label_printed':
       return [s('what'), s('vin')].filter(Boolean).join(' · ') || null;
     case 'vehicle.gate_exit':

@@ -17,6 +17,7 @@ import { getWarrantyClaimDashboardItems } from './warranty-claims';
 import { requireUser, currentUserIsMasterAdmin, listEligibleManagersForBranch } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { getPlantDashboardItems } from '@/lib/actions/plant';
+import { getKitDashboardItems } from '@/lib/actions/plant-kits';
 
 export type DashboardNotification = {
   id: string;
@@ -247,6 +248,8 @@ async function getDashboardNotificationsInner(): Promise<DashboardNotification[]
   for (const w of await getDataExchangeDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Assembly plant: PDIs waiting for this approver (never one they inspected), and their own PDIs sent back to rework.
   for (const w of await getPlantDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
+  // Kits waiting for this supervisor's release (never one they checked), and the inspector's own kits on hold.
+  for (const w of await getKitDashboardItems().catch(() => [])) notifications.push({ ...w, kind: 'WORKFLOW' });
   // Integrity watch reviewers: new alerts (never ones about themselves).
   const integrity = await countOpenIntegrityAlerts().catch(() => ({ open: 0, high: 0 }));
   if (integrity.open) {

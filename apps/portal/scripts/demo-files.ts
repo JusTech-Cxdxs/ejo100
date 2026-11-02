@@ -279,6 +279,29 @@ emit('08_production_QC_register_demo.csv', 'registers', ['Register', 'VIN', 'Mod
   { cells: ['Paint shop', vin(6), 'NQR 71', '20240301', 'Top coat', 'Pass', 'Line 2', 'Not one of the registers'], what: 'Register "Paint shop" is not Production, QC or PDI', expect: 'rejected', by: 'check', says: '“Paint shop” is not Production, QC or PDI.' },
 ]);
 
+// ── 09: a supplier's packing list, pasted into Assembly plant → Record a shipment (not a Data Exchange import) ──
+// One kit per line: VIN or frame number, engine number, model, lot, cases. New VINs (not in 02): they arrive as kits.
+const KIT_HEADER = ['VIN', 'Engine number', 'Model', 'Lot', 'Cases'];
+const kitVin = (n: number) => `JAANLR85EL72${String(10000 + n).slice(-5)}`;
+const kitLines: string[][] = [
+  ...Array.from({ length: 8 }, (_, i) => [kitVin(i + 1), `4HK1-${String(611000 + i)}`, ['NQR', 'NQR', 'NQR', 'NPR', 'NPR', 'QMR', 'QMR', 'QLR'][i]!, `LOT-2611-${pad(i + 1)}`, String([14, 14, 14, 12, 12, 11, 11, 11][i])]),
+  ...Array.from({ length: 4 }, (_, i) => [`LVVDB21B8RD0${String(10100 + i)}`, `SQRE4T15C-${String(80100 + i)}`, 'S07', `SE-2611-${pad(i + 1)}`, '3']),
+];
+const kitMistakes: Mistake[] = [
+  { cells: ['BRAKE PAD SET', '', 'NQR', 'LOT-2611-90', '14'], what: 'A part name where the VIN should be', expect: 'rejected', by: 'check', says: '“BRAKE PAD SET” is not a VIN or frame number.' },
+  { cells: [kitVin(1), '4HK1-611000', 'NQR', 'LOT-2611-01', '14'], what: `VIN ${kitVin(1)} twice`, expect: 'duplicate', by: 'file', says: `${kitVin(1)} is already on line 2.` },
+  { cells: [kitVin(20), '4JJ1-700001', 'D-MAX', 'LOT-2611-91', '6'], what: 'A model the plant does not build (D-MAX)', expect: 'rejected', by: 'check', says: 'choose the model (NQR, NPR, QLR, QMR, S07).' },
+  { cells: [kitVin(21), '4HK1-611099', 'NQR', 'LOT-2611-92', '900'], what: '900 cases for one kit', expect: 'rejected', by: 'check', says: '900 cases is not a likely number for one kit.' },
+];
+{
+  const file = '09_kit_packing_list_demo.csv';
+  // Plain comma-separated, no quotes: the shipment form reads a pasted packing list line by line.
+  const text = (rows: string[][]) => `${[KIT_HEADER, ...rows].map((r) => r.join(',')).join('\n')}\n`;
+  writeFileSync(join(CORRECT, file), text(kitLines));
+  writeFileSync(join(MISTAKES, file), text([...kitLines, ...kitMistakes.map((m) => m.cells.map(String))]));
+  kitMistakes.forEach((m, i) => planted.push({ ...m, file, entity: 'kits', row: kitLines.length + 2 + i, says: `Line ${kitLines.length + 2 + i}: ${m.says}` }));
+}
+
 // The 800,000-row file for the measured speed run (not committed): PERF_PARTS=800000 PERF_OUT=/some/dir
 if (process.env.PERF_PARTS && process.env.PERF_OUT) {
   writeParts(Number(process.env.PERF_PARTS), join(process.env.PERF_OUT, `SAP_parts_${process.env.PERF_PARTS}.csv`));
@@ -316,6 +339,7 @@ this order (later files refer to earlier ones):
 5. \`04_SAP_opening_stock_demo.csv\` — Opening stock (needs the 50,000 parts)
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
+8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 
 Real events are part of the story and load as they are: a PDI that failed and
 was re-inspected, a QC rework, credit notes (G2). The same files with planted

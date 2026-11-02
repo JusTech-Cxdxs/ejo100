@@ -15,7 +15,14 @@ export const jcForm = (page: Page, button: string | RegExp): Locator =>
 /** Opens a form kept behind a button (RevealPanel: "Add a provider"…), if it is not open already. */
 export async function reveal(page: Page, label: string): Promise<void> {
   const panel = page.locator('details[data-reveal]').filter({ has: page.locator('summary', { hasText: label }) }).first();
-  if (!(await panel.evaluate((d) => (d as HTMLDetailsElement).open))) await panel.locator('summary').click();
+  const isOpen = () => panel.evaluate((d) => (d as HTMLDetailsElement).open);
+  // A click that lands while the page is still hydrating can be undone by it: open it until it stays open.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (!(await isOpen())) await panel.locator('summary').click();
+    await page.waitForTimeout(300);
+    if (await isOpen()) return;
+  }
+  await expect.poll(isOpen, { message: `"${label}" stays open` }).toBe(true);
 }
 
 /** A Job Card page section (the bordered card around an h2). */

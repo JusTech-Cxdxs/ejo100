@@ -11,6 +11,7 @@ this order (later files refer to earlier ones):
 5. `04_SAP_opening_stock_demo.csv` — Opening stock (needs the 50,000 parts)
 6. `06_SAP_invoice_history_demo.csv` — Invoice history (SAP)
 7. `07_PDI_register_demo.xlsx` and `08_production_QC_register_demo.csv` — Registers
+8. `09_kit_packing_list_demo.csv` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 
 Real events are part of the story and load as they are: a PDI that failed and
 was re-inspected, a QC rework, credit notes (G2). The same files with planted
