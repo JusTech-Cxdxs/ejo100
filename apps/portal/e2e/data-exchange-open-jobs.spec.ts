@@ -15,10 +15,12 @@ import { who } from './people';
 test.describe.configure({ mode: 'serial' });
 
 const T = uniq().replace(/[^A-Z0-9]/g, '').slice(-6);
-const kunnr = (n: number) => `0007${T.replace(/\D/g, '3').padEnd(4, '3').slice(0, 4)}${n}`;
+// Digits that differ every run (the clock), so a second run never meets the customer, plates or job numbers of the last one.
+const D = String(Date.now()).slice(-8);
+const kunnr = (n: number) => `00${D}${n}`;
 const vin = (n: number) => `JAANLR85EL${T.replace(/[IOQ]/g, 'X').padEnd(6, 'X').slice(0, 6)}${n}`;
-const plate = (n: number) => `OPJ ${T.replace(/\D/g, '2').padEnd(3, '2').slice(0, 3)} A${String.fromCharCode(65 + n)}`;
-const jobNo = (n: number) => `48${T.replace(/\D/g, '5').padEnd(3, '5').slice(0, 3)}${n}`;
+const plate = (n: number) => `OPJ ${D.slice(-5)} A${String.fromCharCode(65 + n)}`;
+const jobNo = (n: number) => `4${D.slice(-4)}${n}`;
 const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[,"]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(',')).join('\r\n');
 
 async function managerBranch(): Promise<string> {
@@ -46,7 +48,7 @@ test('the file: refusals, the totals, approval and load — live job cards at th
   const branchId = await managerBranch();
   const org = await db().branch.findUniqueOrThrow({ where: { id: branchId }, select: { businessUnit: { select: { organisationId: true } } } });
   const admin = await db().user.findUniqueOrThrow({ where: { email: 'admin@e2e.test' }, select: { id: true } });
-  const customer = await db().customer.create({ data: { organisationId: org.businessUnit.organisationId, fullName: `Opening Jobs ${T}`, phone: `0807 ${T.replace(/\D/g, '6').padEnd(3, '6').slice(0, 3)} 7701`, externalSource: 'SAP', externalId: kunnr(0).replace(/^0+/, ''), createdById: admin.id } });
+  const customer = await db().customer.create({ data: { organisationId: org.businessUnit.organisationId, fullName: `Opening Jobs ${T}`, phone: `0807 ${D.slice(-7, -4)} ${D.slice(-4)}`, externalSource: 'SAP', externalId: kunnr(0).replace(/^0+/, ''), createdById: admin.id } });
   customerId = customer.id;
   for (const n of [1, 2, 3]) {
     const v = await db().customerVehicle.create({ data: { customerId, chassisNumber: vin(n), plateNumber: plate(n), make: 'Isuzu', model: 'NQR', year: 2024, vehicleType: 'COMMERCIAL', mileage: 20000 + n * 1000, createdById: admin.id } });
