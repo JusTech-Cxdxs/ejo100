@@ -61,7 +61,11 @@ test('branches show their kind; the plant keeps its kind while it holds plant re
   await open(page, '/branches');
   await expect(page.getByText('Assembly plant · SAP 1100')).toBeVisible();
   await expect(page.getByText('Plant records on a branch that is not an assembly plant')).toHaveCount(0);
-  const plant = await db().branch.findFirstOrThrow({ where: { name: PLANT_BRANCH } });
+  const plant = await db().branch.findFirstOrThrow({ where: { name: PLANT_BRANCH }, include: { businessUnit: { select: { organisationId: true } } } });
+  // The plant holds a record (a vehicle registered there), so its kind cannot change — on a fresh database as much as a full one.
+  const admin = await db().user.findUniqueOrThrow({ where: { email: 'admin@e2e.test' }, select: { id: true } });
+  const vin = `JAANLR85P1${String(Date.now()).slice(-7)}`;
+  await db().plantVehicle.create({ data: { organisationId: plant.businessUnit.organisationId, branchId: plant.id, vin, vinKey: vin, make: 'Isuzu', modelCode: 'NQR', modelName: 'Isuzu NQR', stage: 'LINE', sapPlant: plant.sapPlant, createdById: admin.id } });
   await open(page, `/branches/${plant.id}?edit=true`);
   await expect(page.getByLabel('What kind of place')).toHaveValue('ASSEMBLY_PLANT');
   await page.getByLabel('What kind of place').selectOption('WORKSHOP');
