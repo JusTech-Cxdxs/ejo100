@@ -16,7 +16,7 @@
     "@ejo/types": "*",
     "@ejo/ui": "*",
     "@ejo/utils": "*",
-    "better-auth": "~1.7.15",
+    "better-auth": "~1.6.33",
     "framer-motion": "^11.18.2",
     "next": "15.5.28",
     "nodemailer": "^10.3.1",
