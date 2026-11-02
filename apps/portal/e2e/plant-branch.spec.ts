@@ -96,7 +96,7 @@ test('Headquarters lists the workshop and the assembly plant, each with its own 
 
 test('an organisation with no assembly plant yet: its administrator opens one from the plant page in one tap, and the plant team moves onto it', async ({ page }) => {
   // Other Motors has a workshop and nobody at a plant.
-  await as(page, OTHER_ORG_ADMIN);
+  await as(page, { ...OTHER_ORG_ADMIN, role: 'administrator' });
   const org = await db().organisation.findFirstOrThrow({ where: { users: { some: { email: OTHER_ORG_ADMIN.email } } } });
   await db().branch.deleteMany({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT', plantVehicles: { none: {} }, plantKits: { none: {} } } });
   await open(page, '/plant');
