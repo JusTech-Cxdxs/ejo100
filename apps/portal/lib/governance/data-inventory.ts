@@ -215,6 +215,11 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   PlantShipment: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicles it brought (receiving and customs evidence)', ai: 'AUTHORISED_USER' },
   PlantKit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER' },
   PlantKitCheck: { tenancy: 'VIA_PARENT', owner: 'kitId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its kit', ai: 'AUTHORISED_USER' },
+  // D3 Assembly line: routes (versions), each vehicle's station visits, defects and QA audits — the build record, kept for the life of the vehicle.
+  PlantRoute: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Every version kept (vehicles refer to the one they were built with)', ai: 'AUTHORISED_USER' },
+  PlantStationVisit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (build evidence)', ai: 'AUTHORISED_USER' },
+  PlantDefect: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (quality and warranty evidence)', ai: 'AUTHORISED_USER' },
+  PlantQaAudit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (quality evidence)', ai: 'AUTHORISED_USER' },
   PlantKitIssue: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (supplier claims)', ai: 'AUTHORISED_USER' },
   ImportMappingProfile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },
   MailStyleSample: { tenancy: 'USER', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'EXPIRES', retention: '90 days, at most 200 per person; removed when they withdraw consent or disconnect their mailbox', ai: 'AUTHORISED_USER' },

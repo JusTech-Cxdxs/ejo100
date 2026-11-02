@@ -122,6 +122,8 @@ export async function resolveReferenceNumbers(texts: (string | null | undefined)
   q('EXP', async (n) => { for (const r of await prisma.exportJob.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('EXP', r.id)); });
   q('PDI', async (n) => { for (const r of await prisma.pdiInspection.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('PDI', r.id)); });
   q('KIT', async (n) => { for (const r of await prisma.plantKit.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('KIT', r.id)); });
+  q('DEF', async (n) => { for (const r of await prisma.plantDefect.findMany({ where: { number: { in: n } }, select: { plantVehicleId: true, number: true } })) out.set(r.number, referenceUrl('DEF', r.plantVehicleId)); });
+  q('QAA', async (n) => { for (const r of await prisma.plantQaAudit.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('QAA', r.id)); });
   q('SHP', async (n) => { for (const r of await prisma.plantShipment.findMany({ where: { number: { in: n } }, select: { id: true, number: true } })) out.set(r.number, referenceUrl('SHP', r.id)); });
   q('WC', async (n) => { for (const r of await prisma.warrantyClaim.findMany({ where: { claimNumber: { in: n } }, select: { id: true, claimNumber: true } })) out.set(r.claimNumber, referenceUrl('WC', r.id)); });
   await Promise.all(jobs);

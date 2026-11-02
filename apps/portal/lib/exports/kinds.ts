@@ -11,6 +11,7 @@
  * and a link back to the record.
  */
 import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
+import { DEFECT_CAUSES, DEFECT_LOCATIONS, DEFECT_TYPES } from '@/lib/plant/line';
 import { prisma, type Prisma } from '@ejo/database';
 import { allows, branchWithinReach, myOrganisationId, orgWhere, reachWhere, typedReach } from '@/lib/authz/server';
 import type { PermissionKey } from '@/lib/authz/catalogue';
@@ -698,6 +699,99 @@ const plantKitIssues: ExportKind = {
   },
 };
 
+const plantStations: ExportKind = {
+  key: 'plant-stations', label: 'Line stations (every vehicle at every station)', view: ['plant.view'], sensitive: false, page: '/plant/line',
+  columns: [
+    { header: 'VIN', type: 'code', width: 20, get: (r) => r.vehicle.vin },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.vehicle.modelCode },
+    { header: 'Station', type: 'code', width: 6, get: (r) => r.code },
+    { header: 'Station name', type: 'text', width: 24, get: (r) => r.name },
+    { header: 'Kind', type: 'text', width: 10, get: (r) => words(r.kind) },
+    { header: 'Order', type: 'int', width: 5, get: (r) => r.sort + 1 },
+    { header: 'Status', type: 'text', width: 14, get: (r) => words(r.status) },
+    { header: 'Checks', type: 'int', width: 6, get: (r) => (Array.isArray(r.checks) ? r.checks.length : 0) },
+    { header: 'Checks failed', type: 'int', width: 6, get: (r) => (Array.isArray(r.results) ? (r.results as { pass: boolean }[]).filter((x) => !x.pass).length : 0) },
+    { header: 'Standard (min)', type: 'int', width: 7, get: (r) => r.standardMinutes },
+    { header: 'Taken (min)', type: 'int', width: 7, get: (r) => (r.startedAt && r.finishedAt ? Math.round((r.finishedAt.getTime() - r.startedAt.getTime()) / 60000) : null) },
+    { header: 'Operator', type: 'text', width: 18, get: (r) => r.operator },
+    { header: 'Started', type: 'datetime', width: 16, get: (r) => r.startedAt },
+    { header: 'Finished', type: 'datetime', width: 16, get: (r) => r.finishedAt },
+    { header: 'Gate passed by', type: 'text', width: 18, get: (r) => r.passer },
+    { header: 'Plant', type: 'text', width: 14, get: (r) => r.branch.name },
+    { header: 'SAP plant (WERKS)', type: 'code', width: 8, get: (r) => r.branch.sapPlant },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/line/${r.plantVehicleId}`) },
+  ],
+  async *rows(ctx, _p, from) {
+    const where: Prisma.PlantStationVisitWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantStationVisitWhereInput) };
+    for await (const { rows: b, next } of blocks((c) => prisma.plantStationVisit.findMany({ where, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], ...page(c), include: { vehicle: { select: { vin: true, modelCode: true } }, branch: { select: { name: true, sapPlant: true } } } }), from)) {
+      const ids = [...new Set(b.flatMap((r) => [r.operatorId, r.passedById]).filter((x): x is string => Boolean(x)))];
+      const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+      yield { next, rows: b.map((r) => ({ ...r, operator: r.operatorId ? names.get(r.operatorId) ?? null : null, passer: r.passedById ? names.get(r.passedById) ?? null : null })) };
+    }
+  },
+};
+const plantDefects: ExportKind = {
+  key: 'plant-defects', label: 'Line defects', view: ['plant.view'], sensitive: false, page: '/plant/line',
+  columns: [
+    { header: 'Defect', type: 'code', width: 16, get: (r) => r.number },
+    { header: 'VIN', type: 'code', width: 20, get: (r) => r.vehicle.vin },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.vehicle.modelCode },
+    { header: 'Station', type: 'code', width: 6, get: (r) => r.stationCode },
+    { header: 'Check', type: 'code', width: 8, get: (r) => r.checkCode },
+    { header: 'Code', type: 'code', width: 14, get: (r) => `${r.location}-${r.type}-${r.cause}` },
+    { header: 'Location', type: 'text', width: 16, get: (r) => defectPart('location', r.location) },
+    { header: 'Type', type: 'text', width: 16, get: (r) => defectPart('type', r.type) },
+    { header: 'Cause', type: 'text', width: 20, get: (r) => defectPart('cause', r.cause) },
+    { header: 'Severity', type: 'code', width: 5, get: (r) => r.severity },
+    { header: 'Description', type: 'text', width: 30, get: (r) => r.description },
+    { header: 'Status', type: 'text', width: 12, get: (r) => words(r.status) },
+    { header: 'Raised by', type: 'text', width: 18, get: (r) => r.raiser },
+    { header: 'Raised', type: 'datetime', width: 16, get: (r) => r.raisedAt },
+    { header: 'Rework', type: 'text', width: 24, get: (r) => r.reworkNote },
+    { header: 'Reworked', type: 'datetime', width: 16, get: (r) => r.reworkedAt },
+    { header: 'Verified by', type: 'text', width: 18, get: (r) => r.verifier },
+    { header: 'Verified', type: 'datetime', width: 16, get: (r) => r.verifiedAt },
+    { header: 'Plant', type: 'text', width: 14, get: (r) => r.branch.name },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/line/${r.plantVehicleId}`) },
+  ],
+  async *rows(ctx, _p, from) {
+    const where: Prisma.PlantDefectWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantDefectWhereInput) };
+    for await (const { rows: b, next } of blocks((c) => prisma.plantDefect.findMany({ where, orderBy: [{ raisedAt: 'desc' }, { id: 'desc' }], ...page(c), include: { vehicle: { select: { vin: true, modelCode: true } }, branch: { select: { name: true } } } }), from)) {
+      const ids = [...new Set(b.flatMap((r) => [r.raisedById, r.verifiedById]).filter((x): x is string => Boolean(x)))];
+      const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+      yield { next, rows: b.map((r) => ({ ...r, raiser: names.get(r.raisedById) ?? null, verifier: r.verifiedById ? names.get(r.verifiedById) ?? null : null })) };
+    }
+  },
+};
+const plantQaAudits: ExportKind = {
+  key: 'plant-qa-audits', label: 'QA audits', view: ['plant.view'], sensitive: false, page: '/plant/qa',
+  columns: [
+    { header: 'Audit', type: 'code', width: 16, get: (r) => r.number },
+    { header: 'VIN', type: 'code', width: 20, get: (r) => r.vehicle.vin },
+    { header: 'Model', type: 'code', width: 7, get: (r) => r.vehicle.modelCode },
+    { header: 'Result', type: 'text', width: 8, get: (r) => (r.result ? words(r.result) : 'In progress') },
+    { header: 'Demerits', type: 'int', width: 7, get: (r) => r.demerits },
+    { header: 'A findings', type: 'int', width: 6, get: (r) => (Array.isArray(r.findings) ? (r.findings as { severity: string }[]).filter((f) => f.severity === 'A').length : 0) },
+    { header: 'B findings', type: 'int', width: 6, get: (r) => (Array.isArray(r.findings) ? (r.findings as { severity: string }[]).filter((f) => f.severity === 'B').length : 0) },
+    { header: 'C findings', type: 'int', width: 6, get: (r) => (Array.isArray(r.findings) ? (r.findings as { severity: string }[]).filter((f) => f.severity === 'C').length : 0) },
+    { header: 'Findings', type: 'text', width: 40, get: (r) => (Array.isArray(r.findings) ? (r.findings as { section: string; severity: string; description: string }[]).map((f) => `${f.severity} ${f.section}: ${f.description}`).join(' | ') : '') },
+    { header: 'Auditor', type: 'text', width: 18, get: (r) => r.auditor },
+    { header: 'Started', type: 'datetime', width: 16, get: (r) => r.startedAt },
+    { header: 'Finished', type: 'datetime', width: 16, get: (r) => r.finishedAt },
+    { header: 'Plant', type: 'text', width: 14, get: (r) => r.branch.name },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(`/plant/qa/${r.id}`) },
+  ],
+  async *rows(ctx, _p, from) {
+    const where: Prisma.PlantQaAuditWhereInput = { organisationId: ctx.organisationId ?? '__none__', ...((await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where as Prisma.PlantQaAuditWhereInput) };
+    for await (const { rows: b, next } of blocks((c) => prisma.plantQaAudit.findMany({ where, orderBy: [{ startedAt: 'desc' }, { id: 'desc' }], ...page(c), include: { vehicle: { select: { vin: true, modelCode: true } }, branch: { select: { name: true } } } }), from)) {
+      const ids = [...new Set(b.map((r) => r.auditorId))];
+      const names = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true } })).map((u) => [u.id, u.fullName]));
+      yield { next, rows: b.map((r) => ({ ...r, auditor: names.get(r.auditorId) ?? null })) };
+    }
+  },
+};
+const defectPart = (kind: 'location' | 'type' | 'cause', code: string) => (kind === 'location' ? DEFECT_LOCATIONS : kind === 'type' ? DEFECT_TYPES : DEFECT_CAUSES).find((x) => x.code === code)?.name ?? code;
+
 // ── Headquarters ──────────────────────────────────────────────────────
 
 const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
@@ -724,7 +818,7 @@ const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
 };
 
 export const EXPORT_KINDS: Record<string, ExportKind> = Object.fromEntries(
-  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, plantKits, plantKitIssues, headquarters].map((k) => [k.key, k]),
+  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, plantKits, plantKitIssues, plantStations, plantDefects, plantQaAudits, headquarters].map((k) => [k.key, k]),
 );
 
 /** May this person export this list (open it, export, and — for contact details or payments — export those)? */

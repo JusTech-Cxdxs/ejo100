@@ -39,6 +39,9 @@ export const REFERENCE_TYPES = [
   // Assembly plant: a kit (one vehicle, CKD or SKD) and the shipment that brought it.
   { prefix: 'KIT', model: 'PlantKit', group: 'Kits', path: (id: string) => `/plant/kits/${id}` },
   { prefix: 'SHP', model: 'PlantShipment', group: 'Shipments', path: (id: string) => `/plant/shipments/${id}` },
+  // Assembly plant, the line: a defect (opens the vehicle's build) and a QA audit.
+  { prefix: 'DEF', model: 'PlantDefect', group: 'Line defects', path: (id: string) => `/plant/line/${id}` },
+  { prefix: 'QAA', model: 'PlantQaAudit', group: 'QA audits', path: (id: string) => `/plant/qa/${id}` },
 ] as const;
 
 export type RefPrefix = (typeof REFERENCE_TYPES)[number]['prefix'];

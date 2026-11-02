@@ -135,6 +135,28 @@ kit is still at arrival, on hold or rejected.
 Exports: **Kits arriving at the plant** (every kit with the SAP numbers above)
 and **Kit shortages and damage**, the list a supplier claim is built from.
 
+### The line (D3) — routings, confirmations and QM defects
+
+A **route** is EJO's routing for a model family: its stations in order, the
+standard minutes and the checks at each. A **station visit** is one vehicle at
+one station; a **defect** is one QM defect; a **QA audit** is a product audit
+of a finished vehicle.
+
+| EJO | SAP | Notes |
+| --- | --- | --- |
+| Route (family, version) | Routing (PLKO / PLPO), one operation per station | Versions are kept; a vehicle keeps the version it started with |
+| Station code (C1, T3, G1) | Work centre (ARBPL) / operation number (VORNR) | Stable codes per family; plant WERKS from the branch |
+| Standard minutes | Standard value (VGW01) | Median actual minutes are shown beside it on the board |
+| Station passed (operator, started, finished) | Order confirmation (CO11N: AFRU — ISMNW actual time, ISDD/ISDZ) | Per vehicle and operation; the gate's pass is a separate confirmation by quality |
+| Check result (pass/fail or measured value with limits) | Inspection characteristic result (QAMR), with the characteristic's limits | Codes are stable (C1-03 cross-member bolt torque, N·m 180–220) |
+| Defect: location · type · cause, severity A/B/C | QM defect (QMFE): defect location, defect type (code group), cause (QMUR) | Catalogue codes in `lib/plant/line.ts`; severity A stops the vehicle, B before the gate, C cosmetic |
+| Reworked by the line, verified by quality | Task / defect status (QMSM); verification by a second person | Never the person who reworked it |
+| Gate passed | Final operation confirmation + usage decision **A** on the order's inspection lot | Needs every station passed, no open A/B, every gate check passed; never the recorder |
+| QA audit (QAA-…), demerits, PASS/FAIL | Product audit (QAUDIT / audit management), demerit score | A finding or 20 demerits fails; a failed audit reverses the gate and raises the findings as defects |
+
+Exports: **Line stations**, **Line defects** and **QA audits**, each with the
+SAP names above as column headers.
+
 ## 3. The daily files *(coming in C1)*
 
 C1 adds, through Data Exchange, without new infrastructure:

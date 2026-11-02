@@ -65,8 +65,27 @@ What this means for access:
   plant store, Production (the line), Quality (QC and QA audit), PDI, Yard &
   dispatch, Plant maintenance. Plant roles are the existing ones — Plant
   Manager, PDI Supervisor, PDI Inspector, Quality Supervisor, Kit Inspector —
-  scoped to the plant branch; production, QA-audit and yard roles arrive with
-  the line stations (D3) and the yard (D4).
+  scoped to the plant branch — joined by the line roles below; yard roles
+  arrive with the yard (D4).
+
+### The line (D3)
+
+Four permissions and four roles, all scoped to the plant branch:
+
+| Permission | What it allows | Roles |
+| --- | --- | --- |
+| `plant.line.operate` | Start a build, record checks, finish a station, raise and rework defects | Line Operator, Production Supervisor, Quality Supervisor, Plant Manager |
+| `plant.quality.gate` | Verify or reopen a reworked defect; pass the final gate | QC Inspector, Quality Supervisor, Plant Manager |
+| `plant.qa.audit` | Start, score and finish a QA audit | QA Auditor, Quality Supervisor, Plant Manager |
+| `plant.route.manage` | Save a new version of a route | Production Supervisor, Plant Manager |
+
+Separation of duties the code enforces, whatever the role: a defect is never
+verified by the person who reworked it; the gate is never passed by the
+person who recorded its checks; a vehicle never passes the gate with an open
+A- or B-defect or an unfinished station; a failed QA audit reverses the gate.
+Reworked defects and recorded gates appear under **Approvals → Plant** for
+the people who can act on them. All of these are refused while Enyo is
+assisting (`refuseDuringAssist`).
 
 ## The walkthrough
 

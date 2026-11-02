@@ -301,6 +301,12 @@ appears next to the register rows on the same vehicle page. The demo packing
 list is `docs/demo/correct/09_kit_packing_list_demo.csv`; the copy in
 `with-mistakes/` has four bad lines.
 
+**The line is recorded, not imported (D3).** Station visits, defects and QA
+audits are made on the tablet as the vehicle goes down the line; past
+production history comes in as register rows (above) and the plant records
+import (PR 8). The three lists leave as exports — **Line stations**, **Line
+defects**, **QA audits** — with SAP names ([SAP_INTEGRATION.md](SAP_INTEGRATION.md)).
+
 ## 7c. Undoing history
 
 Undo of an invoice-history or register import **voids** what it loaded: the

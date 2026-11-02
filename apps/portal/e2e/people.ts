@@ -37,6 +37,11 @@ export const PEOPLE: readonly Person[] = [
   // Kits arriving at the plant: the kit inspector checks them, the quality supervisor releases them (never one they checked).
   { email: 'kitinspector@e2e.test', name: 'Kemi Kitinspector', role: 'kit-inspector', branch: 'plant', dept: 'plant-kit-receiving' },
   { email: 'qualitysupervisor@e2e.test', name: 'Quincy Qualitysupervisor', role: 'quality-supervisor', branch: 'plant', dept: 'plant-quality' },
+  // The line: a production supervisor, an operator, a QC inspector (the gate) and the QA auditor.
+  { email: 'production@e2e.test', name: 'Prosper Production', role: 'production-supervisor', branch: 'plant', dept: 'plant-production' },
+  { email: 'operator@e2e.test', name: 'Obi Operator', role: 'line-operator', branch: 'plant', dept: 'plant-production' },
+  { email: 'qc@e2e.test', name: 'Queen Qcinspector', role: 'qc-inspector', branch: 'plant', dept: 'plant-quality' },
+  { email: 'qa@e2e.test', name: 'Qasim Qaauditor', role: 'qa-auditor', branch: 'plant', dept: 'plant-quality' },
   // Holds BOTH Workshop Supervisor and Workshop Manager — for the
   // segregation-of-duties checks (approves as supervisor, so may not also
   // give the Manager's final approval).

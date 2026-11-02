@@ -392,10 +392,67 @@ Manager**).
    Export shortages** gives the list for the supplier claim, with part, case,
    quantity and the SAP purchase order.
 
+## 12. The line: stations, checks, defects, the gate and the QA audit (D3)
+
+*The question: "where is every vehicle on the line right now, what is wrong
+with it, and does anything leave the line that should not?"*
+
+People: a **Production Supervisor**, a **Line Operator**, a **QC Inspector**
+and a **QA Auditor** (the **Plant Manager** and **Quality Supervisor** can do
+all of it).
+
+1. As the **Production Supervisor**: **Assembly plant → The line**. The
+   board shows one column per station of the live routes (the Isuzu
+   truck line C1…G1, the Soueast S07 line B1…G1), every VIN at its station
+   with its minutes there and its open defects, and the figures: on the line,
+   in rework, passed today, **first-time-through** and **defects per unit**
+   over 30 days, open A-defects. A vehicle released from its kit but not yet
+   started is listed below: press **Start the build** and the route becomes
+   its stations.
+2. As the **Line Operator** on a tablet, open the vehicle. Stations run in
+   order: trying C2 before C1 is refused. At **C1 Chassis frame dress**, tap
+   each check Pass; type **150** for the cross-member bolt torque (limits
+   180–220 N·m) — it fails at once. *Finish the station* is refused until
+   the defect is raised: **Frame and chassis · Loose / under torque · Tool:
+   torque setting**, which the catalogue grades **A (safety)**. The station is
+   now *Failed, in rework*. Type what was done and press **Reworked**: the
+   operator cannot verify their own rework.
+3. As the **QC Inspector**: **Approvals → Plant → Verify rework DEF-…** →
+   **Verified: close** (or *Still wrong*, with a note, which reopens it).
+   Back as the operator, re-record the torque (**200**) and finish C1:
+   *Passed*. Work the remaining stations through the end-of-line tests and
+   the road test.
+4. At **G1 Final inspection** the operator records the gate's checks and
+   presses *Finish the gate checks*. The gate itself is passed by quality,
+   never by whoever recorded its checks, and never while an A- or B-defect
+   is open: raise a **B** (reverse lamp bulb missing) and a **C** (scratch)
+   on the walk-round — the gate says *1 B-defect is open: fix before the
+   gate*; the C does not stop it. Rework, verify, then as the QC Inspector
+   press **Pass the gate: ready for PDI**. The vehicle is at stage *Quality
+   audit* and appears in the PDI bay's *Start a PDI* list.
+5. As the **QA Auditor**: **The line → QA audits**. Pick the vehicle from
+   *Passed the gate, not yet audited* and walk it section by section
+   (exterior, interior, engine bay, under-body, electrical, documents). An
+   **A** finding (10 demerits) or 20 demerits fails the audit; a failed audit
+   raises every finding as a defect, fails the gate and sends the vehicle
+   back to the line. A clean audit passes and is kept with its score.
+6. The **Production Supervisor** edits a route under **Routes**: the stations
+   and checks as text (`# C1 | Chassis frame dress | STATION | 45 min`, then
+   one check per line, measurements with unit and limits). Problems show as
+   you type and nothing saves while one remains; saving makes a new version,
+   and vehicles already on the line keep the version they started with.
+7. Open the vehicle's page: every station it passed, each test, the gate and
+   the QA audit are in its life. Search a **DEF-…** or **QAA-…** number.
+   **Export stations**, **Export defects** and **Export QA audits** give the
+   SAP-ready lists (work centre, confirmation, QM defect codes).
+
+The demo organisation's own six weeks of builds arrives with the plant demo
+(the next release).
+
 ---
 
-*Coming in the next releases (each adds a section here):* line stations and
-QA, the yard, sale and plant dashboards (D3–D4); a
+*Coming in the next releases (each adds a section here):* the yard, sale and
+plant dashboards (D4); a
 complete KCG-style demo organisation with a one-command reset; round-trip updates from an
 exported file with a preview of the changes (A4b); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
