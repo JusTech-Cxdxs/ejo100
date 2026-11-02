@@ -45,8 +45,15 @@ test('the SQL is additive and the schema carries the kind with a default of WORK
   for (const f of ['../../scripts/predeploy/0012-branch-types.sql', '../../scripts/v-p1-branch-types.sql']) {
     const sql = read(f);
     assert.match(sql, /ADD COLUMN IF NOT EXISTS "type" "BranchType" NOT NULL DEFAULT 'WORKSHOP'/, f);
-    assert.doesNotMatch(sql, /DROP|DELETE|TRUNCATE|UPDATE "branches"/i, `${f}: changes no existing data`);
+    assert.doesNotMatch(sql, /DROP |DELETE |TRUNCATE/i, `${f}: deletes nothing`);
   }
+  // The deploy opens the plant and moves records and plant-only staff onto it — once, and never for an organisation that already has a plant.
+  const post = read('../../scripts/postdeploy/0011-afprint-plant.sql');
+  assert.match(post, /AND NOT EXISTS \(SELECT 1 FROM branches x[\s\S]*x\.type = 'ASSEMBLY_PLANT'\)/);
+  assert.match(post, /'Afprint Assembly Plant', 'KWL-AP', 'ASSEMBLY_PLANT', '1100'/);
+  assert.match(post, /AND NOT EXISTS \(SELECT 1 FROM user_roles ur JOIN roles r ON r\.id = ur\."roleId" WHERE ur\."userId" = u\.id AND r\.slug NOT IN/, 'people with any other role stay where they are');
+  assert.match(post, /'branch\.plant_records_moved'/);
+  assert.doesNotMatch(post, /DELETE |DROP |TRUNCATE/i);
 });
 
 test('wired in: every plant read goes through the typed reach; the workshop anchors only on workshop branches; a new plant needs its SAP plant code', () => {

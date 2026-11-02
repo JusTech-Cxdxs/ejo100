@@ -57,8 +57,10 @@ What this means for access:
 - **A branch holding records of its kind keeps that kind.** The kind can be
   changed under Branches only while no job cards (for a workshop) or kits,
   vehicles and PDIs (for a plant) live there; otherwise open the new place as
-  its own branch. Plant records recorded before branches had kinds are moved
-  to the plant from the Branches page, all together and audited.
+  its own branch. The deploy opens the plant branch for an organisation that
+  has plant records but no plant yet, and moves those records and the
+  plant-only staff onto it (postdeploy 0011, audited). Anything that lands on
+  a workshop later is moved from the Branches page, all together and audited.
 - **The plant's departments** are created with the branch: Kit receiving &
   plant store, Production (the line), Quality (QC and QA audit), PDI, Yard &
   dispatch, Plant maintenance. Plant roles are the existing ones — Plant
