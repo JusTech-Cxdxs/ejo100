@@ -98,7 +98,7 @@ test('Audit Logs: kinds, search and dates filter the trail', async ({ page }) =>
   }
   const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' });
   await page.goto(`/audit-logs?from=${today}&to=${today}`);
-  await expect(page.getByText(/entr(y|ies) on this page/)).toBeVisible();
+  await expect(page.getByText(/entr(y|ies) on this page/).first()).toBeVisible();
   await expect(page.locator('section li').first()).toBeVisible();
   await page.goto('/audit-logs?q=zz-nothing-matches-this-zz');
   await expect(page.getByText('Nothing matches.')).toBeVisible();
