@@ -97,6 +97,154 @@ export function checkInvoiceRow(cells: unknown[], mapping: Mapping, today = lago
   };
 }
 
+// ── Job card and service history (SAP PM/CS service orders) ───────────
+
+export type JobKind = 'JOB_CARD' | 'SERVICE';
+export const JOB_KIND_WORDS: Record<JobKind, string> = { JOB_CARD: 'Job card', SERVICE: 'Job card · service' };
+export type JobValues = {
+  jobNumber: string;
+  kind: JobKind;
+  orderType: string | null;
+  notificationNumber: string | null;
+  customer: { externalId: string | null; phone: string | null; email: string | null };
+  vin: string | null;
+  vinKey: string | null;
+  plate: string | null;
+  plateKey: string | null;
+  equipmentNumber: string | null;
+  openedAt: string;
+  completedAt: string | null;
+  mileage: number | null;
+  description: string | null;
+  workDone: string | null;
+  technician: string | null;
+  workCentre: string | null;
+  labourAmount: number | null;
+  partsAmount: number | null;
+  totalAmount: number | null;
+  invoiceNumber: string | null;
+  status: 'CLOSED' | 'CANCELLED';
+  /** The Branch / WERKS cell as written (the loader checks it against the import's branch). */
+  branch: string | null;
+};
+
+/**
+ * Every row is a job card (that is all the workshop ever had: one SAP job
+ * card, "carry out service" written on it). Inside EJO a job card whose
+ * text says it was a service also counts as a service — it starts the
+ * vehicle's next-service clock — so the kind is read from the words:
+ * "carry out service", "40,000 km service", "periodic maintenance", or an
+ * SAP service order type (SM01). Anything else is a repair.
+ */
+export function jobKind(text: string, orderType: string | null = null): JobKind {
+  const t = ` ${text.toLowerCase()} `;
+  if (/\bservic(e|ing)\b|\bmaintenance\b|\b\d{1,3}[,.]?\d{3}\s*km\b|\boil change\b/.test(t)) return 'SERVICE';
+  if (orderType && /^(sm01|zsm1|pm0[1-3]|serv)/i.test(orderType)) return 'SERVICE';
+  return 'JOB_CARD';
+}
+
+/** "Closed", "TECO", "CLSD", "complete" → CLOSED; "Cancelled", "CNCL", "DLFL", "deleted" → CANCELLED; else null. */
+export function jobStatus(raw: string): 'CLOSED' | 'CANCELLED' | null {
+  const k = raw.toLowerCase().replace(/[^a-z]/g, '');
+  if (!k) return 'CLOSED';
+  if (/^(closed|close|teco|clsd|complete|completed|done|finished|checkedout|collected|invoiced|billed)/.test(k) || /teco|clsd/.test(k)) return 'CLOSED';
+  if (/^(cancelled|canceled|cancel|cncl|dlfl|deleted|void|voided|reversed)/.test(k) || /cncl|dlfl/.test(k)) return 'CANCELLED';
+  return null;
+}
+
+/** "41,200", "41200 km", "41.200" (SAP) → 41200; nonsense → null. */
+export function parseKm(raw: string): number | null {
+  const s = String(raw ?? '').trim().toLowerCase().replace(/km|kms|kilomet(re|er)s?/g, '').trim();
+  if (!s) return null;
+  const n = Number(s.replace(/[\s,]/g, '').replace(/\.(?=\d{3}(\D|$))/g, ''));
+  return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+}
+
+export function checkJobRow(cells: unknown[], mapping: Mapping, today = lagosToday()): Checked<JobValues> {
+  const issues: Issue[] = [];
+  const warn = (field: string, message: string) => issues.push({ field, message, level: 'warning' });
+  const fail = (field: string, message: string) => issues.push({ field, message, level: 'error' });
+
+  // SAP pads order numbers with zeros (000004000123456): kept as written, compared without them.
+  const jobNumber = get(cells, mapping, 'jobNumber').replace(/^0+(?=\d)/, '');
+  if (!jobNumber) fail('jobNumber', 'Job number is required (the SAP order number, AUFNR, or the old job card number).');
+  else if (jobNumber.length > 40) fail('jobNumber', 'The job number is longer than 40 characters.');
+
+  const openedRaw = get(cells, mapping, 'openedAt');
+  const openedAt = parseDay(openedRaw);
+  if (!openedRaw) fail('openedAt', 'Opened on is required (SAP ERDAT or GSTRP).');
+  else if (!openedAt) fail('openedAt', `“${openedRaw}” is not a date. Write it as 14.03.2019, 14/03/2019, 2019-03-14 or 20190314.`);
+  else if (openedAt > today) fail('openedAt', `The opening date ${openedAt} is in the future.`);
+
+  const completedRaw = get(cells, mapping, 'completedAt');
+  let completedAt = parseDay(completedRaw);
+  if (completedRaw && !completedAt) { warn('completedAt', `Completed on “${completedRaw}” is not a date, so the job is shown as opened only.`); completedAt = null; }
+  else if (completedAt && completedAt > today) fail('completedAt', `The completion date ${completedAt} is in the future.`);
+  else if (completedAt && openedAt && completedAt < openedAt) fail('completedAt', `Completed on ${completedAt} is before it was opened on ${openedAt}.`);
+  if (!completedRaw) warn('completedAt', 'No completion date: shown as opened only; the next-service clock counts from the day it was opened.');
+
+  const custExt = get(cells, mapping, 'customerExternalId').replace(/^0+(?=\d)/, '') || null;
+  const custPhone = phoneKey(get(cells, mapping, 'customerPhone'));
+  const custEmail = get(cells, mapping, 'customerEmail').trim().toLowerCase() || null;
+  const vinRaw = get(cells, mapping, 'vin');
+  const vk = vinKey(vinRaw);
+  if (vk && (vk.length < 6 || vk.length > 25)) warn('vin', `“${vinRaw}” does not look like a chassis number, so the job was not linked to a vehicle.`);
+  const goodVin = vk && vk.length >= 6 && vk.length <= 25 ? vk : null;
+  const plateRaw = get(cells, mapping, 'plateNumber');
+  const plateKey = plateRaw ? plateRaw.toUpperCase().replace(/[\s-]/g, '') : null;
+  if (!custExt && !custPhone && !custEmail && !goodVin && !plateKey) fail('customer', 'Whose job is it? Give the SAP customer number (KUNUM), the customer’s phone or email, or the vehicle’s chassis number or plate.');
+  if (!goodVin && !plateKey) warn('vin', 'No chassis number or plate: the job is kept on the customer only, and cannot start a vehicle’s service clock.');
+
+  const orderType = get(cells, mapping, 'orderType').slice(0, 20) || null;
+  const description = get(cells, mapping, 'description').slice(0, 300) || null;
+  const workDone = get(cells, mapping, 'workDone').slice(0, 1000) || null;
+  const kind = jobKind(`${description ?? ''} ${workDone ?? ''}`, orderType);
+
+  const mileageRaw = get(cells, mapping, 'mileage');
+  const mileage = mileageRaw ? parseKm(mileageRaw) : null;
+  if (mileageRaw && mileage === null) warn('mileage', `Mileage “${mileageRaw}” is not a number of kilometres, so it was left out.`);
+  else if (mileage !== null && mileage > 2_000_000) warn('mileage', `Mileage ${mileage.toLocaleString('en-NG')} km is more than two million; kept, but check the column.`);
+
+  const money = (key: string, label: string): number | null => {
+    const raw = get(cells, mapping, key);
+    if (!raw) return null;
+    const n = parseAmount(raw);
+    if (n === null) { warn(key, `${label} “${raw}” is not an amount, so it was left out.`); return null; }
+    if (Math.abs(n) > 10_000_000_000) { warn(key, `${label} is larger than ₦10 billion; left out (a document number?).`); return null; }
+    return Math.round(n * 100) / 100;
+  };
+  const labourAmount = money('labourAmount', 'Labour');
+  const partsAmount = money('partsAmount', 'Parts');
+  let totalAmount = money('totalAmount', 'Total');
+  if (totalAmount === null && (labourAmount !== null || partsAmount !== null)) totalAmount = Math.round(((labourAmount ?? 0) + (partsAmount ?? 0)) * 100) / 100;
+
+  const statusRaw = get(cells, mapping, 'status');
+  let status = jobStatus(statusRaw);
+  if (!status) {
+    if (/^(open|released|inprogress|inprocess|wip|created|crtd|rel)$/i.test(statusRaw.replace(/[^a-z]/gi, ''))) fail('status', `Status “${statusRaw}”: a job still open belongs in the open job cards file, not in history.`);
+    else { warn('status', `Status “${statusRaw}” was read as Closed.`); }
+    status = 'CLOSED';
+  }
+
+  const notificationNumber = get(cells, mapping, 'notificationNumber').replace(/^0+(?=\d)/, '').slice(0, 40) || null;
+  const invoiceNumber = get(cells, mapping, 'invoiceNumber').replace(/^0+(?=\d)/, '').slice(0, 40) || null;
+  const equipmentNumber = get(cells, mapping, 'equipmentNumber').replace(/^0+(?=\d)/, '').slice(0, 40) || null;
+  const technician = get(cells, mapping, 'technician').slice(0, 80) || null;
+  const workCentre = get(cells, mapping, 'workCentre').slice(0, 40) || null;
+  const branch = get(cells, mapping, 'branch').slice(0, 80) || null;
+
+  const failed = issues.some((i) => i.level === 'error');
+  return {
+    status: failed ? 'REJECTED' : issues.length ? 'WARNING' : 'GOOD',
+    issues,
+    keys: jobNumber ? [`job:${jobNumber.toUpperCase()}`] : [],
+    values: failed ? null : {
+      jobNumber, kind, orderType, notificationNumber, customer: { externalId: custExt, phone: custPhone, email: custEmail }, vin: goodVin ? vinRaw : null, vinKey: goodVin, plate: plateKey ? plateRaw : null, plateKey, equipmentNumber,
+      openedAt: openedAt!, completedAt, mileage, description, workDone, technician, workCentre, labourAmount, partsAmount, totalAmount, invoiceNumber, status, branch,
+    },
+  };
+}
+
 // ── Production, QC and PDI registers ──────────────────────────────────
 
 export type RegisterKind = 'PRODUCTION' | 'QC' | 'PDI';

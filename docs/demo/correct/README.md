@@ -10,6 +10,7 @@ this order (later files refer to earlier ones):
 4. `03a_SAP_parts_200.csv` (a quick first try) or `03_SAP_parts_50k.csv` — Parts (SAP)
 5. `04_SAP_opening_stock_demo.csv` — Opening stock (needs the 50,000 parts)
 6. `06_SAP_invoice_history_demo.csv` — Invoice history (SAP)
+6a. `14_SAP_job_card_history_demo.csv` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
 7. `07_PDI_register_demo.xlsx` and `08_production_QC_register_demo.csv` — Registers
 8. `09_kit_packing_list_demo.csv` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 9. `10_plant_shipments_demo.csv`, `11_plant_kits_demo.csv`, `12_plant_kit_issues_demo.csv`, `13_plant_vehicles_demo.csv` — the plant's six demo weeks as files (the same records `npm run demo:reset` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.

@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { autoMap, mappingProblems } from '../lib/data-exchange/fields';
 import { parseDay } from '../lib/data-exchange/dates';
-import { checkInvoiceRow, checkRegisterRow, registerKind, registerResult } from '../lib/data-exchange/check-history';
+import { checkInvoiceRow, checkJobRow, checkRegisterRow, jobKind, jobStatus, parseKm, registerKind, registerResult } from '../lib/data-exchange/check-history';
 import { checkCustomerRow } from '../lib/data-exchange/check';
 import { customerMoney, monthlySpend, sortCrmRows } from '../lib/crm';
 
@@ -50,6 +50,55 @@ test('invoices from SAP: an SAP billing extract maps itself; net plus tax; credi
   assert.match(checkInvoiceRow(['1', '20300101', '1000123', '100', '', '', '', ''], m, '2026-11-01').issues[0]!.message, /in the future/);
   assert.equal(checkInvoiceRow(['', '20230401', '1000123', '100', '', '', '', ''], m).status, 'REJECTED');
   assert.equal(checkInvoiceRow(['9', '20230401', '', '100', '', '', '', ''], m).status, 'REJECTED', 'whose invoice is it?');
+});
+
+test('job card history (P4): an SAP order list maps itself; every row is a job card; “carry out service” makes it a service; dates, mileage and status read as SAP writes them', () => {
+  const h = ['AUFNR', 'AUART', 'QMNUM', 'KUNUM', 'VHVIN', 'ERDAT', 'IDAT2', 'RECDV', 'KTEXT', 'LTXA1', 'PERNR', 'ARBPL', 'NETWR', 'VBELN', 'STAT', 'WERKS', 'Branch'];
+  const m = autoMap('jobs', h);
+  assert.deepEqual([m.jobNumber, m.orderType, m.notificationNumber, m.customerExternalId, m.vin, m.openedAt, m.completedAt, m.mileage, m.description, m.workDone, m.technician, m.workCentre, m.totalAmount, m.invoiceNumber, m.status, m.branch], [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 16], 'a Branch column wins over WERKS when both are there');
+  assert.deepEqual(mappingProblems('jobs', m), []);
+  assert.deepEqual(mappingProblems('jobs', { ...m, customerExternalId: null, vin: null }), ['Choose how to find each job’s customer: their SAP customer number, phone or email — or the vehicle’s chassis number or plate.']);
+  const row = ['000000482913', 'SM01', '300045678', '0001000123', 'JAANLR85EL7100001', '20230312', '14.03.2023', '40.120', 'Carry out service 40,000 km', 'Oil and filters', 'E. Okoro', 'WS-BAY2', '430000.00', '0090001234', 'TECO', '1000', 'Isolo Branch'];
+  const c = checkJobRow(row, m, '2026-11-02');
+  assert.equal(c.status, 'GOOD', JSON.stringify(c.issues));
+  assert.equal(c.values?.jobNumber, '482913', 'SAP’s leading zeros come off the 6-digit number');
+  assert.equal(c.values?.kind, 'SERVICE');
+  assert.equal(c.values?.openedAt, '2023-03-12');
+  assert.equal(c.values?.completedAt, '2023-03-14');
+  assert.equal(c.values?.mileage, 40120, 'SAP’s thousands dot is understood');
+  assert.equal(c.values?.customer.externalId, '1000123');
+  assert.equal(c.values?.invoiceNumber, '90001234');
+  assert.equal(c.values?.status, 'CLOSED');
+  assert.deepEqual(c.keys, ['job:482913']);
+  // A repair is a job card; so is anything with no words about a service.
+  assert.equal(checkJobRow([...row.slice(0, 1), 'SM02', '', row[3], row[4], row[5], row[6], '61870', 'Brakes squeal when stopping', '', '', '', '', '', 'TECO', '', ''], m, '2026-11-02').values?.kind, 'JOB_CARD');
+  assert.equal(jobKind('Carry out service'), 'SERVICE');
+  assert.equal(jobKind('20,000 km service'), 'SERVICE');
+  assert.equal(jobKind('Periodic maintenance'), 'SERVICE');
+  assert.equal(jobKind('Clutch replaced', 'SM01'), 'SERVICE', 'an SAP service order type counts');
+  assert.equal(jobKind('Brakes squeal'), 'JOB_CARD');
+  assert.equal(jobStatus('TECO'), 'CLOSED'); assert.equal(jobStatus('CLSD'), 'CLOSED'); assert.equal(jobStatus(''), 'CLOSED'); assert.equal(jobStatus('Cancelled'), 'CANCELLED'); assert.equal(jobStatus('CNCL DLFL'), 'CANCELLED'); assert.equal(jobStatus('REL'), null);
+  assert.equal(parseKm('41,200 km'), 41200); assert.equal(parseKm('41.200'), 41200); assert.equal(parseKm('abc'), null);
+  // Refusals: no number, completed before opened, still open, nobody to hang it on, a future date.
+  const bad = (cells: (string | null)[]) => checkJobRow(cells, m, '2026-11-02');
+  assert.deepEqual(bad(['', ...row.slice(1)]).issues.filter((i) => i.level === 'error').map((i) => i.message), ['Job number is required (the SAP order number, AUFNR, or the old job card number).']);
+  assert.match(bad([row[0]!, row[1]!, '', row[3]!, row[4]!, '20.09.2024', '18.09.2024', '', 'x', '', '', '', '', '', 'TECO', '', '']).issues[0]!.message, /is before it was opened/);
+  assert.match(bad([row[0]!, row[1]!, '', row[3]!, row[4]!, '20.09.2024', '', '', 'x', '', '', '', '', '', 'REL', '', '']).issues.find((i) => i.level === 'error')!.message, /still open belongs in the open job cards file/);
+  assert.match(bad([row[0]!, row[1]!, '', '', '', '20.09.2024', '21.09.2024', '', 'x', '', '', '', '', '', 'TECO', '', '']).issues.find((i) => i.level === 'error')!.message, /Whose job is it\?/);
+  assert.match(bad([row[0]!, row[1]!, '', row[3]!, row[4]!, '20.09.2027', '', '', 'x', '', '', '', '', '', 'TECO', '', '']).issues[0]!.message, /is in the future/);
+  // No completion date: kept, with a note that the clock counts from the opening day.
+  const open = checkJobRow([row[0]!, row[1]!, '', row[3]!, row[4]!, '20.09.2024', '', '', 'Carry out service', '', '', '', '', '', 'TECO', '', ''], m, '2026-11-02');
+  assert.equal(open.status, 'WARNING'); assert.equal(open.values?.completedAt, null);
+});
+
+test('the CRM counts a job card from SAP as a visit once with the invoice it was billed on', () => {
+  const sap = [{ at: new Date('2023-03-14T11:00:00Z'), amount: 430000, invoiceNumber: '0090001234' }, { at: new Date('2024-09-05T11:00:00Z'), amount: 250000, invoiceNumber: '90001235' }];
+  const jobs = [{ at: new Date('2023-03-14T11:00:00Z'), invoiceNumber: '90001234' }, { at: new Date('2025-01-10T11:00:00Z'), invoiceNumber: null }];
+  const money = customerMoney([], new Date('2026-11-02T10:00:00Z'), sap, jobs);
+  assert.equal(money.visits, 3, 'invoice 90001234 and its job card are one visit; the other invoice and the other job card one each');
+  assert.equal(money.pastJobs, 2);
+  assert.equal(money.netPaid, 680000, 'money comes from the invoices only, never twice');
+  assert.equal(money.lastVisit?.toISOString().slice(0, 10), '2025-01-10');
 });
 
 test('registers: kind, result and the one-check-once key', () => {

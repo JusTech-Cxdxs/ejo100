@@ -9,7 +9,7 @@ const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8')
 test('undoing an import moves its records to the Recycle bin; it never deletes them outright', () => {
   const src = read('lib/actions/data-exchange.ts');
   const undo = src.slice(src.indexOf('export async function undoImportBatch('), src.indexOf('// ── Dashboard'));
-  assert.match(undo, /const binKind = \(\{ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' \} as const\)\[entity\];/);
+  assert.match(undo, /const binKind = \(\{ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' \} as const\)\[entity as 'customers' \| 'vehicles' \| 'parts' \| 'suppliers'\];/);
   assert.match(undo, /moveManyToBinInTx\(tx, binKind, \[\.\.\.mine\], `Undo of import \$\{job\.number\}`, userId\)/);
   // No direct delete of customers, vehicles, parts or suppliers in the undo (opening stock is reversed, not binned).
   assert.doesNotMatch(undo, /tx\.(customer|customerVehicle|part|supplier)\.deleteMany/);

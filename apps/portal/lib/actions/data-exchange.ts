@@ -35,7 +35,7 @@ import { measureStagedBytes, refreshStagedBytes, releaseStagedRows, releaseState
 import { readDatabaseSpace } from '@/lib/database-space';
 import { AREA_BRANCH_TYPES, branchTypeMismatch } from '@/lib/branch-types';
 import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space } from '@/lib/database-space-core';
-import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
+import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, jobTotalsOfRows, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
 import { checkCustomerRow, checkVehicleRow, phoneKey, type CustomerValues, type Issue, type VehicleValues } from '@/lib/data-exchange/check';
@@ -285,9 +285,9 @@ export async function createImportJob(input: { entity: string; fileName: string;
   let branchId: string | null = null;
   if (ENTITIES[entity].branch) {
     const b = typeof input.branchId === 'string' && input.branchId ? await prisma.branch.findFirst({ where: { id: input.branchId, businessUnit: { organisationId } }, select: { id: true, name: true, type: true } }) : null;
-    if (!b) throw new DataExchangeError(entity === 'invoices' ? 'Choose the branch whose sales these invoices were.' : 'Choose the branch whose Store this file belongs to.');
-    // Parts, stock and invoices belong to a branch that keeps a store: never an assembly plant (lib/branch-types.ts).
-    const mismatch = branchTypeMismatch('store', b.name, b.type);
+    if (!b) throw new DataExchangeError(entity === 'invoices' ? 'Choose the branch whose sales these invoices were.' : entity === 'jobs' ? 'Choose the workshop these jobs were done at.' : 'Choose the branch whose Store this file belongs to.');
+    // Parts, stock and invoices belong to a branch that keeps a store; job history to a workshop: never an assembly plant (lib/branch-types.ts).
+    const mismatch = branchTypeMismatch(ENTITIES[entity].branchArea ?? 'store', b.name, b.type);
     if (mismatch) throw new DataExchangeError(mismatch);
     branchId = b.id;
   }
@@ -519,7 +519,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
 
   // The whole file is checked: the second copy of the same customer or vehicle in the file is a duplicate (the first one loads).
   await prisma.$transaction(async (tx) => {
-    const strong = { customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], registers: ['check'] }[entity];
+    const strong = { customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], registers: ['check'] }[entity];
     const dups = await tx.$queryRaw<{ id: string; first: number; key: string }[]>`
       WITH k AS (
         SELECT r.id, r."rowNumber", unnest(r.keys) AS key FROM import_rows r WHERE r."jobId" = ${job.id} AND r.status IN ('GOOD', 'WARNING')
@@ -550,6 +550,11 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
   // Invoice history: how many invoices, how much, over which years — to reconcile with SAP before approving.
   if (entity === 'invoices') {
     const check = await invoiceTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
+    await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
+  }
+  // Job history: how many past jobs, over which dates — to reconcile with SAP's order list before approving.
+  if (entity === 'jobs') {
+    const check = await jobTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
   }
   const counted = await prisma.importJob.findUnique({ where: { id: job.id }, select: { goodRows: true, warningRows: true, rejectedRows: true, duplicateRows: true, matchedRows: true } });
@@ -955,7 +960,7 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         return tx.supplier.findMany({ where, select: { id: true } });
       };
       const mine = new Set((await mineOf()).map((x) => x.id));
-      const binKind = ({ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' } as const)[entity];
+      const binKind = ({ customers: 'Customer', vehicles: 'CustomerVehicle', parts: 'Part', suppliers: 'Supplier' } as const)[entity as 'customers' | 'vehicles' | 'parts' | 'suppliers'];
       const moved = new Set(await moveManyToBinInTx(tx, binKind, [...mine], `Undo of import ${job.number}`, userId));
       const kept = createdRows.filter((r) => !moved.has(r.resultId!));
       if (kept.length) {
@@ -1096,10 +1101,10 @@ export async function reopenUndoneImport(jobId: string): Promise<void> {
 }
 
 /** The branches an import can load into (parts, stock, invoices): the person's own organisation's branches that keep a store (lib/branch-types.ts) — never an assembly plant. */
-export async function listImportBranches(): Promise<{ id: string; name: string }[]> {
+export async function listImportBranches(area: 'store' | 'workshop' = 'store'): Promise<{ id: string; name: string }[]> {
   await authorize('dataexchange.import.run', undefined, 'listImportBranches', 'Only the people who bring records into the system can start an import.');
   const { organisationId } = await exchangeOrg();
-  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES.store } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area === 'workshop' ? 'workshop' : 'store'] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 }
 
 // ── Dashboard ───────────────────────────────────────────────────────────

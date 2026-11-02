@@ -188,6 +188,29 @@ someone in **Finance**. Sections 1 and 2 loaded first.
 8. To show it is recoverable: Workshop manager → the invoice import → **Undo
    this import** → the customer's spend drops back; nothing was deleted.
    **Reopen** and load again → the same invoices return, never twice.
+9. **Job card history (P4).** The workshop only ever had job cards: a 6-digit
+   SAP order number with *Carry out service* or the repair written on it.
+   Preparer → Data Exchange → *Job card history* → choose the **workshop**
+   (Isolo Branch) → drop
+   `docs/demo/with-mistakes/14_SAP_job_card_history_demo.csv` (SAP order list
+   layout: AUFNR, AUART, QMNUM, KUNUM, VHVIN, ERDAT, IDAT2, RECDV, KTEXT,
+   LTXA1, PERNR, ARBPL, NETWR, VBELN, STAT, WERKS). Point out:
+   - every row is a job card; EJO reads the words itself — *Carry out
+     service 40,000 km* is also a **service** inside EJO, a repair is not;
+   - the check shows **how many job cards, how much, over which dates**;
+   - the planted mistakes: an **unknown customer**, **completed before it was
+     opened**, **no job number**, **the same job card twice**, **a job card
+     still open** (status REL — it belongs in the open job cards file) and
+     **a job card of the assembly plant in the workshop's file**.
+   Workshop manager approves and loads. Open a customer: **Jobs → Job cards
+   before EJO** lists them (the service ones marked); *Visits* counts a job
+   card and the invoice it was billed on **once**. Open the vehicle
+   (Workshop → Vehicles): **Before EJO 100** shows each job card with its
+   mileage, the work, the technician and the invoice. **Service tracker**:
+   vehicles whose last service was one of these job cards are tracked from
+   it (*482913 (SAP, before EJO)*), with the same interval rules, until EJO
+   completes a service of its own. Search the 6-digit number anywhere.
+   Exports: **SAP job card history**, in job card format.
 
 ## 6. Staged files are released, not kept for ever
 

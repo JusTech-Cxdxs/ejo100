@@ -59,7 +59,7 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
   async function start(file: File) {
     setError(null); setNote(null); setRead(0); setSent(0); setFileName(file.name);
     try {
-      if (needsBranch && !branchId) throw new Error(entity === 'invoices' ? 'Choose the branch whose sales these invoices were first.' : 'Choose the branch whose Store this file belongs to first.');
+      if (needsBranch && !branchId) throw new Error(entity === 'invoices' ? 'Choose the branch whose sales these invoices were first.' : entity === 'jobs' ? 'Choose the workshop these jobs were done at first.' : 'Choose the branch whose Store this file belongs to first.');
       if (!/\.(csv|txt|xlsx)$/i.test(file.name)) throw new Error('Choose a CSV file or an Excel workbook (.xlsx). Macro workbooks (.xlsm) and old .xls files are not accepted — save as .xlsx or CSV.');
       const kind = await sniffKind(file);
       if (kind === 'xls') throw new Error('This is an old Excel file (.xls). Open it in Excel and save it as .xlsx or CSV, then choose it again.');
@@ -144,7 +144,7 @@ export function ImportUploader({ entity, entityLabel, branches, needsBranch = fa
         <div className="grid gap-3 sm:grid-cols-2">
           {needsBranch ? (
             <div>
-              <label htmlFor="import-branch" className="text-sm font-medium text-[var(--ejo-text)]">{entity === 'invoices' ? 'Branch (whose sales they were)' : 'Branch (its Store)'}</label>
+              <label htmlFor="import-branch" className="text-sm font-medium text-[var(--ejo-text)]">{entity === 'invoices' ? 'Branch (whose sales they were)' : entity === 'jobs' ? 'Workshop (where the work was done)' : 'Branch (its Store)'}</label>
               <select id="import-branch" value={branchId} disabled={busy} onChange={(e) => setBranchId(e.target.value)} className="mt-1 w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]">
                 <option value="">Choose…</option>
                 {(branches ?? []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}

@@ -425,6 +425,49 @@ const sapInvoices: ExportKind = {
   },
 };
 
+/** Job cards from SAP before EJO (P4): in the job card layout with the SAP names, as the open job cards import reads them. */
+const sapJobs: ExportKind = {
+  key: 'sap-jobs', label: 'SAP job card history', view: ['crm.view', 'workshop.job_card.view'], sensitive: true, page: '/crm',
+  columns: [
+    { header: 'Job number (AUFNR)', type: 'code', width: 12, get: (r) => r.jobNumber },
+    { header: 'Service', type: 'text', width: 8, get: (r) => (r.kind === 'SERVICE' ? 'Yes' : 'No') },
+    { header: 'Order type (AUART)', type: 'code', width: 8, get: (r) => r.orderType },
+    { header: 'Notification (QMNUM)', type: 'code', width: 12, get: (r) => r.notificationNumber },
+    { header: 'Status', type: 'text', width: 10, get: (r) => (r.status === 'CANCELLED' ? 'Cancelled' : 'Closed') },
+    { header: 'Opened on (ERDAT)', type: 'day', width: 12, get: (r) => r.openedAt },
+    { header: 'Completed on (IDAT2)', type: 'day', width: 12, get: (r) => r.completedAt },
+    { header: 'Customer name', type: 'text', width: 24, get: (r) => r.customerName },
+    { header: 'Customer number (KUNNR)', type: 'code', width: 14, get: (r) => r.customerExt },
+    { header: 'Chassis number (VHVIN)', type: 'code', width: 20, get: (r) => r.vin },
+    { header: 'Plate', type: 'code', width: 12, get: (r) => r.plateNumber },
+    { header: 'Equipment (EQUNR)', type: 'code', width: 12, get: (r) => r.equipmentNumber },
+    { header: 'Mileage (km)', type: 'int', width: 10, get: (r) => r.mileage },
+    { header: 'Complaint / work requested (KTEXT)', type: 'text', width: 36, get: (r) => r.description },
+    { header: 'Work done', type: 'text', width: 36, get: (r) => r.workDone },
+    { header: 'Work centre (ARBPL)', type: 'code', width: 10, get: (r) => r.workCentre },
+    { header: 'Labour', type: 'money', width: 12, get: (r) => (r.labourAmount === null ? null : n(r.labourAmount)) },
+    { header: 'Parts', type: 'money', width: 12, get: (r) => (r.partsAmount === null ? null : n(r.partsAmount)) },
+    { header: 'Total (NETWR)', type: 'money', width: 12, get: (r) => (r.totalAmount === null ? null : n(r.totalAmount)) },
+    { header: 'Invoice (VBELN)', type: 'code', width: 12, get: (r) => r.invoiceNumber },
+    { header: 'Branch', type: 'text', width: 16, get: (r) => r.branchName },
+    { header: 'Import', type: 'code', width: 16, get: (r) => r.imp },
+    { header: 'Link', type: 'link', width: 40, get: (r) => link(r.vehicleId ? `/workshop/vehicles/${r.vehicleId}/edit` : `/crm/customers/${r.customerId}?tab=jobs`) },
+  ],
+  async *rows(ctx, p, from) {
+    const reach = await reachWhere('workshop.job_card.view', { lens: false });
+    const branchId = typeof reach.branchId === 'string' ? reach.branchId : null;
+    const where: Prisma.HistoricalJobWhereInput = { organisationId: ctx.organisationId ?? '__none__', voidedAt: null, ...(branchId ? { branchId } : {}), ...(p.customerId ? { customerId: p.customerId } : {}), ...(p.vehicleId ? { vehicleId: p.vehicleId } : {}) };
+    for await (const { rows: b, next } of blocks((c) => prisma.historicalJob.findMany({ where, orderBy: [{ openedAt: 'desc' }, { id: 'desc' }], ...page(c) }), from)) {
+      const [names, branches, imp] = await Promise.all([
+        prisma.customer.findMany({ where: { id: { in: [...new Set(b.map((r) => r.customerId))] } }, select: { id: true, fullName: true, externalId: true } }).then((x) => new Map(x.map((c) => [c.id, c]))),
+        prisma.branch.findMany({ where: { id: { in: [...new Set(b.map((r) => r.branchId).filter((x): x is string => Boolean(x)))] } }, select: { id: true, name: true } }).then((x) => new Map(x.map((c) => [c.id, c.name]))),
+        importNumbers(b.map((r) => r.importJobId)),
+      ]);
+      yield { next, rows: b.map((r) => ({ ...r, customerName: names.get(r.customerId)?.fullName ?? null, customerExt: names.get(r.customerId)?.externalId ?? null, branchName: r.branchId ? branches.get(r.branchId) ?? null : null, imp: r.importJobId ? imp.get(r.importJobId) ?? null : null })) };
+    }
+  },
+};
+
 const imports: ExportKind = {
   key: 'imports', label: 'Imports', view: ['dataexchange.import.run', 'dataexchange.import.approve'], sensitive: false, page: '/data-exchange',
   columns: [
@@ -818,7 +861,7 @@ const headquarters: ExportKind<import('@/lib/actions/headquarters').HqRow> = {
 };
 
 export const EXPORT_KINDS: Record<string, ExportKind> = Object.fromEntries(
-  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, plantKits, plantKitIssues, plantStations, plantDefects, plantQaAudits, headquarters].map((k) => [k.key, k]),
+  [customers, vehicles, parts, stock, suppliers, goodsReceipts, jobCards, services, warranties, sapInvoices, sapJobs, imports, exportsHistory, users, audit, security, plantVehicles, plantPdis, plantKits, plantKitIssues, plantStations, plantDefects, plantQaAudits, headquarters].map((k) => [k.key, k]),
 );
 
 /** May this person export this list (open it, export, and — for contact details or payments — export those)? */

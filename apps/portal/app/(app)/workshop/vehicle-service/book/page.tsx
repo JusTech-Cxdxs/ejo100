@@ -110,7 +110,7 @@ export default async function BookVehicleServicePage({ searchParams }: { searchP
               <p className="font-semibold text-[var(--ejo-text)]">Service history</p>
               <p className="mt-2 text-[var(--ejo-text-muted)]">
                 Last service{' '}
-                <LoadingLink href={`/workshop/vehicle-service/${health.serviceId}`} className="text-[var(--ejo-primary)] hover:underline">
+                <LoadingLink href={health.serviceHref} className="text-[var(--ejo-primary)] hover:underline">
                   {health.serviceNumber}
                 </LoadingLink>
                 {health.primaryServiceDate ? ` on ${formatDateOnly(health.primaryServiceDate)}` : ''}

@@ -54,14 +54,16 @@ export async function getVehicleCoveredValue(vehicleId: string): Promise<number>
 export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
   invoices: { id: string; number: string; date: string; amount: number; documentType: string | null; description: string | null; customerName: string | null; fiscalYear: number | null }[];
   checks: { id: string; kind: string; date: string; stage: string | null; result: string | null; inspector: string | null; reference: string | null; notes: string | null; model: string | null }[];
+  /** Job cards and services from before EJO (P4): read-only, staff only. */
+  jobs: { id: string; kind: string; number: string; openedAt: string; completedAt: string | null; mileage: number | null; description: string | null; workDone: string | null; technician: string | null; total: number | null; invoiceNumber: string | null; status: string; customerName: string | null }[];
 }> {
   await requireUser();
   await seeVehicle(vehicleId, 'getVehicleHistoryBeforeEjo');
   const v = await prisma.customerVehicle.findUnique({ where: { id: vehicleId }, select: { chassisNumber: true, customer: { select: { organisationId: true } } } });
-  if (!v) return { invoices: [], checks: [] };
+  if (!v) return { invoices: [], checks: [], jobs: [] };
   const organisationId = v.customer.organisationId;
   const vinKey = v.chassisNumber ? v.chassisNumber.toUpperCase().replace(/[\s-]/g, '') : null;
-  const [invoices, checks] = await Promise.all([
+  const [invoices, checks, jobs] = await Promise.all([
     prisma.historicalInvoice.findMany({
       where: { organisationId, voidedAt: null, OR: [{ vehicleId }, ...(vinKey ? [{ vinKey }] : [])] },
       orderBy: { invoiceDate: 'desc' }, take: 300,
@@ -74,11 +76,17 @@ export async function getVehicleHistoryBeforeEjo(vehicleId: string): Promise<{
           select: { id: true, kind: true, eventDate: true, stage: true, result: true, inspector: true, reference: true, notes: true, model: true },
         })
       : [],
+    prisma.historicalJob.findMany({
+      where: { organisationId, voidedAt: null, OR: [{ vehicleId }, ...(vinKey ? [{ vinKey }] : [])] },
+      orderBy: [{ openedAt: 'desc' }], take: 300,
+      select: { id: true, kind: true, jobNumber: true, openedAt: true, completedAt: true, mileage: true, description: true, workDone: true, technician: true, totalAmount: true, invoiceNumber: true, status: true, customerId: true },
+    }),
   ]);
-  const names = new Map((await prisma.customer.findMany({ where: { organisationId, id: { in: [...new Set(invoices.map((i) => i.customerId))] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName]));
+  const names = new Map((await prisma.customer.findMany({ where: { organisationId, id: { in: [...new Set([...invoices.map((i) => i.customerId), ...jobs.map((j) => j.customerId)])] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName]));
   const ymd = (d: Date) => d.toISOString().slice(0, 10);
   return {
     invoices: invoices.map((i) => ({ id: i.id, number: i.invoiceNumber, date: ymd(i.invoiceDate), amount: Number(i.amount), documentType: i.documentType, description: i.description, customerName: names.get(i.customerId) ?? null, fiscalYear: i.fiscalYear })),
     checks: checks.map((c) => ({ id: c.id, kind: c.kind, date: ymd(c.eventDate), stage: c.stage, result: c.result, inspector: c.inspector, reference: c.reference, notes: c.notes, model: c.model })),
+    jobs: jobs.map((j) => ({ id: j.id, kind: j.kind, number: j.jobNumber, openedAt: ymd(j.openedAt), completedAt: j.completedAt ? ymd(j.completedAt) : null, mileage: j.mileage, description: j.description, workDone: j.workDone, technician: j.technician, total: j.totalAmount === null ? null : Number(j.totalAmount), invoiceNumber: j.invoiceNumber, status: j.status, customerName: names.get(j.customerId) ?? null })),
   };
 }

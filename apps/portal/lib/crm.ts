@@ -202,9 +202,11 @@ export function lagosMonthStart(now: Date): Date {
  * settled in SAP. It counts as spend and as a visit on its date; it is never
  * "outstanding", and the averages (job value, turnaround) stay EJO's own.
  */
-export type SapInvoice = { at: Date; amount: number };
+export type SapInvoice = { at: Date; amount: number; invoiceNumber?: string | null };
+/** A job card from before EJO (P4): a visit on its date. Its money is counted through its SAP invoice (never twice). */
+export type PastJob = { at: Date; invoiceNumber: string | null };
 
-export function customerMoney(jobs: CrmJob[], now: Date = new Date(), sap: SapInvoice[] = []) {
+export function customerMoney(jobs: CrmJob[], now: Date = new Date(), sap: SapInvoice[] = [], pastJobs: PastJob[] = []) {
   const payments = jobs.flatMap((j) => j.payments);
   const refunds = jobs.flatMap((j) => j.refunds);
   const fromSap = r2(total(sap));
@@ -218,8 +220,11 @@ export function customerMoney(jobs: CrmJob[], now: Date = new Date(), sap: SapIn
   const turnarounds = finished.filter((j) => j.receivedAt && j.finishedAt && +j.finishedAt >= +j.receivedAt).map((j) => (+j.finishedAt! - +j.receivedAt!) / DAY);
   const yearStart = lagosYearStart(now);
   const inYear = (x: { at: Date }) => +x.at >= +yearStart && +x.at <= +now;
+  // An SAP invoice that a past job card was invoiced on is the same visit as the job card: counted once.
+  const invoiced = new Set(pastJobs.map((j) => j.invoiceNumber?.replace(/^0+(?=\d)/, '').toUpperCase()).filter((x): x is string => Boolean(x)));
+  const sapVisits = sap.filter((x) => !x.invoiceNumber || !invoiced.has(x.invoiceNumber.replace(/^0+(?=\d)/, '').toUpperCase()));
   const lastEjo = visitsList.reduce<Date | null>((m, j) => (!m || +j.receivedAt! > +m ? j.receivedAt : m), null);
-  const lastSap = sap.reduce<Date | null>((m, x) => (!m || +x.at > +m ? x.at : m), null);
+  const lastSap = [...sap, ...pastJobs].reduce<Date | null>((m, x) => (!m || +x.at > +m ? x.at : m), null);
   const lastVisit = lastEjo && lastSap ? (+lastEjo >= +lastSap ? lastEjo : lastSap) : lastEjo ?? lastSap;
   return {
     paidIn,
@@ -230,7 +235,8 @@ export function customerMoney(jobs: CrmJob[], now: Date = new Date(), sap: SapIn
     sapInvoices: sap.length,
     billed,
     outstanding,
-    visits: visitsList.length + sap.length,
+    visits: visitsList.length + sapVisits.length + pastJobs.length,
+    pastJobs: pastJobs.length,
     finishedJobs: finished.length,
     averageJob: finished.length ? r2(billed / finished.length) : null,
     averageTurnaroundDays: turnarounds.length ? Math.round((turnarounds.reduce((s, x) => s + x, 0) / turnarounds.length) * 10) / 10 : null,

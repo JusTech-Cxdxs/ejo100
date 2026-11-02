@@ -46,6 +46,8 @@ export type VehiclePassport = {
     claims: { id: string; number: string; status: string; at: Date; complaint: string }[] | null;
     roadTests: { id: string; number: string; status: string; at: Date }[] | null;
     gateExits: { id: string; number: string; at: Date; branch: string }[] | null;
+    /** Job cards from before EJO (P4), read-only: by the vehicle's id or its VIN. */
+    beforeEjo: { id: string; number: string; kind: string; status: string; at: Date; completedAt: Date | null; mileage: number | null; summary: string | null; total: number | null }[] | null;
   };
   labels: { printed: number; lastAt: Date | null; mayPrint: boolean };
   /** In the assembly plant (Phase D): its stage and the numbers SAP knows it by. */
@@ -89,12 +91,13 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
     allows('workshop.job_card.view'), allows('warranty.view'), allows('security.view'), allows('crm.view'), allows('vehicles.label.print'), allows('workshop.view'), allows('plant.view'),
   ]);
   const vid = vehicle?.id ?? '__none__';
-  const [jobCards, services, warranties, claims, roadTests, gateExits] = await Promise.all([
+  const [jobCards, services, warranties, claims, roadTests, beforeEjo, gateExits] = await Promise.all([
     canJobs ? prisma.jobCard.findMany({ where: { ...(await reachWhere('workshop.job_card.view')), vehicleId: vid }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, jobNumber: true, status: true, createdAt: true, complaint: true, branch: { select: { name: true } } } }) : null,
     canJobs ? prisma.vehicleService.findMany({ where: { ...(await reachWhere('workshop.job_card.view')), vehicleId: vid }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, serviceNumber: true, status: true, createdAt: true, branch: { select: { name: true } } } }) : null,
     canWarranty ? prisma.warranty.findMany({ where: { customer: fence, vehicleId: vid }, orderBy: { startsAt: 'asc' }, take: 200, select: { id: true, warrantyNumber: true, kind: true, status: true, startsAt: true, endsAt: true, subjectDescription: true } }) : null,
     canWarranty ? prisma.warrantyClaim.findMany({ where: { customer: fence, vehicleId: vid }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, claimNumber: true, status: true, createdAt: true, complaint: true } }) : null,
     canSecurity || canJobs ? prisma.roadTestPermit.findMany({ where: { ...(await reachWhere(canSecurity ? 'security.view' : 'workshop.job_card.view')), vehicleId: vid }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, permitNumber: true, status: true, createdAt: true } }) : null,
+    canJobs ? prisma.historicalJob.findMany({ where: { ...fence, voidedAt: null, OR: [{ vehicleId: vid }, { vinKey: vin }] }, orderBy: { openedAt: 'desc' }, take: 200, select: { id: true, jobNumber: true, kind: true, status: true, openedAt: true, completedAt: true, mileage: true, description: true, workDone: true, totalAmount: true } }) : null,
     canSecurity || canJobs ? prisma.vehicleGateExit.findMany({ where: { ...(await reachWhere(canSecurity ? 'security.view' : 'workshop.job_card.view')), vehicleId: vid }, orderBy: { exitedAt: 'desc' }, take: 200, select: { id: true, exitNumber: true, exitedAt: true, branch: { select: { name: true } } } }) : null,
   ]);
 
@@ -155,6 +158,7 @@ export async function getVehiclePassport(raw: string): Promise<VehiclePassport |
       claims: claims?.map((c) => ({ id: c.id, number: c.claimNumber, status: words(c.status), at: c.createdAt, complaint: c.complaint })) ?? null,
       roadTests: roadTests?.map((t) => ({ id: t.id, number: t.permitNumber, status: words(t.status), at: t.createdAt })) ?? null,
       gateExits: gateExits?.map((x) => ({ id: x.id, number: x.exitNumber, at: x.exitedAt, branch: x.branch.name })) ?? null,
+      beforeEjo: beforeEjo?.map((j) => ({ id: j.id, number: j.jobNumber, kind: j.kind === 'SERVICE' ? 'Job card · service' : 'Job card', status: j.status === 'CANCELLED' ? 'Cancelled' : 'Closed', at: j.openedAt, completedAt: j.completedAt, mileage: j.mileage, summary: j.description ?? j.workDone, total: j.totalAmount === null ? null : Number(j.totalAmount) })) ?? null,
     },
     labels: { printed, lastAt: prints[0]?.createdAt ?? null, mayPrint: canPrint },
     plant: plantVehicle ? { id: plantVehicle.id, stage: plantVehicle.stage, modelCode: plantVehicle.modelCode, modelName: plantVehicle.modelName, engineNumber: plantVehicle.engineNumber, colour: plantVehicle.colour, branch: plantVehicle.branch.name, sapPlant: plantVehicle.sapPlant, sapMaterial: plantVehicle.sapMaterial, sapProductionOrder: plantVehicle.sapProductionOrder, sapEquipment: plantVehicle.sapEquipment } : null,

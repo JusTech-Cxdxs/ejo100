@@ -463,7 +463,7 @@ export default async function VehiclePage({
                 </form>
               ) : null}
               <div className="mt-3 flex flex-wrap gap-3 text-xs">
-                <LoadingLink href={`/workshop/vehicle-service/${serviceHealth.serviceId}`} className="text-[var(--ejo-primary)] hover:underline">
+                <LoadingLink href={serviceHealth.serviceHref} className="text-[var(--ejo-primary)] hover:underline">
                   View {serviceHealth.serviceNumber}
                 </LoadingLink>
                 {serviceHealth.viaJobCard ? (
@@ -525,7 +525,7 @@ export default async function VehiclePage({
           </div>
 
           <ProvenanceCard p={origin} />
-          {beforeEjo.checks.length || beforeEjo.invoices.length ? <BeforeEjo data={beforeEjo} /> : null}
+          {beforeEjo.checks.length || beforeEjo.invoices.length || beforeEjo.jobs.length ? <BeforeEjo data={beforeEjo} /> : null}
 
           <RecycleBinPanel offer={binOffer} entity="CustomerVehicle" id={vehicle.id} />
         </div>
@@ -753,9 +753,9 @@ const dayText = (d: string) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en
 function BeforeEjo({ data }: { data: Awaited<ReturnType<typeof getVehicleHistoryBeforeEjo>> }) {
   const sapTotal = data.invoices.reduce((s, i) => s + i.amount, 0);
   return (
-    <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
+    <div id="before-ejo" className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-5">
       <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Before EJO 100</h2>
-      <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Brought in from the plant registers and SAP. Read-only history.</p>
+      <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Brought in from the plant registers, SAP service orders and SAP invoices. Read-only history.</p>
       {data.checks.length ? (
         <>
           <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Production, QC and PDI</h3>
@@ -768,6 +768,24 @@ function BeforeEjo({ data }: { data: Awaited<ReturnType<typeof getVehicleHistory
               </li>
             ))}
           </ol>
+        </>
+      ) : null}
+      {data.jobs.length ? (
+        <>
+          <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-[var(--ejo-text-muted)]">Job cards before EJO ({data.jobs.length})</h3>
+          <ul className="mt-2 divide-y divide-[var(--ejo-border)] text-sm" data-testid="before-ejo-jobs">
+            {data.jobs.map((j) => (
+              <li key={j.id} className="flex items-start justify-between gap-3 py-2">
+                <span className="min-w-0">
+                  <span className="text-[var(--ejo-text)]"><span className="font-medium">Job card {j.number}</span>{j.kind === 'SERVICE' ? <span className="ml-1.5 text-xs text-[var(--ejo-text-muted)]">service</span> : null}{j.status === 'CANCELLED' ? <span className="ml-1.5 text-xs text-[var(--ejo-text-muted)]">cancelled</span> : null}</span>
+                  <span className="block text-xs text-[var(--ejo-text-muted)]">{dayText(j.openedAt)}{j.completedAt && j.completedAt !== j.openedAt ? ` → ${dayText(j.completedAt)}` : ''}{j.mileage !== null ? ` · ${j.mileage.toLocaleString('en-NG')} km` : ''}{j.technician ? ` · ${j.technician}` : ''}{j.invoiceNumber ? ` · invoice ${j.invoiceNumber}` : ''}</span>
+                  {j.description ? <span className="block text-xs text-[var(--ejo-text)]">{j.description}</span> : null}
+                  {j.workDone ? <span className="block text-xs text-[var(--ejo-text-muted)]">{j.workDone}</span> : null}
+                </span>
+                {j.total !== null ? <span className="shrink-0 tabular-nums text-[var(--ejo-text)]">{nairaText(j.total)}</span> : null}
+              </li>
+            ))}
+          </ul>
         </>
       ) : null}
       {data.invoices.length ? (
