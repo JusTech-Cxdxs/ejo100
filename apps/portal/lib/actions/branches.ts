@@ -3,6 +3,7 @@ import { orMasterAdmins } from '@/lib/master-fallback';
 import { portalBaseUrl } from '@/lib/portal-url';
 
 import { AREA_BRANCH_TYPES, BRANCH_TYPE_WORDS, departmentsFor, isBranchType } from '@/lib/branch-types';
+import { revalidatePath } from 'next/cache';
 import { prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -239,4 +240,50 @@ export async function movePlantRecords(fromBranchId: string, toBranchId: string)
   });
   await writeAuditLog({ userId: user.id, action: 'branch.plant_records_moved', entityType: 'Branch', entityId: to.id, metadata: { from: from.name, to: to.name, sapPlant: to.sapPlant, ...moved } });
   return { ok: true, moved };
+}
+
+/**
+ * Opens the organisation's assembly plant in one step, for an organisation
+ * that has none yet: a branch of kind Assembly plant (Afprint Assembly Plant,
+ * code KWL-AP, SAP plant 1100 — rename or recode it under Branches) in the
+ * same business unit and city as its first workshop, with the plant's
+ * departments; then the plant records and plant-only staff move onto it.
+ * Audited. Refused when the organisation already has an assembly plant.
+ */
+export async function openAssemblyPlant(): Promise<{ ok: true; id: string; name: string; moved: { kits: number; shipments: number; vehicles: number; pdis: number; people: number } } | { ok: false; error: string }> {
+  await authorize('admin.structure.manage', undefined, 'openAssemblyPlant');
+  const user = await requireUser();
+  const where = await myOrganisationBranches();
+  const existing = await prisma.branch.findFirst({ where: { ...where, type: 'ASSEMBLY_PLANT' }, select: { id: true, name: true } });
+  if (existing) return { ok: false, error: `${existing.name} is already the assembly plant.` };
+  const anchor = await prisma.branch.findFirst({ where: { ...where, type: { in: AREA_BRANCH_TYPES.workshop } }, orderBy: { createdAt: 'asc' }, select: { id: true, businessUnitId: true, cityId: true, name: true, businessUnit: { select: { organisationId: true } } } });
+  if (!anchor) return { ok: false, error: 'Open a workshop branch first: the plant joins its business unit.' };
+  const name = 'Afprint Assembly Plant';
+  if (await prisma.branch.findFirst({ where: { ...where, name: { equals: name, mode: 'insensitive' } }, select: { id: true } })) return { ok: false, error: `A branch named ${name} exists but is not of kind Assembly plant: set its kind under Branches.` };
+  const out = await prisma.$transaction(async (tx) => {
+    const plant = await tx.branch.create({ data: { businessUnitId: anchor.businessUnitId, cityId: anchor.cityId, name, code: 'KWL-AP', type: 'ASSEMBLY_PLANT', sapPlant: '1100' }, select: { id: true, name: true, sapPlant: true } });
+    await tx.department.createMany({ data: departmentsFor('ASSEMBLY_PLANT').map((d) => ({ branchId: plant.id, name: d.name, slug: d.slug })), skipDuplicates: true });
+    const w = { branch: { businessUnit: { organisationId: anchor.businessUnit.organisationId } }, branchId: { not: plant.id } };
+    const [kits, shipments, vehicles, pdis] = await Promise.all([
+      tx.plantKit.updateMany({ where: w, data: { branchId: plant.id } }),
+      tx.plantShipment.updateMany({ where: w, data: { branchId: plant.id } }),
+      tx.plantVehicle.updateMany({ where: w, data: { branchId: plant.id, sapPlant: plant.sapPlant } }),
+      tx.pdiInspection.updateMany({ where: w, data: { branchId: plant.id } }),
+    ]);
+    // People whose roles are plant roles only, with a department by role.
+    const PLANT_ROLES = ['plant-manager', 'pdi-inspector', 'pdi-supervisor', 'kit-inspector', 'quality-supervisor'];
+    const staff = await tx.user.findMany({ where: { organisationId: anchor.businessUnit.organisationId, branchId: { not: plant.id }, roles: { some: { role: { slug: { in: PLANT_ROLES } } }, none: { role: { slug: { notIn: PLANT_ROLES } } } } }, select: { id: true, roles: { select: { role: { select: { slug: true } } } } } });
+    const depts = await tx.department.findMany({ where: { branchId: plant.id }, select: { id: true, slug: true } });
+    const dept = (slug: string) => depts.find((d) => d.slug === slug)?.id ?? null;
+    for (const u of staff) {
+      const slugs = u.roles.map((r) => r.role.slug);
+      const d = slugs.some((x) => x.startsWith('pdi')) ? dept('plant-pdi') : slugs.includes('kit-inspector') ? dept('plant-kit-receiving') : slugs.includes('quality-supervisor') ? dept('plant-quality') : dept('plant-production');
+      await tx.user.update({ where: { id: u.id }, data: { branchId: plant.id, departmentId: d } });
+    }
+    return { plant, moved: { kits: kits.count, shipments: shipments.count, vehicles: vehicles.count, pdis: pdis.count, people: staff.length } };
+  });
+  await writeAuditLog({ userId: user.id, action: 'branch.created', entityType: 'Branch', entityId: out.plant.id, metadata: { name: out.plant.name, type: 'Assembly plant', sapPlant: out.plant.sapPlant, businessUnit: anchor.name, opened: 'from the plant page' } });
+  await writeAuditLog({ userId: user.id, action: 'branch.plant_records_moved', entityType: 'Branch', entityId: out.plant.id, metadata: { from: anchor.name, to: out.plant.name, sapPlant: out.plant.sapPlant, ...out.moved } });
+  revalidatePath('/', 'layout');
+  return { ok: true, id: out.plant.id, name: out.plant.name, moved: out.moved };
 }

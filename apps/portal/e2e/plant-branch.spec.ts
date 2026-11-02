@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { as, open } from './helpers';
-import { PLANT_BRANCH } from './people';
+import { OTHER_ORG_ADMIN, PLANT_BRANCH } from './people';
 import { db } from './db';
 
 /**
@@ -92,4 +92,21 @@ test('Headquarters lists the workshop and the assembly plant, each with its own 
   await expect(plantRow).toBeVisible();
   await expect(plantRow).toContainText('Assembly plant');
   await expect(plantRow).toContainText(/\d+ on the line · \d+ at PDI · \d+ in the yard/);
+});
+
+test('an organisation with no assembly plant yet: its administrator opens one from the plant page in one tap, and the plant team moves onto it', async ({ page }) => {
+  // Other Motors has a workshop and nobody at a plant.
+  await as(page, { ...OTHER_ORG_ADMIN, role: 'administrator' });
+  const org = await db().organisation.findFirstOrThrow({ where: { users: { some: { email: OTHER_ORG_ADMIN.email } } } });
+  await db().branch.deleteMany({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT', plantVehicles: { none: {} }, plantKits: { none: {} } } });
+  await open(page, '/plant');
+  await expect(page.getByTestId('plant-reach')).toContainText('No assembly plant is in your reach.');
+  await page.getByRole('button', { name: 'Open the assembly plant now' }).click();
+  await expect(page.getByTestId('plant-reach')).toHaveCount(0);
+  await expect(page.getByText(`${PLANT_BRANCH} · SAP plant 1100`)).toBeVisible();
+  const plant = await db().branch.findFirstOrThrow({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT' }, include: { departments: true } });
+  expect(plant.sapPlant).toBe('1100');
+  expect(plant.departments.map((d) => d.slug).sort()).toEqual(['plant-kit-receiving', 'plant-maintenance', 'plant-pdi', 'plant-production', 'plant-quality', 'plant-yard']);
+  // Pressing it again is refused: the plant exists.
+  expect(await db().branch.count({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT' } })).toBe(1);
 });

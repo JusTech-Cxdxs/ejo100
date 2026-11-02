@@ -1,6 +1,6 @@
 -- P1: the assembly plant becomes its own branch. For an organisation that has
--- plant records (vehicles in the plant, kits, shipments, PDIs) but no branch
--- of kind ASSEMBLY_PLANT yet, this:
+-- plant records (vehicles in the plant, kits, shipments, PDIs) or people in
+-- plant roles, but no branch of kind ASSEMBLY_PLANT yet, this:
 --   1. opens "Afprint Assembly Plant" (code KWL-AP, SAP plant 1100) in the same
 --      business unit and city as the branch holding the records, with the
 --      plant's departments;
@@ -25,7 +25,10 @@ BEGIN
     WHERE b.type <> 'ASSEMBLY_PLANT'
       AND (EXISTS (SELECT 1 FROM plant_vehicles v WHERE v."branchId" = b.id)
         OR EXISTS (SELECT 1 FROM plant_kits k WHERE k."branchId" = b.id)
-        OR EXISTS (SELECT 1 FROM pdi_inspections p WHERE p."branchId" = b.id))
+        OR EXISTS (SELECT 1 FROM pdi_inspections p WHERE p."branchId" = b.id)
+        -- or people with plant roles work there (the plant team exists before its first kit)
+        OR EXISTS (SELECT 1 FROM users u JOIN user_roles ur ON ur."userId" = u.id JOIN roles r ON r.id = ur."roleId"
+                   WHERE u."branchId" = b.id AND r.slug IN ('plant-manager', 'pdi-inspector', 'pdi-supervisor', 'kit-inspector', 'quality-supervisor')))
       AND NOT EXISTS (SELECT 1 FROM branches x JOIN business_units xu ON xu.id = x."businessUnitId" WHERE xu."organisationId" = bu."organisationId" AND x.type = 'ASSEMBLY_PLANT')
     ORDER BY b."createdAt"
   LOOP

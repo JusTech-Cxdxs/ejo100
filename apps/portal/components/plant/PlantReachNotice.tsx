@@ -1,8 +1,9 @@
 'use client';
 
-import { useTransition } from 'react';
+import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { setBranchLens } from '@/lib/actions/branch-lens';
+import { openAssemblyPlant } from '@/lib/actions/branches';
 import Link from 'next/link';
 import { EmptyState } from '@/components/ui';
 
@@ -16,6 +17,7 @@ type Reach = { branches: { id: string; name: string }[]; reason: 'ok' | 'no-acce
 export function PlantReachNotice({ reach, canManageStructure }: { reach: Reach; canManageStructure: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   if (reach.reason === 'ok') return null;
   if (reach.reason === 'lens-elsewhere') {
     return (
@@ -36,7 +38,11 @@ export function PlantReachNotice({ reach, canManageStructure }: { reach: Reach; 
     <div className="rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]" data-testid="plant-reach">
       <EmptyState compact icon="garage" title={reach.reason === 'no-access' ? 'The assembly plant is for the plant team.' : 'No assembly plant is in your reach.'}>
         {reach.reason === 'no-access' ? null : canManageStructure
-          ? <span>Plant records live on a branch of kind <b>Assembly plant</b>. Open one under <Link href="/structure" className="font-medium text-[var(--ejo-primary)] hover:underline">Organisation structure</Link> (with its SAP plant code), or set an existing branch’s kind under <Link href="/branches" className="font-medium text-[var(--ejo-primary)] hover:underline">Branches</Link>.</span>
+          ? <span>
+              <span className="block">Plant records live on a branch of kind <b>Assembly plant</b>. Open it now — Afprint Assembly Plant, SAP plant 1100, with its departments; any plant records and plant staff move onto it — or open one yourself under <Link href="/structure" className="font-medium text-[var(--ejo-primary)] hover:underline">Organisation structure</Link>. Rename it or change its SAP code under <Link href="/branches" className="font-medium text-[var(--ejo-primary)] hover:underline">Branches</Link>.</span>
+              <button type="button" disabled={pending} onClick={() => start(async () => { setError(null); const r = await openAssemblyPlant().catch(() => ({ ok: false as const, error: 'That did not work. Try again.' })); if (r.ok) router.refresh(); else setError(r.error); })} className="ejo-press mt-3 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">{pending ? 'Opening…' : 'Open the assembly plant now'}</button>
+              {error ? <span role="alert" className="mt-2 block text-sm text-[var(--ejo-error)]">{error}</span> : null}
+            </span>
           : <span>Your branch is a workshop, not an assembly plant. If you work at the plant, ask an administrator to move you to the plant’s branch.</span>}
       </EmptyState>
     </div>

@@ -292,8 +292,11 @@ Needs the production, QC and PDI registers of section 5 loaded (files 07 and 08)
 
 *The question: "is the plant its own place, like it is in SAP?"*
 
-The deploy opens the plant branch itself and moves the existing plant
-records and plant staff onto it (postdeploy 0011); nothing to do by hand.
+The deploy opens the plant branch itself where plant records or plant staff
+exist (postdeploy 0011). If **Assembly plant** still says *No assembly plant is
+in your reach*, an administrator presses **Open the assembly plant now** on
+that page: one tap opens Afprint Assembly Plant (SAP plant 1100) with its
+departments and moves any plant records and plant staff onto it.
 
 1. **Branches** (as an administrator): *Isolo Branch* is a **Workshop**;
    *Afprint Assembly Plant* is an **Assembly plant · SAP 1100**. Open the
