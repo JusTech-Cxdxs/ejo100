@@ -20,7 +20,7 @@ export function RouteEditor({ familyKey, name, text }: { familyKey: string; name
   return (
     <div className="space-y-3" data-route-editor={familyKey}>
       <label className="block text-xs text-[var(--ejo-text-muted)]">Route name<input value={routeName} onChange={(e) => setName(e.target.value)} maxLength={80} className={`${field} mt-1`} /></label>
-      <label className="block text-xs text-[var(--ejo-text-muted)]">Stations and checks — a station line starts with #: <span className="font-mono">#&nbsp;C1 | Chassis frame dress | STATION | 45 min</span>; under it one check per line: <span className="font-mono">C1-03 | Cross-member bolts torque | N·m | 180 | 220</span> (a measurement) or <span className="font-mono">C1-04 | Brake lines routed</span> (pass/fail). Kinds: STATION, TEST, GATE (the route ends with a gate).
+      <label className="block text-xs text-[var(--ejo-text-muted)]">Stations and checks — a station line starts with #: <span className="font-mono">#&nbsp;C1 | Chassis on the line | STATION | 40 min</span>; under it one check per line: <span className="font-mono">C1-03 | Spring U-bolt torque | N·m | 200 | 240</span> (a measurement) or <span className="font-mono">C1-06 | Brake and fuel lines routed</span> (pass/fail). Kinds: STATION, TEST, GATE (the route ends with a gate).
         <textarea value={value} onChange={(e) => setValue(e.target.value)} rows={18} spellCheck={false} className={`${field} mt-1 font-mono text-xs`} />
       </label>
       <p className="text-sm text-[var(--ejo-text)]"><b>{parsed.stations.length}</b> stations, <b>{parsed.stations.reduce((n, s) => n + s.checks.length, 0)}</b> checks, <b>{parsed.stations.reduce((n, s) => n + s.standardMinutes, 0)}</b> minutes standard.</p>
