@@ -47,4 +47,24 @@ execSync(`npx prisma db push --schema="${schemaPath}" --skip-generate`, {
 // Then the protections that must cover every table — including any the push
 // just created: row-level security on, no access for Supabase's public roles.
 applyPostdeploySql();
+
+// The demo organisation's people and sign-ins (apps/portal/lib/demo), only
+// when the environment asks for them. Idempotent and never a reason for a
+// deploy to fail: the schema is already in place, so a problem here is
+// reported and the build carries on (DEMO_STRICT=1 makes it stop).
+if (process.env.DEMO_STAFF_PASSWORD) {
+  console.log('[demo] Making the demo people and sign-ins (DEMO_STAFF_PASSWORD is set)...');
+  try {
+    const fs = require('fs');
+    const root = path.resolve(__dirname, '..');
+    // The script reads the database through @ejo/database, which must be built.
+    if (!fs.existsSync(path.join(root, 'packages/database/dist/index.js'))) execSync('npm run build --workspace=packages/database', { cwd: root, stdio: 'inherit' });
+    execSync('npx tsx apps/portal/scripts/demo-people.ts', { cwd: root, stdio: 'inherit' });
+  } catch (err) {
+    console.warn(`[demo] WARNING — the demo people were not made (${err && err.message ? err.message.split('\n')[0] : err}). The app still deploys; fix the cause (or DEMO_STRICT=1 to stop the build) and redeploy.`);
+    if (process.env.DEMO_STRICT === '1') process.exit(1);
+  }
+} else {
+  console.log('[demo] No demo people: DEMO_STAFF_PASSWORD is not set (set it in Vercel → Settings → Environment Variables to make the demo sign-ins on the next deploy).');
+}
 console.log('[db-push] Done.');

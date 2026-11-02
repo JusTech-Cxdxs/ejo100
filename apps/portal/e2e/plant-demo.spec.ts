@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { as, open } from './helpers';
 import { db } from './db';
+import { DEMO_PEOPLE } from '../lib/plant/demo/plan';
 
 /**
  * P3 — the plant demo: an administrator loads six invented weeks into the
@@ -11,6 +12,7 @@ import { db } from './db';
 test.describe.configure({ mode: 'serial' });
 
 test('the administrator loads the demo: the plant, the line, the kits, QA, Headquarters and a vehicle’s page all fill', async ({ page }) => {
+  const accountsBefore = await db().account.count({ where: { user: { email: { in: DEMO_PEOPLE.map((p) => p.email) } } } });
   await as(page, 'administrator');
   await open(page, '/plant');
   const card = page.getByTestId('plant-demo');
@@ -24,9 +26,12 @@ test('the administrator loads the demo: the plant, the line, the kits, QA, Headq
   const vehicles = await db().plantVehicle.count({ where: { organisationId: org.id, externalSource: 'EJO-DEMO' } });
   expect(vehicles).toBeGreaterThanOrEqual(55);
   expect(await db().plantKit.count({ where: { organisationId: org.id, externalSource: 'EJO-DEMO' } })).toBe(80);
-  expect(await db().user.count({ where: { organisationId: org.id, email: { endsWith: '@afprint-demo.example' } } })).toBe(13);
-  // No sign-in for the demo people.
-  expect(await db().account.count({ where: { user: { email: { endsWith: '@afprint-demo.example' } } } })).toBe(0);
+  // The plant's people are the demo organisation's people (lib/demo/people.ts): one account each, on the plant branch,
+  // and the plant demo makes no sign-in of its own (the demo-people step does; a load adds none).
+  const plantPeople = await db().user.findMany({ where: { email: { in: DEMO_PEOPLE.map((p) => p.email) } }, select: { organisationId: true, branch: { select: { type: true } } } });
+  expect(plantPeople).toHaveLength(DEMO_PEOPLE.length);
+  for (const p of plantPeople) { expect(p.organisationId).toBe(org.id); expect(p.branch?.type).toBe('ASSEMBLY_PLANT'); }
+  expect(await db().account.count({ where: { user: { email: { in: DEMO_PEOPLE.map((p) => p.email) } } } })).toBe(accountsBefore);
   // The plant page: vehicles by stage, with the yard and the line filled.
   await expect(page.getByTestId('plant-demo')).toContainText(/\d+ demo vehicles and 7 demo shipments/);
   await expect(page.getByRole('list', { name: 'Vehicles by stage' })).toContainText('In the yard');
@@ -95,6 +100,6 @@ test('the demo can be taken out again: only the EJO-DEMO records go', async ({ p
   expect(await db().plantVehicle.count({ where: { organisationId: org.id, externalSource: 'EJO-DEMO' } })).toBe(0);
   expect(await db().plantShipment.count({ where: { organisationId: org.id, externalSource: 'EJO-DEMO' } })).toBe(0);
   expect(await db().plantVehicle.count({ where: { organisationId: org.id, externalSource: null } })).toBe(ownBefore);
-  // The people stay (they are staff on the plant), still without a sign-in.
-  expect(await db().user.count({ where: { organisationId: org.id, email: { endsWith: '@afprint-demo.example' } } })).toBe(13);
+  // The people stay (they are staff on the plant).
+  expect(await db().user.count({ where: { organisationId: org.id, email: { in: DEMO_PEOPLE.map((p) => p.email) } } })).toBe(DEMO_PEOPLE.length);
 });

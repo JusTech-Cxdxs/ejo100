@@ -288,6 +288,7 @@ centralising configuration (`apps/portal/lib/site-config.ts`, website
 | `MAILBOX_ALLOW_INSECURE` | portal | Test only | Allows unencrypted mail servers in tests. Never in production. |
 | `PORT` | API | Optional | API port (default 4000). |
 | `VERCEL_ENV`, `RENDER`, `IS_PULL_REQUEST` | deploy scripts | Set by the host | Decide whether a build may change the database (production only). |
+| `DEMO_STAFF_PASSWORD`, `DEMO_CUSTOMER_PASSWORD`, `RESET_DEMO_PASSWORDS`, `DEMO_ORG_SLUG` | deploy scripts | Optional | The demo organisation's sign-ins (`docs/KEWALRAM_DEMO.md`): one password for every demo person, made by the production build only while it is set; never printed. |
 
 `.env.example` also lists `REDIS_URL`, `SUPABASE_URL`,
 `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, the `R2_*` storage

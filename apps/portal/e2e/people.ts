@@ -1,6 +1,8 @@
 /** The test accounts (throwaway test database only). */
 export const E2E_PASSWORD = 'E2e-Test-Pass-2026!';
 export const MASTER = { email: 'master@e2e.test', password: 'E2e-Master-Pass-2026!' };
+/** The demo people's sign-in (lib/demo/people.ts) in CI: the workflow runs `npm run demo:people` with DEMO_STAFF_PASSWORD set to this. */
+export const DEMO_E2E_PASSWORD = 'Demo-E2e-Pass-2026!';
 
 /** `branch: 'plant'` puts the person on the assembly-plant branch (Afprint); everyone else works at the workshop branch. */
 export type Person = { email: string; name: string; role: string; dept?: string; extraRoles?: string[]; branch?: 'plant' };

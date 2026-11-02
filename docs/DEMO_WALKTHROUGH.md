@@ -503,6 +503,39 @@ the records and have no sign-in).
    (`10_plant_shipments_demo.csv` … `13_plant_vehicles_demo.csv`), in the
    layouts the plant records import reads.
 
+## 14. Sign in as anyone: the demo people (D1)
+
+*The question: "let me see it as the technician — and as the director."*
+
+People: everyone. [KEWALRAM_DEMO.md](KEWALRAM_DEMO.md) lists every sign-in:
+eight at **Headquarters** (Organisation Administrator, Executive, IT
+Administrator, Finance Officer, Customer Care Lead, Broadcaster, Scheduling
+Admin, Calendar User), seventeen at **Isolo Branch** (Branch Administrator,
+the Manager, two Workshop Supervisors — passenger and commercial — two
+Technicians, Front Desk, Branch Assistant, Store Manager and Officer,
+Finance, Warranty HOD and Officer, the Chief Security Officer and the gate,
+Customer Care, a Department Head) and sixteen at **Afprint** (Branch
+Administrator, Plant Manager, Production Supervisor, four Line Operators,
+QC, Quality Supervisor, QA Auditor, two Kit Inspectors, PDI Inspector and
+Supervisor, the kit store, the plant gate), plus four customer-portal
+sign-ins. All invented, all on the reserved `demo.kewalram.local` name,
+employee numbers `DEMO-…`.
+
+1. The one password is `DEMO_STAFF_PASSWORD` in the hosting environment
+   (never in code or in this document). Set it, redeploy: the build makes
+   the accounts; a later build changes nothing. Or `npm run demo:people`.
+2. Sign in as `tech.passenger@demo.kewalram.local`: his dashboard, only
+   the jobs assigned to him, no plant. As `operator.1@…`: the line board
+   and his station, no job cards. As `finance.hq@…`: every branch's money
+   in view, nothing to confirm. As `admin@…`: both branches, the set-up,
+   the audit trail — and no job to open.
+3. In the customer portal, `customer.adaora@demo.kewalram.local` (an
+   individual) or `customer.fleet@…` (a fleet company) sign in with the
+   same password (or `DEMO_CUSTOMER_PASSWORD`).
+4. The plant's people here are the ones §13 puts on the line: one set of
+   accounts. Their records in the workshop — six months of job cards,
+   services, the store, warranty, security, support — come with D2.
+
 ---
 
 *Coming in the next releases (each adds a section here):* the yard, sale and
