@@ -4518,6 +4518,24 @@ model HistoricalJob {
   @@map("historical_jobs")
 }
 
+/// The demo organisation's demo records that carry no externalSource of their
+/// own (job cards, services, store receipts, warranties, security, scheduling,
+/// support, imports…): one row per record, so a reset removes exactly what
+/// the last load made and never a record a person made. Written only by
+/// apps/portal/lib/workshop/demo/load.ts.
+model DemoRecord {
+  id             String   @id @default(cuid())
+  organisationId String
+  /// The Prisma model name (JobCard, VehicleService, GoodsReceipt…).
+  model          String
+  recordId       String
+  createdAt      DateTime @default(now())
+
+  @@unique([model, recordId])
+  @@index([organisationId, model])
+  @@map("demo_records")
+}
+
 model VehicleHistoryRecord {
   id             String    @id @default(cuid())
   organisationId String
