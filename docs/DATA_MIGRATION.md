@@ -256,6 +256,43 @@ EJO** with every invoice); the CRM list and its KPIs; the vehicle's page
 SAP" for the period, and a line under the figures) and the analytics' top
 customers.
 
+## 7a2. Job card history from SAP (P4)
+
+The workshop's past is job cards: one SAP service order (a 6-digit number)
+per visit, with *Carry out service* or the repair written on it. **Job card
+history** loads them as **read-only history** into the **workshop branch**
+they were done at: shown on the customer (**Jobs → Job cards before EJO**)
+and on the vehicle (**Before EJO 100**), counted as a **visit** (once with
+the invoice it was billed on, matched by VBELN), searchable by number, and
+exported in job card format (**SAP job card history**).
+
+- **Every row is a job card.** There is no "job or service" column to fill:
+  EJO reads the text — *carry out service*, *40,000 km service*, *periodic
+  maintenance*, or an SAP service order type (SM01) — and marks that job
+  card a **service** inside EJO. A service job card **starts the vehicle's
+  next-service clock** (the Service tracker, the reminders, the vehicle's
+  *Service history*) with the same interval rules as EJO's own services,
+  until EJO completes a service of its own. Nothing a repair does changes.
+- **Columns** (SAP names recognised; plain English too): AUFNR (job number,
+  required), AUART, QMNUM, KUNUM/KUNNR (customer — or the customer's phone
+  or email, or the vehicle by VHVIN/VIN or plate: the owner is used), EQUNR,
+  ERDAT/GSTRP (opened on, required), IDAT2/GLTRP (completed on), RECDV
+  (mileage), KTEXT (complaint / work requested), LTXA1 (work done), PERNR
+  (technician — staff only), ARBPL, labour, parts, NETWR (total), VBELN
+  (invoice), status (TECO/CLSD → Closed; CNCL/DLFL → Cancelled; an open
+  status such as REL is **refused**: open job cards have their own import),
+  **Branch**/WERKS (when given, must be the branch chosen for the import).
+- **Refused:** no job number, no opening date, a future date, completed
+  before opened, a job card still open, a customer EJO cannot find, a row
+  for another branch. **Noted, not refused:** no completion date (the clock
+  counts from the opening day), no VIN or plate (kept on the customer only,
+  no clock), a vehicle not yet in EJO (links when the vehicles file is
+  loaded and this file loaded again).
+- Each job number is loaded once; undo **voids** (nothing deleted),
+  reloading restores. The demo file is
+  `docs/demo/correct/14_SAP_job_card_history_demo.csv` (one job card per
+  invoice in 06); the copy in `with-mistakes/` has six bad rows.
+
 ## 7b. Production, QC and PDI registers
 
 The plant's existing Excel registers — the production line, quality checks

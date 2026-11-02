@@ -137,6 +137,38 @@ emit('06_SAP_invoice_history_demo.csv', 'invoices', ['VBELN', 'FKDAT', 'KUNAG', 
   { cells: withRange([inv[0]![0]!, inv[0]![1]!, inv[0]![2]!, inv[0]![3]!, inv[0]![4]!, 'NGN', inv[0]![6]!, 'F2', 'Exported twice']), what: `Invoice ${inv[0]![0]} a second time in the same file`, expect: 'duplicate', by: 'file', says: 'Same invoice number as row 2 of the file; only the first is loaded.' },
 ]);
 
+// ── Job card history from SAP (PM/CS service orders, before EJO 100) ─────
+// One job card per invoice above: the workshop only ever had job cards (6-digit SAP order numbers) with "Carry out service" or the
+// repair written on them. Opened a day or three before the invoice, completed on the invoice day, the mileage at the visit in step
+// with the services (10,000 km, 20,000 km…), the technician by name (staff see it, customers never do), the invoice it was billed on.
+const TECHS = ['E. Okoro', 'B. Musa', 'T. Adesanya', 'K. Nwachukwu', 'S. Lawal'];
+const jobRows: string[][] = [];
+let aufnr = 480_100;
+for (const r of inv) {
+  if (r[7] !== 'F2' || !r[6] || !sapDay(r[1]!)) continue; // credit notes and the planted rows carry no job card
+  aufnr += 1 + (aufnr % 3);
+  const billed = sapDay(r[1]!)!;
+  const service = /^Service [\d,]+ km$/.test(r[8]!);
+  const km = service ? Number(r[8]!.replace(/\D/g, '')) : null;
+  const i = Number(r[2]!.slice(-3)) - 100; // customer i → vehicle i
+  const opened = addDays(billed, -(1 + ((i + aufnr) % 3)));
+  const sap = (d: Date) => `${pad(d.getUTCDate())}.${pad(d.getUTCMonth() + 1)}.${d.getUTCFullYear()}`;
+  // Mileage at the visit: at a service, just past the service's reading; at a repair, somewhere before the next service.
+  const mileage = service ? (km! + 40 + ((i * 13) % 180)) : 3000 + ((aufnr * 37) % 9000);
+  const net = Number(r[3]);
+  const labour = Math.round(net * (service ? 0.35 : 0.45));
+  jobRows.push([String(aufnr), service ? 'SM01' : 'SM02', String(300_040_000 + aufnr), r[2]!, r[6]!, sap(opened), sap(billed), String(mileage), service ? `Carry out service ${r[8]!.replace('Service ', '')}` : r[8]!, service ? 'Oil, oil filter, fuel and air filters changed; brakes, belts and fluids checked; road tested' : ['Pads and discs replaced, calipers serviced', 'Clutch kit fitted, hydraulics bled', 'Injectors cleaned and tested, filters changed', 'Gearbox overhauled, seals and bearings replaced', 'Bushes replaced, alignment done', 'System vacuumed, regassed, cabin filter changed', 'Six tyres fitted and balanced, alignment done'][aufnr % 7]!, TECHS[aufnr % TECHS.length]!, `WS-BAY${1 + (aufnr % 4)}`, String(labour), String(Math.round(net - labour)), r[3]!, r[0]!, 'TECO', '1000', 'Isolo Branch']);
+}
+const JOB_HEADER = ['AUFNR', 'AUART', 'QMNUM', 'KUNUM', 'VHVIN', 'ERDAT', 'IDAT2', 'RECDV', 'KTEXT', 'LTXA1', 'PERNR', 'ARBPL', 'Labour', 'Parts', 'NETWR', 'VBELN', 'STAT', 'WERKS', 'Branch'];
+emit('14_SAP_job_card_history_demo.csv', 'jobs', JOB_HEADER, jobRows, [
+  { cells: ['489901', 'SM02', '', '0009999999', '', '03.05.2024', '04.05.2024', '12000', 'Unknown customer', '', 'E. Okoro', 'WS-BAY1', '20000', '0', '20000', '', 'TECO', '1000', 'Isolo Branch'], what: 'Customer 0009999999 is not in EJO, and no vehicle to find the owner by', expect: 'rejected', by: 'database', says: 'The customer was not found. Import the customers file first (and the vehicles file, when the job names only the vehicle), or check the customer number.' },
+  { cells: ['489902', 'SM01', '', kunnr(3), vin(3), '10.05.2024', '08.05.2024', '20100', 'Carry out service 20,000 km', '', 'B. Musa', 'WS-BAY2', '30000', '45000', '75000', '', 'TECO', '1000', 'Isolo Branch'], what: 'Completed two days before it was opened', expect: 'rejected', by: 'check', says: 'Completed on 2024-05-08 is before it was opened on 2024-05-10.' },
+  { cells: ['', 'SM02', '', kunnr(4), vin(4), '11.05.2024', '11.05.2024', '15000', 'No job number', '', 'T. Adesanya', 'WS-BAY3', '10000', '0', '10000', '', 'TECO', '1000', 'Isolo Branch'], what: 'No job number', expect: 'rejected', by: 'check', says: 'Job number is required (the SAP order number, AUFNR, or the old job card number).' },
+  { cells: [jobRows[0]![0]!, 'SM01', '', jobRows[0]![3]!, jobRows[0]![4]!, jobRows[0]![5]!, jobRows[0]![6]!, jobRows[0]![7]!, 'Exported twice', '', 'E. Okoro', 'WS-BAY1', '0', '0', '0', '', 'TECO', '1000', 'Isolo Branch'], what: `Job card ${jobRows[0]![0]} a second time in the same file`, expect: 'duplicate', by: 'file', says: 'Same job number as row 2 of the file; only the first is loaded.' },
+  { cells: ['489903', 'SM02', '', kunnr(5), vin(5), '12.05.2024', '', '', 'Brakes squeal', '', 'K. Nwachukwu', 'WS-BAY4', '', '', '', '', 'REL', '1000', 'Isolo Branch'], what: 'A job card still open (status REL)', expect: 'rejected', by: 'check', says: 'Status “REL”: a job still open belongs in the open job cards file, not in history.' },
+  { cells: ['489904', 'SM01', '', kunnr(6), vin(6), '13.05.2024', '14.05.2024', '30200', 'Carry out service 30,000 km', '', 'S. Lawal', 'WS-BAY1', '30000', '50000', '80000', '', 'TECO', '1100', 'Afprint Assembly Plant'], what: 'A job card of another branch in this branch’s file', expect: 'rejected', by: 'database', says: 'This row is for the branch “Afprint Assembly Plant”, but this import loads into Isolo Branch. Import it into its own branch.' },
+]);
+
 // ── Customers (SAP customer master layout) ─────────────────────────────
 const custHeader = ['KUNNR', 'NAME1', 'NAME2', 'KTOKD', 'SMTP_ADDR', 'TELF1', 'TELF2', 'STRAS', 'ORT01', 'REGIO', 'STCD1', 'ERDAT'];
 const cust: string[][] = [];
@@ -357,6 +389,7 @@ this order (later files refer to earlier ones):
 4. \`03a_SAP_parts_200.csv\` (a quick first try) or \`03_SAP_parts_50k.csv\` — Parts (SAP)
 5. \`04_SAP_opening_stock_demo.csv\` — Opening stock (needs the 50,000 parts)
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
+6a. \`14_SAP_job_card_history_demo.csv\` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
 8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 9. \`10_plant_shipments_demo.csv\`, \`11_plant_kits_demo.csv\`, \`12_plant_kit_issues_demo.csv\`, \`13_plant_vehicles_demo.csv\` — the plant's six demo weeks as files (the same records \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.

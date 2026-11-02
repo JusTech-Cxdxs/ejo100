@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'registers';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -35,8 +35,10 @@ export type EntityDef = {
   description: string;
   /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
   needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve';
-  /** Loads into one branch (its catalogue / stock / sales), chosen when the import starts. */
+  /** Loads into one branch (its catalogue / stock / sales / workshop), chosen when the import starts. */
   branch?: boolean;
+  /** What kind of branch it loads into (lib/branch-types.ts): a store (parts, stock, invoices) or a workshop (job history). */
+  branchArea?: 'store' | 'workshop';
   /** Read-only history (v-A3): shown and counted, never edited; undo voids it. */
   history?: boolean;
   /** Finance confirms the totals after loading (opening stock, invoice history). */
@@ -201,6 +203,44 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'description', label: 'Description', help: 'Optional: what the invoice was for.', aliases: ['ARKTX', 'SGTXT', 'BKTXT', 'description', 'text', 'item text', 'narration', 'details'], example: 'Service 40,000 km and brake pads' },
     ],
   },
+  jobs: {
+    key: 'jobs',
+    label: 'Job card history',
+    noun: 'past job card',
+    plural: 'past job cards',
+    description: 'Job cards closed before EJO 100 — SAP service orders (the 6-digit job numbers) or an old system’s job cards: the vehicle, the customer, when it was opened and finished, the mileage, the work and the amount. Read-only history: shown on the customer and the vehicle, counted as a visit; a job card whose work was a service also starts the vehicle’s next-service clock.',
+    needs: 'workshop.close.approve',
+    approver: 'a Workshop manager or an administrator',
+    branch: true,
+    branchArea: 'workshop',
+    history: true,
+    matchOrder: ['job number'],
+    after: 'customers',
+    fields: [
+      { key: 'jobNumber', label: 'Job number', help: 'The SAP service order number (AUFNR — the 6-digit job card number) or the old system’s job card number. Each job card is loaded once.', aliases: ['AUFNR', 'order', 'order number', 'service order', 'job number', 'job no', 'job card number', 'job card no', 'job card', 'jc number', 'jc no', 'work order', 'work order number', 'wo number', 'ro number', 'repair order'], example: '482913', required: true },
+      { key: 'orderType', label: 'Order type', help: 'Optional: the SAP order type (AUART) or notification type (QMART).', aliases: ['AUART', 'QMART', 'order type', 'notification type', 'type'], example: 'SM01' },
+      { key: 'notificationNumber', label: 'Notification number', help: 'Optional: the SAP service notification (QMNUM).', aliases: ['QMNUM', 'notification', 'notification number', 'notification no', 'complaint number'], example: '300045678' },
+      { key: 'customerExternalId', label: 'Customer number (SAP)', help: 'Whose vehicle it was: the SAP customer (KUNUM / KUNNR). Or give the customer’s phone or email. When the vehicle is already in EJO, its owner is used.', aliases: ['KUNUM', 'KUNNR', 'KUNAG', 'customer SAP number', 'customer number', 'customer no', 'customer', 'sold-to', 'account number', 'bp number', 'partner'], example: '1000123' },
+      { key: 'customerPhone', label: 'Customer phone', help: 'Alternative way to find the customer.', aliases: ['customer phone', 'phone', 'telephone', 'mobile'], example: '' },
+      { key: 'customerEmail', label: 'Customer email', help: 'Alternative way to find the customer.', aliases: ['customer email', 'email', 'e-mail'], example: '' },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle the work was on (SAP VHVIN). Links the job card to the vehicle when it is in EJO; a VIN or a plate is needed for the service clock.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'frame number', 'vehicle'], example: 'JAANLR85EL7100001' },
+      { key: 'plateNumber', label: 'Plate number', help: 'Optional: the registration plate (SAP LICENSE_NUM), used to find the vehicle when there is no VIN.', aliases: ['LICENSE_NUM', 'LICNUM', 'plate', 'plate number', 'plate no', 'registration', 'registration number', 'reg no'], example: 'LND 123 AB' },
+      { key: 'equipmentNumber', label: 'Equipment number', help: 'Optional: the vehicle’s SAP equipment (EQUNR).', aliases: ['EQUNR', 'equipment', 'equipment number', 'equipment no'], example: '' },
+      { key: 'openedAt', label: 'Opened on', help: 'When the job card was opened — SAP created on (ERDAT) or basic start (GSTRP), e.g. 14.03.2023.', aliases: ['ERDAT', 'GSTRP', 'opened on', 'opened', 'date opened', 'created on', 'creation date', 'start date', 'date in', 'check-in date', 'received', 'date'], example: '14.03.2023', required: true },
+      { key: 'completedAt', label: 'Completed on', help: 'When the work was finished — SAP technical completion (IDAT2) or basic finish (GLTRP). Empty: shown as opened only; the service clock then counts from the day it was opened.', aliases: ['IDAT2', 'GLTRP', 'IDAT3', 'completed on', 'completed', 'date completed', 'finished on', 'finished', 'closed on', 'closed', 'date out', 'completion date', 'checkout date', 'checked out'], example: '16.03.2023' },
+      { key: 'mileage', label: 'Mileage (km)', help: 'The odometer reading at the visit, in kilometres (SAP counter reading / RECDV). It anchors the next-service clock.', aliases: ['RECDV', 'READG', 'mileage', 'odometer', 'km', 'kilometres', 'kilometers', 'odometer reading', 'mileage at service', 'counter reading'], example: '41200' },
+      { key: 'description', label: 'Complaint / work requested', help: 'What was written on the job card — SAP short text (KTEXT / QMTXT), e.g. "Carry out service". A job card whose text says service is also treated as a service inside EJO (it starts the next-service clock).', aliases: ['KTEXT', 'QMTXT', 'description', 'short text', 'complaint', 'work requested', 'request', 'text', 'details', 'job description'], example: 'Carry out service 40,000 km; brakes squeal' },
+      { key: 'workDone', label: 'Work done', help: 'Optional: what was done — SAP long text or operation texts (LTXA1).', aliases: ['LTXA1', 'work done', 'work performed', 'operations', 'repairs', 'remarks', 'notes', 'findings'], example: 'Oil and filters changed; front pads replaced' },
+      { key: 'technician', label: 'Technician', help: 'Optional: who did the work (name or personnel number, SAP PERNR). Seen by staff only, never by customers.', aliases: ['PERNR', 'technician', 'mechanic', 'done by', 'worked by', 'assigned to', 'personnel number'], example: 'E. Okoro' },
+      { key: 'workCentre', label: 'Work centre', help: 'Optional: the SAP work centre (ARBPL) or bay.', aliases: ['ARBPL', 'work centre', 'work center', 'bay', 'workshop bay'], example: 'WS-BAY2' },
+      { key: 'labourAmount', label: 'Labour (₦)', help: 'Optional: labour charged, in naira.', aliases: ['labour', 'labor', 'labour amount', 'labour charge', 'labour cost'], example: '35000' },
+      { key: 'partsAmount', label: 'Parts (₦)', help: 'Optional: parts charged, in naira.', aliases: ['parts', 'parts amount', 'parts charge', 'parts cost', 'materials'], example: '128500' },
+      { key: 'totalAmount', label: 'Total (₦)', help: 'Optional: the total charged (SAP NETWR of the billing document). Empty: labour + parts when either is given.', aliases: ['NETWR', 'total', 'total amount', 'amount', 'invoice amount', 'invoice total', 'value', 'gross amount'], example: '163500' },
+      { key: 'invoiceNumber', label: 'Invoice number', help: 'Optional: the SAP billing document (VBELN) the job card was invoiced on — shown beside it, and matched to the invoice history when it is loaded.', aliases: ['VBELN', 'invoice', 'invoice number', 'invoice no', 'billing document', 'bill number'], example: '90001234' },
+      { key: 'status', label: 'Status', help: 'Optional: Closed or Cancelled (SAP TECO / CLSD close; CNCL / DLFL cancel). Empty: Closed. A job card still open belongs in the open job cards file, not here.', aliases: ['status', 'order status', 'system status', 'ISTAT', 'STAT', 'user status'], example: 'Closed', choices: ['Closed', 'Cancelled'] },
+      { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS) the work was done at. When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
+    ],
+  },
   registers: {
     key: 'registers',
     label: 'Production, QC and PDI registers',
@@ -312,6 +352,7 @@ export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   for (const f of ENTITIES[entity].fields) if (f.required && mapping[f.key] == null) out.push(`Choose the column for “${f.label}”.`);
   if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
   if (entity === 'invoices' && mapping.customerExternalId == null && mapping.customerPhone == null) out.push('Choose how to find each invoice’s customer: their SAP customer number or phone.');
+  if (entity === 'jobs' && mapping.customerExternalId == null && mapping.customerPhone == null && mapping.customerEmail == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each job’s customer: their SAP customer number, phone or email — or the vehicle’s chassis number or plate.');
   if (entity === 'vehicles') {
     if (mapping.customerExternalId == null && mapping.customerEmail == null && mapping.customerPhone == null) out.push('Choose how to find each vehicle’s customer: their customer number, email or phone.');
     if (mapping.chassisNumber == null && mapping.plateNumber == null) out.push('Choose the column for the chassis number (VIN) or the plate.');

@@ -80,6 +80,6 @@ test('wired in: every plant read goes through the typed reach; the workshop anch
   assert.match(branches, /action: 'branch\.plant_records_moved'/);
   assert.match(branches, /so it stays \$\{BRANCH_TYPE_WORDS\[before\.type\]\.toLowerCase\(\)\}/, 'a branch holding records of its kind keeps that kind');
   const dx = read('lib/actions/data-exchange.ts');
-  assert.match(dx, /branchTypeMismatch\('store', b\.name, b\.type\)/);
+  assert.match(dx, /branchTypeMismatch\(ENTITIES\[entity\]\.branchArea \?\? 'store', b\.name, b\.type\)/, 'each import kind names the kind of branch it loads into (a store, or a workshop for job history)');
   for (const page of ['app/(app)/plant/page.tsx', 'app/(app)/plant/vehicles/page.tsx', 'app/(app)/plant/kits/page.tsx', 'app/(app)/plant/shipments/page.tsx']) assert.match(read(page), /PlantReachNotice/, page);
 });

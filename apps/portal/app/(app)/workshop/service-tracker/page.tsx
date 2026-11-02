@@ -225,7 +225,7 @@ export default async function ServiceTrackerPage({
                       </div>
                     </td>
                     <td data-label="Last Service" className="px-3 py-2 text-xs">
-                      <LoadingLink href={`/workshop/vehicle-service/${v.lastService.id}`} className="text-[var(--ejo-primary)] hover:underline">
+                      <LoadingLink href={v.lastService.source === 'SAP' ? `/workshop/vehicles/${v.vehicleId}/edit` : `/workshop/vehicle-service/${v.lastService.id}`} className="text-[var(--ejo-primary)] hover:underline">
                         {v.lastService.serviceNumber}
                       </LoadingLink>
                       {v.viaJobCard ? (

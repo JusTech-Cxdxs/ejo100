@@ -101,6 +101,59 @@ test('SAP invoices: totals before approval, read-only history in the customer’
   await expect(page.getByText('From SAP, before EJO').nth(1)).toBeVisible();
 });
 
+test('SAP job cards: every row is a job card; “carry out service” starts the vehicle’s next-service clock; a visit is counted once with its invoice; search, vehicle, tracker and export', async ({ page }) => {
+  const branchId = await managerBranch();
+  const n = T.replace(/\D/g, '4').padEnd(3, '4').slice(0, 3);
+  const invoiceNo = (k: string) => `009${T.replace(/\D/g, '1').padEnd(5, '1').slice(0, 5)}${k}`;
+  // The vehicle has its own service interval (the organisation sets none in the test data), so a service anchors its clock.
+  await db().customerVehicle.updateMany({ where: { chassisNumber: vin }, data: { serviceIntervalKm: 5000, serviceIntervalDays: 180, mileage: 63000 } });
+  await as(page, 'it-administrator');
+  const url = await upload(page, 'jobs', `iw39-${T}.csv`, csv([
+    ['AUFNR', 'AUART', 'KUNUM', 'VHVIN', 'ERDAT', 'IDAT2', 'RECDV', 'KTEXT', 'PERNR', 'NETWR', 'VBELN', 'STAT', 'WERKS'],
+    [`48${n}1`, 'SM01', kunnr, vin, '12.03.2023', '14.03.2023', '40120', 'Carry out service 40,000 km', 'E. Okoro', '430000', invoiceNo('01'), 'TECO', '1000'],
+    [`48${n}2`, 'SM02', kunnr, vin, '04.09.2024', '05.09.2024', '61870', 'Brakes squeal when stopping', 'B. Musa', '250000', invoiceNo('02'), 'TECO', '1000'],
+    [`48${n}3`, 'SM02', '', vin, '20.09.2024', '18.09.2024', '', 'Completed before it was opened', '', '', '', 'TECO', '1000'],
+    ['', 'SM02', kunnr, vin, '21.09.2024', '21.09.2024', '', 'No job number', '', '', '', 'TECO', '1000'],
+    [`48${n}4`, 'SM02', '0009999999', '', '22.09.2024', '22.09.2024', '', 'Unknown customer, no vehicle', '', '', '', 'TECO', '1000'],
+    [`48${n}5`, 'SM02', kunnr, vin, '23.09.2024', '', '', 'Still open in SAP', '', '', '', 'REL', '1000'],
+  ]), { branchId });
+  await expect(page.getByText('Completed on 2024-09-18 is before it was opened on 2024-09-20.')).toBeVisible();
+  await expect(page.getByText('Job number is required (the SAP order number, AUFNR, or the old job card number).')).toBeVisible();
+  await expect(page.getByText(/The customer was not found\. Import the customers file first \(and the vehicles file/)).toBeVisible();
+  await expect(page.getByText('Status “REL”: a job still open belongs in the open job cards file, not in history.')).toBeVisible();
+  await expect(page.getByText(/2 past jobs · ₦680,000\.00 charged · opened 12 Mar 2023 to 4 Sept? 2024/)).toBeVisible();
+  await page.getByRole('button', { name: /Send for approval/ }).click();
+  await approveAndLoad(page, url);
+  const jobs = await db().historicalJob.findMany({ where: { customerId, voidedAt: null }, orderBy: { openedAt: 'asc' } });
+  expect(jobs.map((j) => j.kind)).toEqual(['SERVICE', 'JOB_CARD']);
+  expect(jobs.every((j) => j.vehicleId)).toBe(true);
+  expect(jobs[0]!.mileage).toBe(40120);
+  // The customer: two job cards listed (one marked service); the visits count stays 3 — the job cards were invoiced on two of the three SAP invoices.
+  await as(page, 'workshop-manager');
+  await open(page, `/crm/customers/${customerId}?tab=jobs`);
+  await expect(page.getByRole('heading', { name: 'Job cards before EJO (2)' })).toBeVisible();
+  const past = page.getByTestId('past-jobs');
+  await expect(past.getByText(`Job card 48${n}1`)).toBeVisible();
+  await expect(past.locator('li', { hasText: `48${n}1` }).getByText('service', { exact: true })).toBeVisible();
+  await expect(past.getByText('Brakes squeal when stopping')).toBeVisible();
+  await expect(page.locator('text=E. Okoro')).toHaveCount(0); // the technician's name is for the workshop page, not the customer file
+  // The vehicle's workshop page: the job cards under Before EJO.
+  const vehicle = await db().customerVehicle.findFirstOrThrow({ where: { chassisNumber: vin }, select: { id: true } });
+  await open(page, `/workshop/vehicles/${vehicle.id}/edit`);
+  await expect(page.getByTestId('before-ejo-jobs')).toContainText('Carry out service 40,000 km');
+  await expect(page.getByTestId('before-ejo-jobs')).toContainText('E. Okoro');
+  // The service tracker: the SAP service is the vehicle's last service and its clock is running (overdue by now).
+  await open(page, '/workshop/service-tracker');
+  const row = page.locator('tr', { hasText: `48${n}1 (SAP, before EJO)` });
+  await expect(row).toBeVisible();
+  await expect(row).toContainText(/Overdue|Due soon|Lapsed/);
+  // Search by the 6-digit number.
+  await open(page, '/dashboard');
+  const box = page.getByRole('combobox', { name: 'Search everything' });
+  await box.fill(`48${n}1`);
+  await expect(box.locator('xpath=ancestor::div[2]').getByText(`SAP job card 48${n}1 · service`)).toBeVisible();
+});
+
 test('the PDI register shows on the vehicle by its VIN', async ({ page }) => {
   await as(page, 'it-administrator');
   const url = await upload(page, 'registers', `pdi-${T}.csv`, csv([

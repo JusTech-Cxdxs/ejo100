@@ -45,6 +45,60 @@
     "says": "Same invoice number as row 2 of the file; only the first is loaded."
   },
   {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 124,
+    "entity": "jobs",
+    "what": "Customer 0009999999 is not in EJO, and no vehicle to find the owner by",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The customer was not found. Import the customers file first (and the vehicles file, when the job names only the vehicle), or check the customer number."
+  },
+  {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 125,
+    "entity": "jobs",
+    "what": "Completed two days before it was opened",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Completed on 2024-05-08 is before it was opened on 2024-05-10."
+  },
+  {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 126,
+    "entity": "jobs",
+    "what": "No job number",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Job number is required (the SAP order number, AUFNR, or the old job card number)."
+  },
+  {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 127,
+    "entity": "jobs",
+    "what": "Job card 480102 a second time in the same file",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same job number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 128,
+    "entity": "jobs",
+    "what": "A job card still open (status REL)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Status “REL”: a job still open belongs in the open job cards file, not in history."
+  },
+  {
+    "file": "14_SAP_job_card_history_demo.csv",
+    "row": 129,
+    "entity": "jobs",
+    "what": "A job card of another branch in this branch’s file",
+    "expect": "rejected",
+    "by": "database",
+    "says": "This row is for the branch “Afprint Assembly Plant”, but this import loads into Isolo Branch. Import it into its own branch."
+  },
+  {
     "file": "01_SAP_customers_demo.csv",
     "row": 32,
     "entity": "customers",

@@ -14,7 +14,7 @@ import { customerTotal } from '@/lib/estimate-billing';
 import { prisma, type VehicleServiceStatus } from '@ejo/database';
 import { requireUser, createJobCard, currentUserIsMasterAdmin, requireJobCardApprover, listEligibleManagersForBranch, requireEligibleManager } from './workshop';
 import { writeAuditLog, getWorkshopBranchId, getWorkshopDepartmentForVehicleType, isEligibleSupervisor, getWorkshopOrgContext } from '@/lib/workshop-core';
-import { computeServiceCycle, loadServiceTracking, assertServiceNotEscalated, ESCALATION_CLAIM_MS, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
+import { computeServiceCycle, historyAnchorId, loadServiceTracking, assertServiceNotEscalated, ESCALATION_CLAIM_MS, type WorkshopVisit } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage } from '@/lib/custody-reminders';
 import { pluralize } from '@/lib/utils/pluralize';
 import { READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
@@ -523,6 +523,7 @@ export type VehicleServiceHealth = {
   primaryServiceDate: Date | null;
   serviceId: string;
   serviceNumber: string;
+  serviceHref: string;
   kmRemaining: number | null;
   daysRemaining: number | null;
   attendedAt: Date | null;
@@ -556,6 +557,8 @@ export async function getVehicleServiceHealth(vehicleId: string): Promise<Vehicl
     primaryServiceDate: t.lastService.date,
     serviceId: t.lastService.id,
     serviceNumber: t.lastService.serviceNumber,
+    /** Where the last service is: EJO's Vehicle Service page, or (a job card from SAP before EJO) the vehicle's workshop page. */
+    serviceHref: t.lastService.source === 'SAP' ? `/workshop/vehicles/${t.vehicleId}/edit#before-ejo` : `/workshop/vehicle-service/${t.lastService.id}`,
     kmRemaining: t.kmRemaining,
     daysRemaining: t.daysRemaining,
     attendedAt: t.attendedAt,
@@ -787,6 +790,17 @@ export async function listVehiclesDueForService(branchId: string): Promise<Vehic
 export async function attendToOverdueVehicle(serviceId: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'attendToOverdueVehicle');
   const user = await requireUser();
+  // A job card from SAP before EJO (P4): attended on the history row, after checking its vehicle is within reach.
+  const hist = historyAnchorId(serviceId);
+  if (hist) {
+    const job = await prisma.historicalJob.findUnique({ where: { id: hist }, select: { id: true, jobNumber: true, vehicleId: true, attendedAt: true } });
+    if (!job || !job.vehicleId) throw new VehicleServiceActionError('That past job card is not tracked.');
+    await seeVehicle(job.vehicleId, 'attendToOverdueVehicle');
+    if (job.attendedAt) throw new VehicleServiceActionError('This overdue prediction has already been attended to.');
+    await prisma.historicalJob.update({ where: { id: job.id }, data: { attendedAt: new Date() } });
+    await writeAuditLog({ userId: user.id, action: 'vehicle_service.attended_to', entityType: 'CustomerVehicle', entityId: job.vehicleId, metadata: { serviceNumber: `${job.jobNumber} (SAP, before EJO)` } });
+    return;
+  }
   // Only on a service within reach (never another branch's or organisation's).
   await authorizeOnService('workshop.customer.manage', serviceId, 'attendToOverdueVehicle');
   const service = await prisma.vehicleService.findUnique({ where: { id: serviceId }, select: { attendedAt: true, serviceNumber: true, vehicleId: true } });
@@ -1458,6 +1472,13 @@ export async function getServiceTracker(branchId: string) {
  * not to be reminded, or sold the vehicle). A reason is required and audited.
  * Tracking restarts with a fresh cycle at the next completed service.
  */
+/** Marks the current anchor's prediction handled: a Vehicle Service, or a job card from SAP before EJO (P4). */
+async function markAnchorAttended(serviceId: string, at: Date): Promise<void> {
+  const hist = historyAnchorId(serviceId);
+  if (hist) await prisma.historicalJob.update({ where: { id: hist }, data: { attendedAt: at } });
+  else await prisma.vehicleService.update({ where: { id: serviceId }, data: { attendedAt: at } });
+}
+
 export async function stopTrackingVehicle(vehicleId: string, reason: string): Promise<void> {
   await authorize('workshop.customer.manage', undefined, 'stopTrackingVehicle');
   const user = await requireUser();
@@ -1467,7 +1488,7 @@ export async function stopTrackingVehicle(vehicleId: string, reason: string): Pr
   const [current] = await loadServiceTracking({ vehicleId });
   if (!current) throw new VehicleServiceActionError('This vehicle has no service cycle being tracked.');
   if (current.attendedAt) throw new VehicleServiceActionError('This vehicle is already not being tracked for its current cycle.');
-  await prisma.vehicleService.update({ where: { id: current.lastService.id }, data: { attendedAt: new Date() } });
+  await markAnchorAttended(current.lastService.id, new Date());
   await writeAuditLog({
     userId: user.id,
     action: 'vehicle.tracking_stopped',
@@ -1615,7 +1636,7 @@ export async function approveVehicleServiceCancellationRequest(requestId: string
   // Cancelling stops service tracking; no reminders until a service is next completed.
   const [tracked] = await loadServiceTracking({ vehicleId: service.vehicleId });
   if (tracked && !tracked.attendedAt) {
-    await prisma.vehicleService.update({ where: { id: tracked.lastService.id }, data: { attendedAt: now } });
+    await markAnchorAttended(tracked.lastService.id, now);
     await writeAuditLog({
       userId: user.id,
       action: 'vehicle.tracking_stopped',

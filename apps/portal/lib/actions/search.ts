@@ -337,7 +337,7 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
   const ext = { in: n.forms };
   const label = (src: string | null) => (src && src.startsWith('LEGACY') ? 'Old system' : 'SAP');
   const take = 6;
-  const [customers, vehicles, suppliers, parts, invoices] = await Promise.all([
+  const [customers, vehicles, suppliers, parts, invoices, pastJobs] = await Promise.all([
     ctx.canCustomers ? prisma.customer.findMany({ where: { AND: [ctx.mineOrg as Prisma.CustomerWhereInput, { externalId: ext }] }, take, select: { id: true, fullName: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canWorkshop ? prisma.customerVehicle.findMany({ where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, take, select: { id: true, make: true, model: true, plateNumber: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canSuppliers ? prisma.supplier.findMany({ where: { ...(ctx.sameOrg as Prisma.SupplierWhereInput), externalId: ext }, take, select: { id: true, name: true, externalId: true, externalSource: true } }).catch(() => []) : [],
@@ -347,8 +347,14 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       orderBy: [{ fiscalYear: 'desc' }, { invoiceDate: 'desc' }], take: 10,
       select: { id: true, invoiceNumber: true, fiscalYear: true, companyCode: true, documentType: true, invoiceDate: true, amount: true, externalSource: true, customerId: true },
     }).catch(() => []) : [],
+    // Job cards from SAP before EJO (P4), by their 6-digit order number.
+    ctx.canWorkshop || ctx.canCrm ? prisma.historicalJob.findMany({
+      where: { ...(ctx.sameOrg as Prisma.HistoricalJobWhereInput), voidedAt: null, jobNumber: ext },
+      orderBy: [{ openedAt: 'desc' }], take: 10,
+      select: { id: true, jobNumber: true, kind: true, openedAt: true, completedAt: true, mileage: true, description: true, totalAmount: true, externalSource: true, customerId: true, vehicleId: true },
+    }).catch(() => []) : [],
   ]);
-  const names = invoices.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set(invoices.map((i) => i.customerId))] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
+  const names = invoices.length || pastJobs.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set([...invoices.map((i) => i.customerId), ...pastJobs.map((j) => j.customerId)])] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
   const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
   const day = (d: Date) => d.toISOString().slice(0, 10).split('-').reverse().join('/');
   const dot = (...parts: (string | null | undefined)[]) => parts.filter(Boolean).join(' · ') || undefined;
@@ -361,6 +367,11 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       label: `${label(i.externalSource)} invoice ${i.invoiceNumber} · ${i.fiscalYear ?? i.invoiceDate.getUTCFullYear()}`,
       sub: dot(names.get(i.customerId), day(i.invoiceDate), naira(i.amount), i.companyCode ? `company ${i.companyCode}` : null, i.documentType),
       href: `/crm/customers/${i.customerId}?tab=jobs`,
+    })),
+    ...pastJobs.map((j) => ({
+      label: `${label(j.externalSource)} job card ${j.jobNumber}${j.kind === 'SERVICE' ? ' · service' : ''}`,
+      sub: dot(names.get(j.customerId), day(j.completedAt ?? j.openedAt), j.mileage !== null ? `${j.mileage.toLocaleString('en-NG')} km` : null, j.totalAmount !== null ? naira(j.totalAmount) : null, j.description),
+      href: j.vehicleId && ctx.canWorkshop ? `/workshop/vehicles/${j.vehicleId}/edit#before-ejo` : `/crm/customers/${j.customerId}?tab=jobs`,
     })),
   ];
 }

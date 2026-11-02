@@ -262,7 +262,7 @@ export async function getCustomer360(customerId: string) {
   const pay = { select: { id: true, amount: true, method: true, notes: true, recordedAt: true, recordedBy: { select: { fullName: true } } } } as const;
   const ref = { select: { id: true, referenceNumber: true, amount: true, method: true, reason: true, recordedAt: true, recordedBy: { select: { fullName: true } } } } as const;
 
-  const [vehicles, jcs, svs, warranties, claims, link, branch, sapRows] = await Promise.all([
+  const [vehicles, jcs, svs, warranties, claims, link, branch, sapRows, pastRows] = await Promise.all([
     prisma.customerVehicle.findMany({ where: { customerId: customer.id }, orderBy: { createdAt: 'desc' }, select: { id: true, plateNumber: true, chassisNumber: true, make: true, model: true, year: true, vehicleType: true, mileage: true, createdAt: true } }),
     prisma.jobCard.findMany({
       where: jobWhere,
@@ -296,6 +296,13 @@ export async function getCustomer360(customerId: string) {
       take: 2000,
       select: { id: true, invoiceNumber: true, invoiceDate: true, amount: true, vehicleId: true, vin: true, documentType: true, description: true, branchId: true, fiscalYear: true, companyCode: true },
     }),
+    // Job cards from before EJO (P4): read-only history, each a visit.
+    prisma.historicalJob.findMany({
+      where: { customerId: customer.id, organisationId: customer.organisationId, voidedAt: null, status: 'CLOSED', ...(branchId ? { branchId } : {}) },
+      orderBy: { openedAt: 'desc' },
+      take: 2000,
+      select: { id: true, jobNumber: true, kind: true, openedAt: true, completedAt: true, mileage: true, vehicleId: true, vin: true, plateNumber: true, description: true, workDone: true, totalAmount: true, invoiceNumber: true, technician: true },
+    }),
   ]);
 
   const plate = new Map(vehicles.map((v: (typeof vehicles)[number]) => [v.id, v.plateNumber || v.chassisNumber || [v.make, v.model].filter(Boolean).join(' ') || 'Vehicle']));
@@ -327,8 +334,10 @@ export async function getCustomer360(customerId: string) {
 
   const now = new Date();
   // A date-only invoice day counts at midday Lagos time (never the evening before in UTC).
-  const sap = sapRows.map((h: (typeof sapRows)[number]) => ({ at: new Date(`${h.invoiceDate.toISOString().slice(0, 10)}T12:00:00+01:00`), amount: num(h.amount) }));
-  const money = customerMoney(jobs, now, sap);
+  const midday = (d: Date) => new Date(`${d.toISOString().slice(0, 10)}T12:00:00+01:00`);
+  const sap = sapRows.map((h: (typeof sapRows)[number]) => ({ at: midday(h.invoiceDate), amount: num(h.amount), invoiceNumber: h.invoiceNumber }));
+  const past = pastRows.map((j: (typeof pastRows)[number]) => ({ at: midday(j.completedAt ?? j.openedAt), invoiceNumber: j.invoiceNumber }));
+  const money = customerMoney(jobs, now, sap, past);
   const months = monthlySpend(jobs, now, 12, sap);
   const jobPaid = (j: JobRow) => j.payments.reduce((s, x) => s + x.amount, 0) - j.refunds.reduce((s, x) => s + x.amount, 0);
 
@@ -348,9 +357,10 @@ export async function getCustomer360(customerId: string) {
     const mine = jobs.filter((j) => j.vehicleId === v.id);
     const visited = mine.filter((j) => j.receivedAt).map((j) => j.receivedAt!) as Date[];
     const hist = sapRows.filter((h: (typeof sapRows)[number]) => h.vehicleId === v.id);
-    const histVisits = hist.map((h: (typeof sapRows)[number]) => new Date(`${h.invoiceDate.toISOString().slice(0, 10)}T12:00:00+01:00`));
+    const pastMine = pastRows.filter((j: (typeof pastRows)[number]) => j.vehicleId === v.id);
+    const histVisits = [...hist.map((h: (typeof sapRows)[number]) => midday(h.invoiceDate)), ...pastMine.map((j: (typeof pastRows)[number]) => midday(j.completedAt ?? j.openedAt))];
     return {
-      ...v, jobs: mine.length, openJobs: mine.filter((j) => j.open).length,
+      ...v, jobs: mine.length, openJobs: mine.filter((j) => j.open).length, pastJobs: pastMine.length,
       lastVisit: [...visited, ...histVisits].sort((a, b) => +b - +a)[0] ?? null,
       netPaid: Math.round((mine.reduce((s, j) => s + jobPaid(j), 0) + hist.reduce((s: number, h: (typeof sapRows)[number]) => s + num(h.amount), 0)) * 100) / 100,
       sapInvoices: hist.length,
@@ -373,6 +383,8 @@ export async function getCustomer360(customerId: string) {
     vehicles: vehicleStats,
     jobs: jobs.map((j) => ({ kind: j.kind, id: j.id, number: j.number, status: j.status, vehicleId: j.vehicleId, vehicleLabel: j.vehicleLabel, branchName: j.branchName, openedAt: j.openedAt, finishedAt: j.finishedAt, cancelled: j.cancelled, open: j.open, href: j.href, customerBilled: Math.round(j.customerBilled * 100) / 100, paid: Math.round(jobPaid(j) * 100) / 100 })),
     ledger,
+    /** Job cards from before EJO 100 (P4) — read-only history; a job card whose work was a service is marked so. */
+    pastJobs: pastRows.map((j: (typeof pastRows)[number]) => ({ id: j.id, number: j.jobNumber, service: j.kind === 'SERVICE', openedAt: j.openedAt.toISOString().slice(0, 10), completedAt: j.completedAt ? j.completedAt.toISOString().slice(0, 10) : null, mileage: j.mileage, vehicleLabel: j.vehicleId ? plate.get(j.vehicleId) ?? j.vin ?? j.plateNumber : j.vin ?? j.plateNumber, description: j.description, workDone: j.workDone, total: j.totalAmount === null ? null : num(j.totalAmount), invoiceNumber: j.invoiceNumber, technician: j.technician })),
     /** Invoices from SAP before EJO 100 — read-only history (v-A3). */
     sapInvoices: sapRows.map((h: (typeof sapRows)[number]) => ({ id: h.id, number: h.invoiceNumber, date: h.invoiceDate.toISOString().slice(0, 10), amount: num(h.amount), vehicleLabel: h.vehicleId ? plate.get(h.vehicleId) ?? h.vin : h.vin, documentType: h.documentType, description: h.description, fiscalYear: h.fiscalYear, companyCode: h.companyCode })),
     warranties,

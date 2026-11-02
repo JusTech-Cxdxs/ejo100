@@ -84,3 +84,14 @@ and invoices, the parts catalogue before opening stock).
 | 16 | A model the plant does not build (D-MAX) | Line 16: choose the model (NQR, NPR, QLR, QMR, S07). | Rejected (not loaded) | the check (this row alone) |
 | 17 | 900 cases for one kit | Line 17: 900 cases is not a likely number for one kit. | Rejected (not loaded) | the check (this row alone) |
 
+## 14_SAP_job_card_history_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 124 | Customer 0009999999 is not in EJO, and no vehicle to find the owner by | The customer was not found. Import the customers file first (and the vehicles file, when the job names only the vehicle), or check the customer number. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 125 | Completed two days before it was opened | Completed on 2024-05-08 is before it was opened on 2024-05-10. | Rejected (not loaded) | the check (this row alone) |
+| 126 | No job number | Job number is required (the SAP order number, AUFNR, or the old job card number). | Rejected (not loaded) | the check (this row alone) |
+| 127 | Job card 480102 a second time in the same file | Same job number as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 128 | A job card still open (status REL) | Status “REL”: a job still open belongs in the open job cards file, not in history. | Rejected (not loaded) | the check (this row alone) |
+| 129 | A job card of another branch in this branch’s file | This row is for the branch “Afprint Assembly Plant”, but this import loads into Isolo Branch. Import it into its own branch. | Rejected (not loaded) | the check (against what EJO already holds) |
+

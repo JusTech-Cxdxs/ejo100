@@ -200,6 +200,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   // v-A2: the organisation's suppliers (SAP vendors). Business contacts; restorable from the Recycle bin.
   Supplier: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'RECYCLE_BIN', retention: 'Life of the contract', ai: 'AUTHORISED_USER', recycleBin: true },
   HistoricalInvoice: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: '7 years (financial records); an undone import voids its rows (kept, restored by reloading the file)', ai: 'AUTHORISED_USER' },
+  // P4: job cards from before EJO (SAP service orders), read-only history; the technician's name is staff-only.
+  HistoricalJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: '7 years (financial and service records); an undone import voids its rows (kept, restored by reloading the file)', ai: 'AUTHORISED_USER' },
   VehicleHistoryRecord: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicle (quality and warranty evidence); an undone import voids its rows', ai: 'AUTHORISED_USER' },
   // v-A4: an export of a list (which list, which filters, who, when) and who downloaded it. No copy of the data is
   // stored: the file is built at download time for the person downloading it.

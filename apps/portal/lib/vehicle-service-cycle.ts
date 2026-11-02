@@ -243,8 +243,8 @@ export type TrackedVehicle = {
   customerId?: string;
   customerName: string;
   customerEmail: string | null;
-  /** The completed visit whose prediction is current. */
-  lastService: { id: string; serviceNumber: string; date: Date | null; mileage: number | null };
+  /** The completed visit whose prediction is current. From EJO (a Vehicle Service), or a job card from SAP before EJO (P4) — then the id is "hist:<id>". */
+  lastService: { id: string; serviceNumber: string; date: Date | null; mileage: number | null; source: 'EJO' | 'SAP' };
   nextServiceDueOdometer: number | null;
   nextServiceDueDate: Date | null;
   kmRemaining: number | null;
@@ -265,10 +265,56 @@ export type TrackedVehicle = {
 };
 
 /**
+ * Job cards from SAP before EJO whose work was a service (P4), as service
+ * anchors for vehicles EJO has not serviced yet: the latest closed one per
+ * vehicle, with the interval rules of computeServiceCycle. Shaped like a
+ * Vehicle Service row so the tracker treats both alike; the id is
+ * "hist:<job id>" and the number says it came from SAP.
+ */
+async function historyAnchors(scope: { branchId?: string; vehicleId?: string }, skip: Set<string>) {
+  const jobs = await prisma.historicalJob.findMany({
+    where: {
+      ...(scope.branchId ? { branchId: scope.branchId } : {}),
+      ...(scope.vehicleId ? { vehicleId: scope.vehicleId } : { vehicleId: { not: null } }),
+      kind: 'SERVICE', status: 'CLOSED', voidedAt: null,
+    },
+    orderBy: [{ completedAt: 'desc' }, { openedAt: 'desc' }],
+    select: { id: true, vehicleId: true, jobNumber: true, completedAt: true, openedAt: true, mileage: true, attendedAt: true, branchId: true, organisationId: true },
+  });
+  const latest = new Map<string, (typeof jobs)[number]>();
+  for (const j of jobs) if (j.vehicleId && !skip.has(j.vehicleId) && !latest.has(j.vehicleId)) latest.set(j.vehicleId, j);
+  if (!latest.size) return [];
+  const [vehicles, orgs] = await Promise.all([
+    prisma.customerVehicle.findMany({ where: { id: { in: [...latest.keys()] } }, select: { id: true, make: true, model: true, year: true, plateNumber: true, mileage: true, vehicleType: true, serviceIntervalKm: true, serviceIntervalDays: true, customer: { select: { id: true, fullName: true, email: true } } } }),
+    prisma.organisation.findMany({ where: { id: { in: [...new Set([...latest.values()].map((j) => j.organisationId))] } }, select: { id: true, primaryServiceIntervalKm: true, primaryServiceIntervalDays: true } }),
+  ]);
+  const orgOf = new Map(orgs.map((o) => [o.id, o]));
+  const out = [];
+  for (const [vehicleId, j] of latest) {
+    const v = vehicles.find((x) => x.id === vehicleId);
+    const org = orgOf.get(j.organisationId);
+    if (!v || !org) continue;
+    const at = j.completedAt ?? j.openedAt;
+    const cycle = computeServiceCycle(j.mileage, at, { vehicle: v, branch: { businessUnit: { organisation: org } } });
+    if (cycle.nextServiceDueOdometer === null && cycle.nextServiceDueDate === null) continue;
+    out.push({
+      id: `hist:${j.id}`, vehicleId, serviceNumber: `${j.jobNumber} (SAP, before EJO)`, attendedAt: j.attendedAt,
+      primaryServiceDate: cycle.primaryServiceDate, primaryServiceMileage: cycle.primaryServiceMileage, nextServiceDueOdometer: cycle.nextServiceDueOdometer, nextServiceDueDate: cycle.nextServiceDueDate,
+      customer: v.customer, vehicle: { make: v.make, model: v.model, year: v.year, plateNumber: v.plateNumber, mileage: v.mileage, vehicleType: v.vehicleType }, escalatedToJobCard: null,
+    });
+  }
+  return out;
+}
+
+/** The id of a service anchor that is a job card from SAP (P4): "hist:<id>" → the HistoricalJob id, else null. */
+export const historyAnchorId = (serviceId: string): string | null => (serviceId.startsWith('hist:') ? serviceId.slice(5) : null);
+
+/**
  * Every vehicle's CURRENT service prediction (its most recent completed
  * visit), with its live due status, whether it's back in the workshop,
  * and this cycle's reminder history. Starts the count for any older
- * service first, so nothing is missed.
+ * service first, so nothing is missed. Vehicles whose last service was a
+ * job card in SAP before EJO are tracked from that job card (P4).
  */
 export async function loadServiceTracking(scope: { branchId?: string; vehicleId?: string } = {}): Promise<TrackedVehicle[]> {
   await backfillServiceCycleAnchors();
@@ -296,6 +342,9 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
   // Only the latest prediction per vehicle counts.
   const latest = new Map<string, (typeof services)[number]>();
   for (const s of services) if (!latest.has(s.vehicleId)) latest.set(s.vehicleId, s);
+  // Vehicles EJO has not serviced yet, whose last service was a job card in SAP before EJO (P4): that job card anchors the clock, with the same interval rules.
+  const fromSap = await historyAnchors(scope, new Set(latest.keys()));
+  for (const h of fromSap) latest.set(h.vehicleId, h);
   const vehicleIds = [...latest.keys()];
   const [visits, logs, reminderAudits] = await Promise.all([
     workshopVisitsForVehicles(vehicleIds),
@@ -334,7 +383,7 @@ export async function loadServiceTracking(scope: { branchId?: string; vehicleId?
       customerId: s.customer.id,
       customerName: s.customer.fullName,
       customerEmail: s.customer.email,
-      lastService: { id: s.id, serviceNumber: s.serviceNumber, date: s.primaryServiceDate, mileage: s.primaryServiceMileage },
+      lastService: { id: s.id, serviceNumber: s.serviceNumber, date: s.primaryServiceDate, mileage: s.primaryServiceMileage, source: s.id.startsWith('hist:') ? ('SAP' as const) : ('EJO' as const) },
       nextServiceDueOdometer: s.nextServiceDueOdometer,
       nextServiceDueDate: s.nextServiceDueDate,
       kmRemaining: due.kmRemaining,

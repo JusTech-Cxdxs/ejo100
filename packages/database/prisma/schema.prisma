@@ -127,6 +127,7 @@ model Organisation {
   importMappingProfiles ImportMappingProfile[]
   suppliers  Supplier[]
   historicalInvoices    HistoricalInvoice[]
+  historicalJobs     HistoricalJob[]
   vehicleHistoryRecords VehicleHistoryRecord[]
   exportJobs ExportJob[]
   plantVehicles PlantVehicle[]
@@ -4461,6 +4462,58 @@ model HistoricalInvoice {
 // (Excel), one row per vehicle per check. Read-only history shown on the
 // vehicle by its VIN (the vehicle may be a customer's or still in stock).
 // Staff only: inspectors' names are never shown to customers. Undo voids.
+/// A job card or routine service from before EJO 100 (SAP PM/CS service
+/// order or an old system's job card), read-only history: shown on the
+/// customer and the vehicle, counted as a visit, and the anchor of the
+/// vehicle's next-service clock until EJO completes a service of its own.
+/// Undo voids it (voidedAt); loading the file again restores it.
+model HistoricalJob {
+  id                 String    @id @default(cuid())
+  organisationId     String
+  branchId           String?
+  customerId         String
+  vehicleId          String?
+  vin                String?
+  vinKey             String?
+  plateNumber        String?
+  /// JOB_CARD (repair) or SERVICE (routine service).
+  kind               String    @default("JOB_CARD")
+  jobNumber          String
+  notificationNumber String?
+  invoiceNumber      String?
+  equipmentNumber    String?
+  orderType          String?
+  openedAt           DateTime  @db.Date
+  completedAt        DateTime? @db.Date
+  mileage            Int?
+  description        String?
+  workDone           String?
+  technician         String?
+  workCentre         String?
+  labourAmount       Decimal?  @db.Decimal(14, 2)
+  partsAmount        Decimal?  @db.Decimal(14, 2)
+  totalAmount        Decimal?  @db.Decimal(14, 2)
+  /// CLOSED (the default) or CANCELLED.
+  status             String    @default("CLOSED")
+  externalSource     String    @default("SAP")
+  importJobId        String?
+  /// The service tracker: staff marked the next-service prediction from this visit handled (or stopped tracking it).
+  attendedAt         DateTime?
+  voidedAt           DateTime?
+  createdAt          DateTime  @default(now())
+
+  organisation Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  @@unique([organisationId, externalSource, jobNumber], map: "historical_jobs_org_source_number_key")
+  @@index([customerId, openedAt])
+  @@index([organisationId, openedAt])
+  @@index([organisationId, jobNumber])
+  @@index([vehicleId, completedAt])
+  @@index([vinKey])
+  @@index([importJobId])
+  @@map("historical_jobs")
+}
+
 model VehicleHistoryRecord {
   id             String    @id @default(cuid())
   organisationId String

@@ -76,6 +76,28 @@ point in SAP (its store's LGORT lives under it).
 | Supplier number | LIFNR |
 | Name, phone, email, address, tax ID | NAME1, TELF1, SMTP_ADDR, STRAS / ORT01, STCD1 |
 
+### Job card history — SAP service orders (AUFK / AFIH, IW39 list) and notifications (QMIH)
+
+The workshop's job cards before EJO: one service order per visit, its
+6-digit number the job number. Read-only history in EJO (P4).
+
+| EJO field | SAP field | Notes |
+| --- | --- | --- |
+| Job number | AUFNR | Leading zeros come off (000000482913 → 482913) |
+| Order type | AUART | SM01 counts as a service inside EJO |
+| Notification | QMNUM (QMART) | |
+| Customer | KUNUM / KUNNR / KUNAG | Or found through the vehicle's owner |
+| Vehicle | VHVIN / LICENSE_NUM / EQUNR | VIN, plate or equipment |
+| Opened on / completed on | ERDAT (GSTRP) / IDAT2 (GLTRP) | |
+| Mileage | RECDV (measurement document) | km; anchors the next-service clock |
+| Complaint, work done | KTEXT / QMTXT, LTXA1 | "Carry out service" marks it a service |
+| Technician, work centre | PERNR, ARBPL | Staff only |
+| Amounts, invoice | NETWR, VBELN | Matched to the invoice history by VBELN: one visit, never twice |
+| Status | ISTAT / STAT: TECO, CLSD → Closed; CNCL, DLFL → Cancelled | REL / CRTD (open) is refused here |
+| Branch | WERKS (IWERK) | Must be the import's branch |
+
+Export **SAP job card history** writes these names back as column headers.
+
 ### Invoice history — SAP billing (VBRK) / accounting (BKPF, BSID)
 
 | EJO field | SAP field | Notes |

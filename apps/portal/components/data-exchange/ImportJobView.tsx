@@ -229,6 +229,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare these with SAP’s billing or customer line-item report for the same period before sending it for approval. Invoices already in the history are not counted again.</p>
             </div>
           ) : null}
+          {job.entity === 'jobs' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
+              <p className="font-medium">To load as history of {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} past jobs{job.totals.check.value ? <> · <span className="tabular-nums">{naira(job.totals.check.value)}</span> charged</> : null}{job.totals.check.from && job.totals.check.to ? ` · opened ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Compare with SAP’s service order list (IW38 / IW39) for the same period before sending it for approval. Jobs already in the history are not counted again. Nothing here is editable afterwards: it is history.</p>
+            </div>
+          ) : null}
           {job.problems.length ? (
             <details className="mt-4" open={job.status === 'VALIDATED'}>
               <summary className="cursor-pointer text-sm font-medium text-[var(--ejo-text)]">Rows with a problem or a note (first {job.problems.length})</summary>

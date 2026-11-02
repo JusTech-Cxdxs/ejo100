@@ -230,6 +230,11 @@ export default async function Customer360Page({ params, searchParams }: { params
             <JobList jobs={data.jobs} />
           </Section>
         ) : null}
+        {tab === 'jobs' && data.pastJobs.length ? (
+          <Section icon="wrench" title={`Job cards before EJO (${data.pastJobs.length})`} subtitle="Brought in from SAP: read-only history. Each counts as a visit; one whose work was a service also set the vehicle’s next-service clock." className="mt-6" action={<ExportAction kind="sap-jobs" params={{ customerId: id }} label="Export" />}>
+            <PastJobList rows={data.pastJobs} />
+          </Section>
+        ) : null}
         {tab === 'jobs' && data.sapInvoices.length ? (
           <Section icon="receipt" title={`From SAP, before EJO (${data.sapInvoices.length})`} subtitle={`Invoices brought in from SAP: read-only history, already settled there. ${naira(money.fromSap)} in all — counted in lifetime spend, visits and last visit.`} className="mt-6" action={<ExportAction kind="sap-invoices" params={{ customerId: id }} label="Export" />}>
             <SapInvoiceList rows={data.sapInvoices} />
@@ -555,6 +560,26 @@ function ContactsTab({ data }: { data: Data }) {
 }
 
 /** Invoices from SAP before EJO 100: read-only (no links to edit, pay or refund). */
+function PastJobList({ rows }: { rows: { id: string; number: string; service: boolean; openedAt: string; completedAt: string | null; mileage: number | null; vehicleLabel: string | null; description: string | null; workDone: string | null; total: number | null; invoiceNumber: string | null }[] }) {
+  return (
+    <ul className="divide-y divide-[var(--ejo-border)]" data-testid="past-jobs">
+      {rows.slice(0, 500).map((j) => (
+        <li key={j.id} className="flex flex-wrap items-start justify-between gap-3 py-3">
+          <div className="flex min-w-0 items-start gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)]"><CrmIcon name="wrench" size={16} /></span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[var(--ejo-text)]">Job card {j.number}{j.service ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">service</span> : null}{j.invoiceNumber ? <span className="ml-1.5 text-xs font-normal text-[var(--ejo-text-muted)]">invoice {j.invoiceNumber}</span> : null}</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">{formatDateOnly(new Date(`${j.openedAt}T12:00:00+01:00`))}{j.completedAt && j.completedAt !== j.openedAt ? ` → ${formatDateOnly(new Date(`${j.completedAt}T12:00:00+01:00`))}` : ''}{j.vehicleLabel ? ` · ${j.vehicleLabel}` : ''}{j.mileage !== null ? ` · ${j.mileage.toLocaleString('en-NG')} km` : ''}{j.description ? ` · ${j.description}` : ''}</p>
+              {j.workDone ? <p className="text-xs text-[var(--ejo-text-muted)]">{j.workDone}</p> : null}
+            </div>
+          </div>
+          {j.total !== null ? <span className="text-sm font-semibold tabular-nums text-[var(--ejo-text)]">{naira(j.total)}</span> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function SapInvoiceList({ rows }: { rows: { id: string; number: string; date: string; amount: number; vehicleLabel: string | null; documentType: string | null; description: string | null; fiscalYear: number | null; companyCode: string | null }[] }) {
   return (
     <ul className="divide-y divide-[var(--ejo-border)]">

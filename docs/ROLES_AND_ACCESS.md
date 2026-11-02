@@ -87,6 +87,17 @@ Reworked defects and recorded gates appear under **Approvals → Plant** for
 the people who can act on them. All of these are refused while Enyo is
 assisting (`refuseDuringAssist`).
 
+### Job card history (P4)
+
+Importing past job cards needs the Data Exchange permissions like every
+import; approval is a **Workshop manager or an administrator**
+(`workshop.close.approve`). The branch chosen is a **workshop** (never the
+assembly plant). The technician's name on a past job card is seen by staff
+on the vehicle's workshop page only — never on the customer's page or in the
+customer portal. A past job card can be marked *attended to* or its vehicle's
+tracking stopped by the people who may manage customers in the workshop
+(`workshop.customer.manage`), checked against the vehicle's branch.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an
