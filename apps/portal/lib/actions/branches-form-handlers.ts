@@ -32,6 +32,7 @@ export async function updateBranchFormAction(formData: FormData) {
       bankAccountName: String(formData.get('bankAccountName') ?? ''),
       bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
       ...(formData.has('sapPlant') ? { sapPlant: String(formData.get('sapPlant') ?? '') } : {}),
+      ...(formData.has('type') ? { type: String(formData.get('type') ?? '') } : {}),
     });
   } catch (err) {
     const message = friendlyError(err, 'Could not update branch details.', 'branches-form-handlers');

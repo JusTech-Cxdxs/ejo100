@@ -1,3 +1,4 @@
+import { BRANCH_TYPES, BRANCH_TYPE_HINTS, BRANCH_TYPE_WORDS } from '@/lib/branch-types';
 import { guardPage } from '@/lib/authz/server';
 import { notFound } from 'next/navigation';
 import { getBranch } from '@/lib/actions/branches';
@@ -71,6 +72,13 @@ export default async function BranchEditPage({
               placeholder="e.g. KWL-WS — used in document numbering"
               className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]"
             />
+          </div>
+          <div>
+            <label htmlFor="branch-type" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">What kind of place</label>
+            <select id="branch-type" name="type" defaultValue={branch.type} className="w-full rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] px-3 py-2 text-sm text-[var(--ejo-text)]">
+              {BRANCH_TYPES.map((t) => <option key={t} value={t}>{BRANCH_TYPE_WORDS[t]}</option>)}
+            </select>
+            <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">{BRANCH_TYPE_HINTS[branch.type]} A branch holding records of its kind keeps that kind.</p>
           </div>
           <div>
             <label htmlFor="branch-sap-plant" className="mb-1 block text-xs font-medium text-[var(--ejo-text-muted)]">SAP plant code (WERKS)</label>
@@ -149,6 +157,10 @@ export default async function BranchEditPage({
             <div>
               <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Document Code</dt>
               <dd className="mt-0.5 text-sm text-[var(--ejo-text)]">{branch.code ?? '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Kind of place</dt>
+              <dd className="mt-0.5 text-sm text-[var(--ejo-text)]">{BRANCH_TYPE_WORDS[branch.type]}{branch.sapPlant ? ` · SAP plant ${branch.sapPlant}` : ''}</dd>
             </div>
             <div>
               <dt className="text-xs font-medium text-[var(--ejo-text-muted)]">Address</dt>

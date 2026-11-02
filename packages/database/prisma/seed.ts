@@ -119,6 +119,32 @@ async function main() {
     },
   });
 
+  // The assembly plant is its own branch (kind ASSEMBLY_PLANT, SAP plant 1100):
+  // kits, the line, quality, PDI and the yard live here; the workshop's job
+  // cards and store stay on Isolo Branch. Its departments follow
+  // apps/portal/lib/branch-types.ts (PLANT_DEPARTMENTS).
+  const afprint = await prisma.branch.upsert({
+    where: { id: `${automobile.id}-afprint-seed` },
+    update: { type: 'ASSEMBLY_PLANT', sapPlant: '1100' },
+    create: {
+      id: `${automobile.id}-afprint-seed`,
+      businessUnitId: automobile.id,
+      cityId: isolo.id,
+      name: 'Afprint Assembly Plant',
+      code: 'KWL-AP',
+      type: 'ASSEMBLY_PLANT',
+      sapPlant: '1100',
+    },
+  });
+  for (const d of [
+    ['plant-kit-receiving', 'Kit receiving & plant store'], ['plant-production', 'Production (the line)'], ['plant-quality', 'Quality (QC and QA audit)'],
+    ['plant-pdi', 'PDI'], ['plant-yard', 'Yard & dispatch'], ['plant-maintenance', 'Plant maintenance'],
+  ] as const) {
+    await prisma.department.upsert({ where: { branchId_slug: { branchId: afprint.id, slug: d[0] } }, update: {}, create: { branchId: afprint.id, name: d[1], slug: d[0] } });
+  }
+  // eslint-disable-next-line no-console
+  console.log(`Seeded the assembly plant: ${afprint.name} (${afprint.id}, SAP plant ${afprint.sapPlant})`);
+
   await prisma.department.upsert({
     where: { branchId_slug: { branchId: isoloBranch.id, slug: 'workshop' } },
     update: {},

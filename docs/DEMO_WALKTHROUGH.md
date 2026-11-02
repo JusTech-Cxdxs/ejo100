@@ -288,11 +288,34 @@ Needs the production, QC and PDI registers of section 5 loaded (files 07 and 08)
 5. A vehicle still in the plant (VIN in the registers, no customer yet) has
    the same page and label: *Not sold yet*.
 
+## 9a. Two branches: the workshop and the Afprint assembly plant (P1)
+
+*The question: "is the plant its own place, like it is in SAP?"*
+
+1. **Branches** (as an administrator): *Isolo Branch* is a **Workshop**;
+   *Afprint Assembly Plant* is an **Assembly plant · SAP 1100**. Open the
+   plant: its kind, its SAP plant code and its departments (Kit receiving &
+   plant store, Production, Quality, PDI, Yard & dispatch). Try to change its
+   kind to Workshop: refused while it holds plant records.
+2. The **branch bar** at the top lists both; the plant carries a factory mark.
+   Point it at *Isolo Branch* and open **Assembly plant**: *You are looking at a
+   branch that is not an assembly plant* — one tap on *Look at Afprint Assembly
+   Plant* switches. **Headquarters** lists both, the plant with its own figures
+   (kits at arrival, on the line, at PDI, in the yard).
+3. Sign in as the **Kit Inspector** or **PDI Inspector**: their pages name the
+   plant; the workshop's job cards are nowhere to be seen. Sign in as the
+   **Branch Administrator** of the workshop: the plant pages explain that no
+   assembly plant is in their reach, and show nothing.
+4. **Organisation structure → Open a new branch**: choose the kind. An
+   assembly plant needs its SAP plant code and gets the plant's departments;
+   a workshop gets Workshop, Passenger / Commercial Vehicle Workshop and
+   Store.
+
 ## 10. Pre-delivery inspection on a tablet (D1)
 
 People: a **PDI Inspector** and a **PDI Supervisor** (or the **Plant
-Manager**). Give the branch its SAP plant code first (Branches → the branch
-→ *SAP plant code*, e.g. 1000).
+Manager**), who work at the Afprint Assembly Plant (SAP plant 1100, section
+9a).
 
 1. As the **PDI Inspector**, open **Assembly plant**. Scan a vehicle's label
    (or type a new VIN, e.g. **JAANLR85EL7200001**) and press **Start the

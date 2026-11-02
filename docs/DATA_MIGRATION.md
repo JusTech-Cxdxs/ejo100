@@ -285,6 +285,12 @@ delivery to **Sale**; otherwise Production rows are **Assembly stations**, QC
 rows **Quality audit** and PDI rows **Pre-delivery inspection**. A failed or
 rework result shows as needing attention until a later pass of the same check.
 
+**Branches have a kind.** Parts, opening stock and invoice history load only
+into a branch that keeps a store (a workshop or warehouse, never the assembly
+plant); plant records belong on the assembly-plant branch. The branch picker
+on the import form offers only the fitting branches, and the check says why
+when a file names the wrong kind ([ROLES_AND_ACCESS.md](ROLES_AND_ACCESS.md)).
+
 **Kits from now on are recorded, not imported.** Past kit arrivals come in as
 register rows (above). New shipments are recorded as they land under
 **Assembly plant → Record a shipment**, with the kits pasted from the

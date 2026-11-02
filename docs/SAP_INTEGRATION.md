@@ -24,6 +24,22 @@ reconciles the two; those sections are marked *coming in C1*.
 
 ## 2. Record by record
 
+### Branches and plants — SAP plant (WERKS)
+
+Every EJO branch is one kind of place (workshop, assembly plant, sales, head
+office, warehouse). An **assembly plant** is a branch of kind *Assembly plant*
+with its SAP plant code: Kewalram's Afprint Assembly Plant is SAP plant
+**1100** in the demo data (set the real code on the branch). Every vehicle
+built there, every kit received and every usage decision carries that WERKS.
+The workshop (Isolo Branch) may carry its own plant code where it is a stock
+point in SAP (its store's LGORT lives under it).
+
+| EJO | SAP | Notes |
+| --- | --- | --- |
+| Branch of kind Assembly plant | WERKS (a manufacturing plant) | One EJO branch per SAP plant; the kind decides which records may live there |
+| Branch of kind Workshop / Warehouse | WERKS (a stock point) + LGORT | Parts, opening stock and invoice history load only into these |
+| Plant departments | Work centres (ARBPL), loosely | Kit receiving, the line, quality, PDI, yard; EJO's stations (D3) map to work centres |
+
 ### Customers — SAP business partner / customer master (KNA1, BUT000)
 
 | EJO field | SAP field | Notes |

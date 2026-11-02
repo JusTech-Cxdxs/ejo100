@@ -199,12 +199,24 @@ model City {
   @@map("cities")
 }
 
+/// What kind of place a branch is (apps/portal/lib/branch-types.ts): plant
+/// records live only on an ASSEMBLY_PLANT branch, workshop records only on a
+/// WORKSHOP one. Additive; every existing branch is a WORKSHOP.
+enum BranchType {
+  WORKSHOP
+  ASSEMBLY_PLANT
+  SALES
+  HEAD_OFFICE
+  WAREHOUSE
+}
+
 model Branch {
   id             String   @id @default(cuid())
   businessUnitId String
   cityId         String
   name           String   // e.g. "Isolo Branch"
   code           String?  // short code used in document numbering, e.g. "KWL-WS"
+  type           BranchType @default(WORKSHOP)
   /// SAP plant code (WERKS) when the branch is a plant or stock point in SAP.
   sapPlant       String?
   address        String?

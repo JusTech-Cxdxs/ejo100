@@ -6,7 +6,7 @@ import { prisma } from '@ejo/database';
 import { getPrincipal, inMyOrganisation, LENS_COOKIE } from '@/lib/authz/server';
 import { hasBranchLens } from '@/lib/authz/catalogue';
 
-export type LensOptions = { current: string | null; branches: { id: string; name: string; city: string | null }[] } | null;
+export type LensOptions = { current: string | null; branches: { id: string; name: string; city: string | null; type: string }[] } | null;
 
 /**
  * The branch lens for headquarters roles (an organisation-wide view in any
@@ -20,10 +20,10 @@ export async function getBranchLensOptions(): Promise<LensOptions> {
   const branches = await prisma.branch.findMany({
     where: { businessUnit: { organisationId: p.organisationId }, isActive: true },
     orderBy: { name: 'asc' },
-    select: { id: true, name: true, city: { select: { name: true } } },
+    select: { id: true, name: true, type: true, city: { select: { name: true } } },
     take: 100,
   });
-  return { current: p.lensBranchId ?? null, branches: branches.map((b) => ({ id: b.id, name: b.name, city: b.city?.name ?? null })) };
+  return { current: p.lensBranchId ?? null, branches: branches.map((b) => ({ id: b.id, name: b.name, city: b.city?.name ?? null, type: b.type })) };
 }
 
 /** Look at one branch (its id) or at all of them (''). Refuses anything outside the person's organisation. */

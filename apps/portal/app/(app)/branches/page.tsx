@@ -1,5 +1,7 @@
 import { guardPage } from '@/lib/authz/server';
-import { getBranches } from '@/lib/actions/branches';
+import { getBranches, getStrandedPlantRecords } from '@/lib/actions/branches';
+import { MovePlantRecords } from '@/components/branches/MovePlantRecords';
+import { BRANCH_TYPE_WORDS } from '@/lib/branch-types';
 import { LoadingLink } from '@/components/LoadingLink';
 import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
 
@@ -9,7 +11,7 @@ import { EmptyState, HeaderAction, PageHeader } from '@/components/ui';
  */
 export default async function BranchesPage() {
   await guardPage('admin.structure.manage', '/branches');
-  const branches = await getBranches();
+  const [branches, stranded] = await Promise.all([getBranches(), getStrandedPlantRecords()]);
 
   return (
     <div className="p-8">
@@ -19,6 +21,8 @@ export default async function BranchesPage() {
         description="Each branch's address and hotlines, as printed on its documents."
         actions={<HeaderAction href="/structure" icon="sitemap" variant="secondary">Organisation structure · open a branch →</HeaderAction>}
       />
+
+      <MovePlantRecords stranded={stranded} />
 
       {branches.length === 0 ? (
         <div className="rounded-[var(--ejo-radius-lg)] border border-dashed border-[var(--ejo-border)]"><EmptyState compact icon="branch" title="No branches yet." /></div>
@@ -31,7 +35,7 @@ export default async function BranchesPage() {
               className="flex items-center justify-between rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] px-5 py-4 hover:bg-[var(--ejo-bg)]"
             >
               <div>
-                <p className="text-sm font-medium text-[var(--ejo-text)]">{branch.name}</p>
+                <p className="text-sm font-medium text-[var(--ejo-text)]">{branch.name} <span className="ml-1 rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--ejo-text-muted)]">{BRANCH_TYPE_WORDS[branch.type]}{branch.sapPlant ? ` · SAP ${branch.sapPlant}` : ''}</span></p>
                 <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">
                   {branch.businessUnit.name} · {branch.city.name}, {branch.city.state.name}
                 </p>

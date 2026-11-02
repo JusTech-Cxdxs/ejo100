@@ -18,7 +18,8 @@
  * kit; nothing is deleted (a kit registered by mistake is cancelled).
  */
 import { prisma, Prisma } from '@ejo/database';
-import { allows, authorize, branchWithinReach, getPrincipal, myOrganisationId, reachWhere, refuseDuringAssist } from '@/lib/authz/server';
+import { allows, authorize, getPrincipal, myOrganisationId, refuseDuringAssist, typedBranchWithinReach, typedReach, type TypedReach } from '@/lib/authz/server';
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { lagosYear } from '@/lib/utils/format-date';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
@@ -36,11 +37,11 @@ const code = (v: unknown, max = 40) => { const s = String(v ?? '').toUpperCase()
 const RECEIVE_ONLY = 'Receiving kits is for the plant’s kit inspectors and quality team.';
 const RELEASE_ONLY = 'Releasing kits is for the quality supervisor or plant manager.';
 
-/** The plant's kits and shipments this person may see: their organisation and branch reach. */
-async function kitFence(): Promise<{ organisationId: string; branch: Awaited<ReturnType<typeof reachWhere>> }> {
+/** The plant's kits and shipments this person may see: their organisation and the assembly-plant branches in their reach (never a workshop's). */
+async function kitFence(): Promise<{ organisationId: string; branch: TypedReach['where'] }> {
   const organisationId = await myOrganisationId();
   if (!organisationId) throw new Error('The assembly plant belongs to an organisation: you are not in one.');
-  return { organisationId, branch: await reachWhere('plant.view') };
+  return { organisationId, branch: (await typedReach('plant.view', AREA_BRANCH_TYPES.plant)).where };
 }
 
 /** One kit, inside the person's organisation and plant reach (null otherwise). */
@@ -254,8 +255,7 @@ export async function getKit(id: string): Promise<KitView | null> {
 /** The plants this person may record a shipment in. */
 export async function listKitBranches(): Promise<{ id: string; name: string; sapPlant: string | null }[]> {
   await authorize('plant.kit.receive', undefined, 'listKitBranches', RECEIVE_ONLY);
-  const f = await kitFence();
-  return prisma.branch.findMany({ where: { ...('branchId' in f.branch && f.branch.branchId ? { id: f.branch.branchId as never } : {}), businessUnit: { organisationId: f.organisationId } }, orderBy: { name: 'asc' }, select: { id: true, name: true, sapPlant: true } });
+  return (await typedReach('plant.kit.receive', AREA_BRANCH_TYPES.plant, { lens: false })).branches;
 }
 
 // ── Recording a shipment and its kits ───────────────────────────────────
@@ -313,10 +313,10 @@ export async function createShipment(input: ShipmentInput): Promise<Done<{ id: s
   const f = await kitFence();
   const supplier = clean(input.supplier, 120);
   if (!supplier) return fail('Say who shipped the kits (the supplier).');
-  let branchId = input.branchId || me.branchId || '';
-  try { branchId = await branchWithinReach('plant.kit.receive', branchId); } catch { return fail('Choose the plant the kits arrived at.'); }
-  const branch = await prisma.branch.findFirst({ where: { id: branchId, businessUnit: { organisationId: f.organisationId } }, select: { id: true } });
-  if (!branch) return fail('Choose the plant the kits arrived at.');
+  const plants = (await typedReach('plant.kit.receive', AREA_BRANCH_TYPES.plant, { lens: false })).branches;
+  const branch = await typedBranchWithinReach('plant.kit.receive', AREA_BRANCH_TYPES.plant, input.branchId || (plants.length === 1 ? plants[0]!.id : me.branchId));
+  if (!branch) return fail(plants.length ? 'Choose the assembly plant the kits arrived at.' : 'Your branch is not an assembly plant, so shipments cannot be recorded from it. Ask an administrator to add the plant under Branches.');
+  const branchId = branch.id;
   const arrived = input.arrivedAt ? new Date(`${String(input.arrivedAt).slice(0, 10)}T12:00:00+01:00`) : null;
   if (!arrived || Number.isNaN(arrived.getTime())) return fail('Choose the day the shipment arrived.');
   if (arrived.getTime() > Date.now() + ARRIVAL_MAX_DAYS_AHEAD * 86_400_000) return fail('The arrival day cannot be in the future.');
@@ -361,7 +361,7 @@ export async function addKitsToShipment(shipmentId: string, input: { kits?: stri
   const s = await myShipment(shipmentId);
   if (!s) return fail('This shipment is not available.');
   const me = await getPrincipal();
-  try { await branchWithinReach('plant.kit.receive', s.branchId); } catch { return fail('This shipment is at another plant.'); }
+  if (!(await typedBranchWithinReach('plant.kit.receive', AREA_BRANCH_TYPES.plant, s.branchId))) return fail('This shipment is at another plant.');
   const parsed = parseKitLines(input.kits, { modelCode: input.modelCode, kitType: KIT_TYPES.includes(input.kitType as KitType) ? (input.kitType as KitType) : null });
   if (!parsed.kits.length && !parsed.problems.length) return fail('Add the kits: one line per kit (VIN, engine number, model, lot, cases).');
   const problems = [...parsed.problems, ...(await vinConflicts(s.organisationId, parsed.kits.map((k) => k.vin)))];

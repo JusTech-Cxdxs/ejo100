@@ -4,6 +4,7 @@ import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { setBranchLens, type LensOptions } from '@/lib/actions/branch-lens';
 import { Icon } from '@/components/ui/Icon';
+import { BRANCH_TYPE_WORDS, isBranchType } from '@/lib/branch-types';
 
 /**
  * The branch bar for headquarters roles, under the header on every page:
@@ -28,8 +29,8 @@ export function BranchLensBar({ options }: { options: NonNullable<LensOptions> }
             <Icon name="building" size={13} />All branches<span className={`rounded-full px-1.5 text-[10px] ${!current ? 'bg-white/20' : 'bg-[var(--ejo-bg)] text-[var(--ejo-text-muted)]'}`}>{options.branches.length}</span>
           </button>
           {options.branches.map((b) => (
-            <button key={b.id} type="button" onClick={() => pick(b.id)} aria-pressed={current?.id === b.id} disabled={pending} className={chip(current?.id === b.id)} title={b.city ? `${b.name}, ${b.city}` : b.name}>
-              {b.name}{b.city ? <span className={`hidden text-[10px] md:inline ${current?.id === b.id ? 'text-white/80' : 'text-[var(--ejo-text-muted)]'}`}>{b.city}</span> : null}
+            <button key={b.id} type="button" onClick={() => pick(b.id)} aria-pressed={current?.id === b.id} disabled={pending} className={chip(current?.id === b.id)} title={`${b.name}${b.city ? `, ${b.city}` : ''} · ${isBranchType(b.type) ? BRANCH_TYPE_WORDS[b.type] : b.type}`}>
+              {b.type === 'ASSEMBLY_PLANT' ? <Icon name="garage" size={13} /> : null}{b.name}{b.city ? <span className={`hidden text-[10px] md:inline ${current?.id === b.id ? 'text-white/80' : 'text-[var(--ejo-text-muted)]'}`}>{b.city}</span> : null}
             </button>
           ))}
         </nav>

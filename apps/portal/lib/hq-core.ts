@@ -43,6 +43,10 @@ export function median(xs: number[]): number | null {
 
 export type HqBranch = {
   id: string; name: string; staff: number;
+  /** What kind of place it is (lib/branch-types.ts). */
+  type: string;
+  /** An assembly plant's own figures (null for other kinds): kits at arrival, vehicles on the line, at PDI, in the yard; kits waiting for release and how long the oldest has waited. */
+  plant: { kits: number; line: number; pdi: number; yard: number; releaseWaiting: number; oldestReleaseHours: number | null } | null;
   opened: number; finished: number; collected: number;
   /** Invoiced in SAP before EJO 100 in the period (v-A3 history; not in collected). */
   fromSap: number;
@@ -62,6 +66,10 @@ export type Health = { tone: 'good' | 'watch' | 'act'; label: string; reasons: s
 export function branchHealth(b: HqBranch): Health {
   const act: string[] = [];
   const watch: string[] = [];
+  if (b.plant) {
+    if ((b.plant.oldestReleaseHours ?? 0) >= 48) act.push(`a kit has waited ${Math.round((b.plant.oldestReleaseHours ?? 0) / 24)} days for release`);
+    if (b.plant.yard >= 20) watch.push(`${b.plant.yard} vehicles in the yard`);
+  }
   if ((b.oldestWaitingHours ?? 0) >= 48) act.push(`a decision has waited ${Math.round((b.oldestWaitingHours ?? 0) / 24)} days`);
   if (b.supportLate > 0) act.push(`${b.supportLate} customer ${b.supportLate === 1 ? 'request' : 'requests'} past target`);
   if (b.ready >= 5) watch.push(`${b.ready} vehicles waiting to be collected`);

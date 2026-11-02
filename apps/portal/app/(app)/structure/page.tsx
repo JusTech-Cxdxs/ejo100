@@ -6,6 +6,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { LoadingLink } from '@/components/LoadingLink';
 import { STRUCTURE_STATUS } from '@/lib/structure-messages';
 import { SYSTEM_DEPARTMENTS } from '@/lib/structure-rules';
+import { BRANCH_TYPES, BRANCH_TYPE_WORDS, PLANT_DEPARTMENTS } from '@/lib/branch-types';
 import { EmptyState, PageTitle } from '@/components/ui';
 
 const card = 'rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)]';
@@ -71,12 +72,19 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
               </select>
             </div>
             <div><label className={label} htmlFor="bn">Branch name</label><input id="bn" name="name" required minLength={2} maxLength={80} placeholder="e.g. Ikeja Branch" className={input} /></div>
+            <div><label className={label} htmlFor="btype">What kind of place</label>
+              <select id="btype" name="type" defaultValue="WORKSHOP" className={input}>
+                {BRANCH_TYPES.map((t) => <option key={t} value={t}>{BRANCH_TYPE_WORDS[t]}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-[var(--ejo-text-muted)]">A workshop holds job cards and the store; an assembly plant holds kits, the line, PDI and the yard. One branch is one kind: a workshop inside a plant is a second branch.</p>
+            </div>
+            <div><label className={label} htmlFor="bsap">SAP plant code (WERKS)</label><input id="bsap" name="sapPlant" maxLength={4} placeholder="e.g. 1100 — needed for an assembly plant" className={`${input} font-mono uppercase`} /></div>
             <div><label className={label} htmlFor="bc">Short code (optional)</label><input id="bc" name="code" maxLength={12} placeholder="e.g. IKJ" className={input} /></div>
             <div><label className={label} htmlFor="bcity">City / area</label><input id="bcity" name="city" required minLength={2} maxLength={80} placeholder="e.g. Ikeja" className={input} /></div>
             <div><label className={label} htmlFor="bstate">State</label><input id="bstate" name="state" required minLength={2} maxLength={80} placeholder="e.g. Lagos State" className={input} /></div>
             <label className="flex items-start gap-2 text-xs text-[var(--ejo-text-muted)] sm:col-span-2">
               <input type="checkbox" name="standardDepartments" defaultChecked className="mt-0.5 h-4 w-4" />
-              <span>Create the standard departments ({SYSTEM_DEPARTMENTS.map((d) => d.name).join(', ')}) — needed for Job Cards, Vehicle Services and the Store at this branch.</span>
+              <span>For a workshop, create its standard departments ({SYSTEM_DEPARTMENTS.map((d) => d.name).join(', ')}) — needed for Job Cards, Vehicle Services and the Store. An assembly plant always gets its own: {PLANT_DEPARTMENTS.map((d) => d.name).join(', ')}.</span>
             </label>
             <div className="sm:col-span-2"><SubmitButton label="Open branch" pendingLabel="Opening…" className={primary} /></div>
           </form>
@@ -109,7 +117,7 @@ export default async function StructurePage({ searchParams }: { searchParams: Pr
                 <article key={b.id} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-[var(--ejo-text)]">{b.name}{b.code ? <span className="ml-2 font-mono text-[11px] text-[var(--ejo-text-muted)]">{b.code}</span> : null}</h3>
+                      <h3 className="truncate text-sm font-semibold text-[var(--ejo-text)]">{b.name}{b.code ? <span className="ml-2 font-mono text-[11px] text-[var(--ejo-text-muted)]">{b.code}</span> : null}<span className="ml-2 rounded-full border border-[var(--ejo-border)] px-2 py-0.5 text-[11px] font-medium text-[var(--ejo-text-muted)]">{BRANCH_TYPE_WORDS[b.type]}{b.sapPlant ? ` · SAP ${b.sapPlant}` : ''}</span></h3>
                       <p className="text-xs text-[var(--ejo-text-muted)]">{b.city.name}, {b.city.state.name} · {b.people} {b.people === 1 ? 'person' : 'people'}</p>
                     </div>
                     <LoadingLink href={`/branches/${b.id}`} className="shrink-0 text-xs font-medium text-[var(--ejo-primary)] hover:underline">Manage →</LoadingLink>

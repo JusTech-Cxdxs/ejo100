@@ -28,6 +28,44 @@ Three things hold for everyone:
   limited to their own organisation, and to their branch for branch-scoped
   people.
 
+## Branches have a kind, and the plant is its own branch
+
+Every branch is one kind of place (`apps/portal/lib/branch-types.ts`):
+**Workshop** (job cards, vehicle services and the parts store), **Assembly
+plant** (kits, the line, quality, PDI, the yard), **Vehicle sales**, **Head
+office** or **Warehouse**. Kewalram's set-up is a workshop (*Isolo Branch*)
+beside the plant (*Afprint Assembly Plant*, SAP plant 1100), both in Isolo. A
+company with a workshop inside its plant opens two branches.
+
+What this means for access:
+
+- **Plant pages only ever show assembly-plant branches.** A branch-scoped
+  person (PDI Inspector, Kit Inspector, Quality Supervisor, Plant Manager)
+  sees their own plant. An organisation-wide person sees every plant, or the
+  one their branch lens points at. A person with plant rights but no plant
+  branch in reach (a branch administrator of the workshop, say) sees an
+  explanation, never another branch's records; an administrator looking at
+  the workshop through the lens is told the plant is elsewhere and switches
+  with one tap.
+- **Workshop work anchors only on workshop branches.** A department named
+  "Workshop" on an assembly plant never takes job cards; parts, opening stock
+  and invoice history load only into a branch that keeps a store (workshop or
+  warehouse).
+- **Registering a vehicle or recording a shipment** needs an assembly plant in
+  reach; with one plant in reach, it is chosen for you (a tablet in the plant
+  never asks).
+- **A branch holding records of its kind keeps that kind.** The kind can be
+  changed under Branches only while no job cards (for a workshop) or kits,
+  vehicles and PDIs (for a plant) live there; otherwise open the new place as
+  its own branch. Plant records recorded before branches had kinds are moved
+  to the plant from the Branches page, all together and audited.
+- **The plant's departments** are created with the branch: Kit receiving &
+  plant store, Production (the line), Quality (QC and QA audit), PDI, Yard &
+  dispatch, Plant maintenance. Plant roles are the existing ones — Plant
+  Manager, PDI Supervisor, PDI Inspector, Quality Supervisor, Kit Inspector —
+  scoped to the plant branch; production, QA-audit and yard roles arrive with
+  the line stations (D3) and the yard (D4).
+
 ## The walkthrough
 
 | Role | What this role does | What they see (menu · dashboard) | What they approve | What they never see |
