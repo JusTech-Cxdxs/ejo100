@@ -446,14 +446,45 @@ all of it).
    **Export stations**, **Export defects** and **Export QA audits** give the
    SAP-ready lists (work centre, confirmation, QM defect codes).
 
-The demo organisation's own six weeks of builds arrives with the plant demo
-(the next release).
+## 13. Six weeks of the plant in one tap: the plant demo (P3)
+
+*The question: "show me the plant running — not an empty board."*
+
+People: an **Administrator** (the demo people are invented; they appear on
+the records and have no sign-in).
+
+1. As the **Administrator**: **Assembly plant → Demo records → Load the
+   plant demo**, type **load the demo**, press **Load the demo as of now**.
+   In a few seconds the plant holds six invented weeks ending this minute:
+   seven shipments (Isuzu CKD from Yokohama, Soueast SKD from Xiamen — bills
+   of lading, vessels, containers, SAP purchase orders and inbound
+   deliveries), 80 kits with their arrival checks, cases, lots, SAP
+   inspection lots and material documents, about 65 vehicles — kits still
+   on the bay, one on hold for a line-stopping shortage claimed from the
+   supplier, one rejected (cab crushed), vehicles at their stations with
+   one in rework, a failed QA audit back at the gate, vehicles waiting for
+   PDI, PDIs in progress and a yard — with realistic takt, first-time-through
+   and defects per unit.
+2. Walk the pages: **The line** (every column busy, the figures and the top
+   defects filled), **Kits** and **Shipments**, **QA audits**,
+   **Headquarters** (both branches with their figures), any vehicle's page
+   (its kit, every station, the gate, the audit, its PDI), search by any
+   KIT-, SHP-, DEF-, QAA- or PDI- number, and the exports.
+3. The demo is marked **EJO-DEMO**. Loading it again replaces it (as of the
+   new moment); **remove the demo** takes exactly those records out and
+   nothing a person made. Both are audited. The same thing from a terminal:
+   `npm run demo:reset` (refused against a hosted database unless
+   `DEMO_RESET_CONFIRM` is set — see
+   [DATA_MIGRATION.md](DATA_MIGRATION.md)).
+4. The same six weeks are in `docs/demo/correct/` as files
+   (`10_plant_shipments_demo.csv` … `13_plant_vehicles_demo.csv`), in the
+   layouts the plant records import reads.
 
 ---
 
 *Coming in the next releases (each adds a section here):* the yard, sale and
-plant dashboards (D4); a
-complete KCG-style demo organisation with a one-command reset; round-trip updates from an
+plant dashboards (D4); the job-card, service, warranty, staff and plant
+records imports with a cut-over checklist per branch; round-trip updates from an
 exported file with a preview of the changes (A4b); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
 reconciliation (C1); and inviting imported customers to the portal (B).

@@ -4588,6 +4588,9 @@ model PlantVehicle {
   gatePassedAt       DateTime?
   /// The customer's vehicle once sold and registered.
   customerVehicleId  String?
+  /// Where the record came from (an import or the demo: "EJO-DEMO"); null when made in EJO.
+  externalSource     String?
+  externalId         String?
   createdById        String
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -4601,6 +4604,7 @@ model PlantVehicle {
   qaAudits     PlantQaAudit[]
   route        PlantRoute?   @relation(fields: [routeId], references: [id])
 
+  @@index([organisationId, externalSource])
   @@unique([organisationId, vinKey])
   @@index([organisationId, stage])
   @@index([branchId])
@@ -4671,6 +4675,8 @@ model PlantShipment {
   sapPurchaseOrder   String?
   sapInboundDelivery String?
   notes              String?
+  externalSource     String?
+  externalId         String?
   createdById        String
   createdAt          DateTime  @default(now())
   updatedAt          DateTime  @updatedAt
@@ -4681,6 +4687,7 @@ model PlantShipment {
 
   @@index([organisationId, arrivedAt])
   @@index([branchId])
+  @@index([organisationId, externalSource])
   @@map("plant_shipments")
 }
 
@@ -4723,6 +4730,8 @@ model PlantKit {
   notes               String?
   /// The vehicle in the plant, once released.
   plantVehicleId      String?
+  externalSource      String?
+  externalId          String?
   createdById         String
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @updatedAt
@@ -4738,6 +4747,7 @@ model PlantKit {
   @@index([organisationId, vinKey])
   @@index([shipmentId])
   @@index([branchId, status])
+  @@index([organisationId, externalSource])
   @@map("plant_kits")
 }
 

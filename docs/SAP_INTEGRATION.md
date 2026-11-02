@@ -157,6 +157,13 @@ of a finished vehicle.
 Exports: **Line stations**, **Line defects** and **QA audits**, each with the
 SAP names above as column headers.
 
+### Where a plant record came from
+
+Vehicles, shipments and kits carry `externalSource` and `externalId`: null
+for a record made in EJO, the import's name and the record's number there
+for an imported one, and `EJO-DEMO` for the demo. SAP reconciliation and the
+plant records import key on them; nothing else in SAP changes.
+
 ## 3. The daily files *(coming in C1)*
 
 C1 adds, through Data Exchange, without new infrastructure:

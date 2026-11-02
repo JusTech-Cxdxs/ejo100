@@ -87,6 +87,14 @@ Reworked defects and recorded gates appear under **Approvals → Plant** for
 the people who can act on them. All of these are refused while Enyo is
 assisting (`refuseDuringAssist`).
 
+### The plant demo (P3)
+
+Loading or removing the demo records needs `admin.structure.manage` (an
+administrator), typed words to confirm, and is refused during an assisted
+session; both are audited. The 13 demo people are staff records on the
+plant in the roles above with no account, so nobody can sign in as them;
+they never carry a real person's name.
+
 ## The walkthrough
 
 | Role | What this role does | What they see (menu · dashboard) | What they approve | What they never see |

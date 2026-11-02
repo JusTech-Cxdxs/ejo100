@@ -148,6 +148,8 @@ export const SECURITY_ACTION_LABEL: Record<string, string> = {
   'plant.audit_started': 'QA audit started',
   'plant.audit_passed': 'QA audit passed',
   'plant.audit_failed': 'QA audit failed (back to the line)',
+  'demo.plant_loaded': 'Plant demo records loaded (replacing the previous demo)',
+  'demo.plant_removed': 'Plant demo records removed',
   'vehicle.label_printed': 'Vehicle label or paper printed',
   // Data Exchange exports.
   'data_exchange.export_created': 'List exported',
@@ -283,6 +285,12 @@ export function securityActionDetail(action: string, meta: Record<string, unknow
       return [s('branch'), s('from') && s('to') ? `${s('from')} → ${s('to')}` : null].filter(Boolean).join(' · ') || null;
     case 'branch.plant_records_moved':
       return [s('from') && s('to') ? `${s('from')} → ${s('to')}` : null, v('kits') ? `${v('kits')} kits` : null, v('vehicles') ? `${v('vehicles')} vehicles` : null, v('pdis') ? `${v('pdis')} PDIs` : null].filter(Boolean).join(' · ') || null;
+    case 'demo.plant_loaded': {
+      const made = (meta.made ?? {}) as Record<string, unknown>;
+      return [made.vehicles ? `${made.vehicles} vehicles` : null, made.kits ? `${made.kits} kits` : null, made.defects ? `${made.defects} defects` : null].filter(Boolean).join(' · ') || null;
+    }
+    case 'demo.plant_removed':
+      return [v('vehicles') ? `${v('vehicles')} vehicles` : null, v('shipments') ? `${v('shipments')} shipments` : null].filter(Boolean).join(' · ') || null;
     case 'plant.route_saved':
       return [s('family'), v('version') ? `version ${v('version')}` : null, v('stations') ? `${v('stations')} stations` : null].filter(Boolean).join(' · ') || null;
     case 'plant.build_started':

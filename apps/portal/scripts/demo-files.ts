@@ -29,6 +29,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { writeXlsx } from '../lib/data-exchange/xlsx-writer';
 import { toCsv } from '../lib/hq-core';
+import { DEMO_PEOPLE, planPlantDemo } from '../lib/plant/demo/plan';
 
 const ROOT_OUT = join(__dirname, '..', '..', '..', 'docs', 'demo');
 const CORRECT = join(ROOT_OUT, 'correct');
@@ -302,6 +303,24 @@ const kitMistakes: Mistake[] = [
   kitMistakes.forEach((m, i) => planted.push({ ...m, file, entity: 'kits', row: kitLines.length + 2 + i, says: `Line ${kitLines.length + 2 + i}: ${m.says}` }));
 }
 
+// ── 10–13: the plant's records (the same six weeks `npm run demo:reset` loads, as files) ──
+// Written from the plan as of a fixed Friday afternoon so the files are the same every run. These are the layouts the plant
+// records import (vehicles, shipments and kits, open kit issues) reads and the exports write; correct/ only until that import lands.
+{
+  const plan = planPlantDemo(new Date('2026-10-30T15:00:00Z'));
+  const PLANT = 'Afprint Assembly Plant';
+  const who = (key: string | null) => (key ? DEMO_PEOPLE.find((p) => p.key === key)?.employeeId ?? '' : '');
+  const when = (d: Date | null) => (d ? new Date(d.getTime() + 3_600_000).toISOString().slice(0, 16).replace('T', ' ') : ''); // Lagos clock (UTC+1)
+  const shipHeader = ['Branch', 'Shipment ref', 'Supplier', 'Origin', 'Bill of lading', 'Vessel', 'Containers', 'Arrived', 'EBELN', 'VBELN', 'Notes'];
+  writeFileSync(join(CORRECT, '10_plant_shipments_demo.csv'), toCsv(shipHeader, plan.shipments.map((sh) => [PLANT, sh.key.toUpperCase(), sh.supplier, sh.origin, sh.billOfLading, sh.vessel, sh.containers.join('; '), when(sh.arrivedAt), sh.sapPurchaseOrder, sh.sapInboundDelivery, sh.notes])));
+  const kitHeader = ['Branch', 'Shipment ref', 'VIN', 'Engine number', 'Model', 'Lot', 'Kit type', 'Cases expected', 'Cases received', 'Status', 'Inspector', 'Started', 'Submitted', 'Decided by', 'Decided', 'Usage decision', 'Released with shortages', 'PRUEFLOS', 'MBLNR', 'Decision note'];
+  writeFileSync(join(CORRECT, '11_plant_kits_demo.csv'), toCsv(kitHeader, plan.shipments.flatMap((sh) => sh.kits.map((k) => [PLANT, sh.key.toUpperCase(), k.vin, k.engineNumber, k.modelCode, k.lotNumber, k.kitType, String(k.casesExpected), k.casesReceived === null ? '' : String(k.casesReceived), k.status, who(k.inspector), when(k.startedAt), when(k.submittedAt), who(k.decidedBy), when(k.decidedAt), k.sapUsageDecision ?? '', k.releasedWithShortages ? 'Yes' : 'No', k.sapInspectionLot, k.sapMaterialDocument, k.decisionNote ?? '']))));
+  const issueHeader = ['Branch', 'Kit VIN', 'Kind', 'Part number', 'Description', 'Case', 'Quantity', 'Stops the line', 'Status', 'Claim reference', 'Resolution', 'Raised by', 'Raised'];
+  writeFileSync(join(CORRECT, '12_plant_kit_issues_demo.csv'), toCsv(issueHeader, plan.shipments.flatMap((sh) => sh.kits.flatMap((k) => k.issues.map((i) => [PLANT, k.vin, i.kind, i.partNumber ?? '', i.description, i.caseNumber ?? '', String(i.quantity), i.stopsLine ? 'Yes' : 'No', i.status, i.claimReference ?? '', i.resolution ?? '', who(i.raisedBy), when(i.raisedAt)])))));
+  const vehHeader = ['Branch', 'VIN', 'Make', 'Model', 'Model name', 'Engine number', 'Colour', 'Model year', 'Stage', 'Current station', 'Line started', 'Gate passed', 'WERKS', 'MATNR', 'AUFNR', 'EQUNR'];
+  writeFileSync(join(CORRECT, '13_plant_vehicles_demo.csv'), toCsv(vehHeader, plan.vehicles.map((v) => [PLANT, v.vin, v.make, v.modelCode, v.modelName, v.engineNumber, v.colour, String(v.modelYear), v.stage, v.currentStation ?? '', when(v.lineStartedAt), when(v.gatePassedAt), '1100', v.sapMaterial, v.sapProductionOrder, v.sapEquipment ?? ''])));
+}
+
 // The 800,000-row file for the measured speed run (not committed): PERF_PARTS=800000 PERF_OUT=/some/dir
 if (process.env.PERF_PARTS && process.env.PERF_OUT) {
   writeParts(Number(process.env.PERF_PARTS), join(process.env.PERF_OUT, `SAP_parts_${process.env.PERF_PARTS}.csv`));
@@ -340,6 +359,7 @@ this order (later files refer to earlier ones):
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
 8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
+9. \`10_plant_shipments_demo.csv\`, \`11_plant_kits_demo.csv\`, \`12_plant_kit_issues_demo.csv\`, \`13_plant_vehicles_demo.csv\` — the plant's six demo weeks as files (the same records \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.
 
 Real events are part of the story and load as they are: a PDI that failed and
 was re-inspected, a QC rework, credit notes (G2). The same files with planted
@@ -348,7 +368,8 @@ mistakes are in [\`../with-mistakes/\`](../with-mistakes/).
 writeFileSync(join(ROOT_OUT, 'README.md'), `# Demo files
 
 Invented data only (no real customer), the same on every run of
-\`npx tsx apps/portal/scripts/demo-files.ts\`.
+\`npx tsx apps/portal/scripts/demo-files.ts\`. The plant files (10–13) are the same six
+weeks \`npm run demo:reset\` loads straight into the plant (DATA_MIGRATION.md §7b).
 
 | Folder | Use it to |
 | --- | --- |
