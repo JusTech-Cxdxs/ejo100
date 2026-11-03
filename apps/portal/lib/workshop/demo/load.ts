@@ -58,7 +58,7 @@ export async function removeWorkshopDemo(organisationId: string): Promise<number
     if (model === 'AuditLog') {
       // The trail is append-only; the demo's own entries go under the recorded maintenance switch, in one transaction.
       await prisma.$transaction(async (tx) => {
-        await tx.$executeRawUnsafe(`SET LOCAL ejo.audit_maintenance = 'on'`);
+        await tx.$executeRaw`SET LOCAL ejo.audit_maintenance = 'on'`;
         for (let i = 0; i < ids.length; i += CHUNK) await tx.auditLog.deleteMany({ where: { id: { in: ids.slice(i, i + CHUNK) } } });
       });
       removed += ids.length;
