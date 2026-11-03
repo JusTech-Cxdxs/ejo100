@@ -136,6 +136,10 @@ export async function loadPlantDemo(organisationId: string, anchor: Date = new D
   const pdiIds = new Map((await prisma.pdiInspection.findMany({ where: { number: { in: pdiNumbers } }, select: { id: true, number: true } })).map((p) => [p.number, p.id]));
   await inChunks(pdis.flatMap(({ p }, i) => p.items.map((it) => ({ inspectionId: pdiIds.get(pdiNumbers[i]!)!, code: it.code, section: it.section, label: it.label, sort: it.sort, allowNa: it.allowNa, result: it.result, defect: it.defect, reworkNote: it.reworkNote, reworkedAt: it.reworkedAt, reworkedById: who(it.reworkedBy), checkedById: who(it.checkedBy), checkedAt: it.checkedAt }))), (rows) => prisma.pdiItem.createMany({ data: rows }));
 
+  // Vehicles the workshop demo (lib/workshop/demo) sold through Isolo stay sold: re-linked by VIN after a plant-only reload.
+  const sold = await prisma.customerVehicle.findMany({ where: { externalSource: DEMO_SOURCE, customer: { organisationId }, chassisNumber: { in: plan.vehicles.map((v) => v.vin) } }, select: { id: true, chassisNumber: true } });
+  for (const cv of sold) await prisma.plantVehicle.updateMany({ where: { organisationId, vinKey: normaliseVin(cv.chassisNumber!) }, data: { stage: 'SOLD', customerVehicleId: cv.id } });
+
   return {
     plantId: plant.id, plantName: plant.name, removed,
     made: { people: people.size, shipments: plan.shipments.length, kits: allKits.length, vehicles: plan.vehicles.length, visits: plan.vehicles.reduce((n, v) => n + v.visits.length, 0), defects: defects.length, audits: audits.length, pdis: pdis.length },

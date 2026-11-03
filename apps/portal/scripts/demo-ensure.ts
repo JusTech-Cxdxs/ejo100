@@ -15,6 +15,7 @@ import { prisma } from '@ejo/database';
 import { loadPlantDemo } from '../lib/plant/demo/load';
 import { loadWorkshopDemo } from '../lib/workshop/demo/load';
 import { DEMO_SOURCE } from '../lib/workshop/demo/plan';
+import { runDemoPulse } from '../lib/demo/pulse';
 
 async function main() {
   if ((process.env.DEMO_LOAD ?? '').toLowerCase() === 'off') { console.log('Demo records: skipped (DEMO_LOAD=off).'); return; }
@@ -26,7 +27,12 @@ async function main() {
       prisma.plantVehicle.count({ where: { organisationId: org.id, externalSource: DEMO_SOURCE } }),
       prisma.branch.findFirst({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT' }, select: { id: true } }),
     ]);
-    if (records > 0) { console.log(`Demo records (${org.name}): already loaded (${records} records); left as they are. Reload with npm run demo:reset.`); continue; }
+    if (records > 0) {
+      console.log(`Demo records (${org.name}): already loaded (${records} records); left as they are. Reload with npm run demo:reset.`);
+      const pulse = await runDemoPulse(org.id);
+      console.log(`Demo daily pulse (${org.name}, ${pulse.dayKey}): ${pulse.reason}${pulse.ran ? ` — ${JSON.stringify(pulse.counts)}` : ''}.`);
+      continue;
+    }
     if (!plant) { console.log(`Demo records (${org.name}): no assembly plant yet; nothing loaded.`); continue; }
     const started = Date.now();
     if (plantRecords === 0) { const p = await loadPlantDemo(org.id, new Date()); console.log(`Plant demo loaded into ${p.plantName}: ${p.made.vehicles} vehicles, ${p.made.kits} kits.`); }

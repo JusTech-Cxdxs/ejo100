@@ -70,6 +70,8 @@ const READ_FENCES = [
   'myKit(', 'myShipment(', 'kitFence(',
   // The line (lib/actions/plant-line.ts): where { id, organisationId, plant reach } (myBuild / lineFence).
   'myBuild(', 'lineFence(',
+  // The demo console (lib/actions/demo-console.ts): the platform team only (platformTeam() — the Master Administrator), any organisation by design (platformOrg).
+  'platformOrg(',
 ];
 
 /** Reads that need no record fence, with the reason. */

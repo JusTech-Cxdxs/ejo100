@@ -157,6 +157,22 @@ are audited (`demo.workshop_loaded`); the demo's own audit entries are
 removed with it under the trail's recorded maintenance switch, in one
 transaction, so a reload never doubles a history.
 
+### The demo every day, and the console (D3)
+
+- **The daily pulse** writes as the demo people, only into an organisation
+  marked as a demo with its workshop demo loaded, once per Lagos day
+  (a unique marker claimed first, inside one transaction), and never money,
+  stock, warranty, the plant or an email. Each record is listed in
+  `demo_records` and goes with a reset. Audited (`demo.pulse`).
+- **The console** (IT control room → Demo organisation) is the **platform
+  team's only** (the Master Administrator): an organisation's
+  Administrator and the IT Administrator never see it, and every action
+  checks again on the server. Typed words confirm each change, it is
+  refused during an assisted session, and it is audited
+  (`demo.refreshed`, `demo.removed`, `demo.organisation_marked` /
+  `_unmarked`). Unmarking switches the organisation's demo sign-ins off at
+  once; a person's own records are never touched by a refresh or removal.
+
 ## The walkthrough
 
 | Role | What this role does | What they see (menu · dashboard) | What they approve | What they never see |

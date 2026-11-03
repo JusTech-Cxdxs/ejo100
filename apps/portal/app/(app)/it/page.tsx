@@ -1,4 +1,6 @@
-import { guardPage } from '@/lib/authz/server';
+import { getPrincipal, guardPage } from '@/lib/authz/server';
+import { getDemoConsoleState } from '@/lib/actions/demo-console';
+import { DemoConsoleCard } from '@/components/DemoConsoleCard';
 import { getItControlRoom } from '@/lib/actions/it';
 import { LoadingLink } from '@/components/LoadingLink';
 import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
@@ -10,6 +12,8 @@ import { Suspense } from 'react';
 import { ItTrendsSection, WebsiteSection } from '@/components/it/ItTrends';
 
 export const metadata = { title: 'IT control room' };
+// Loading the demo again (the platform team's console below) can take a few minutes on a hosted database.
+export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
 
 /** Seven days of sign-ins as paired bars (server-drawn), with the numbers for screen readers. */
@@ -48,6 +52,7 @@ function SignInBars({ days }: { days: { label: string; ok: number; failed: numbe
 export default async function ItControlRoomPage() {
   await guardPage('audit.view', '/it');
   const it = await getItControlRoom();
+  const demo = (await getPrincipal()).isSuperAdmin ? await getDemoConsoleState() : null;
   const p = it.pulse;
   const health = [
     { ok: p.schema.state === 'current', label: p.schema.state === 'current' ? `Database up to date (${p.schema.expected})` : p.schema.state === 'behind' ? `Database behind: needs ${p.schema.expected}` : 'Database version not checked', href: '/settings#health' },
@@ -154,6 +159,7 @@ export default async function ItControlRoomPage() {
           </table>
         </div>
       </SectionCard>
+      {demo ? <DemoConsoleCard state={demo} /> : null}
     </div>
   );
 }
