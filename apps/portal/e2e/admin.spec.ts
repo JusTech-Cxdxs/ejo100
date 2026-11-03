@@ -18,9 +18,14 @@ test('an administrator gives a role; the person’s menu follows; the role is ta
   await as(page, 'administrator');
   await page.goto(`/users?q=${encodeURIComponent(SWITCHABLE.email)}`);
   await expect(card(page)).toBeVisible();
-  await card(page).getByRole('textbox', { name: `Give ${SWITCHABLE.name} a role` }).click();
-  await card(page).getByRole('textbox', { name: `Give ${SWITCHABLE.name} a role` }).fill('Technician');
-  await suggestion(page, 'Technician').click();
+  // The page refreshes itself now and then (the live pulse); a choice made the moment it re-renders is lost, so choose until it stuck.
+  const roleBox = () => card(page).getByRole('textbox', { name: `Give ${SWITCHABLE.name} a role` });
+  await expect(async () => {
+    await roleBox().click();
+    await roleBox().fill('Technician');
+    await suggestion(page, 'Technician').click();
+    await expect(roleBox()).toHaveValue(/Technician/, { timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
   await card(page).getByRole('button', { name: 'Give' }).click();
   await waitOutcome(page, /status=saved/);
   await expect(card(page).getByRole('button', { name: `Remove the role Technician from ${SWITCHABLE.name}` })).toBeVisible();
