@@ -16,6 +16,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
     "demo:reset": "npx tsx apps/portal/scripts/demo-reset.ts",
+    "demo:people": "npx tsx apps/portal/scripts/demo-people.ts",
     "brand:sync": "cp packages/enyo/src/brand.ts apps/portal/lib/brand.ts && cp packages/enyo/src/brand.ts apps/website/lib/brand.ts"
   },
   "devDependencies": {

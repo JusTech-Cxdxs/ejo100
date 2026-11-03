@@ -109,6 +109,10 @@ model Organisation {
   // Data Exchange: days after an import is finished (and its totals signed
   // off) before the staged copy of its file is released. Null = 30; 0 = never.
   importStagingDays Int?
+  // A demonstration organisation: the only kind that gets demo people with
+  // sign-ins and demo records (apps/portal/lib/demo). Set by the platform
+  // team or `npm run demo:reset`; a real organisation never has it.
+  isDemo      Boolean  @default(false)
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

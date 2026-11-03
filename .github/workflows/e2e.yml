@@ -112,6 +112,10 @@ jobs:
           npx tsx apps/portal/e2e/seed.ts
           # Idempotent: a second run changes nothing and does not fail.
           npx tsx apps/portal/e2e/seed.ts
+      - name: The demo people with sign-ins (lib/demo; the test password from e2e/people.ts, test database only)
+        env:
+          DEMO_STAFF_PASSWORD: 'Demo-E2e-Pass-2026!'
+        run: npx tsx apps/portal/scripts/demo-people.ts
       # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
       # plain IMAP on 3143 and SMTP on 3025, one mailbox (wura@mail.e2e.test, password
       # "wura-mail-pass"); mail sent to it lands in its inbox. Test-only credentials.

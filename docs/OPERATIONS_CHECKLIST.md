@@ -41,6 +41,11 @@ Names only. Values never go into the repository, chat, or tickets.
 | `SERPER_API_KEY` or `BRAVE_SEARCH_API_KEY` or `TAVILY_API_KEY` | optional | A general web search engine for Enyo alongside Wikipedia (Google via serper.dev, Brave, or Tavily — the first set is used): business leaders and their public profiles, company news. Only the topic words are sent; results that do not match the question are dropped. Set in Vercel for the portal and the website |
 | `MAILBOX_ENCRYPTION_KEY` | for Mail | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts connected mailbox passwords. Changing it disconnects every mailbox |
 | `ML_SERVICE_TOKEN` | for Enyo models | At least 32 random characters. Lets the trainer (GitHub workflow "Train Enyo models") read the de-identified history and hand in models (docs/ML.md). Unset = /api/ml answers 404. The same value goes in the GitHub secret `ML_SERVICE_TOKEN`; rotate both together |
+| `DEMO_STAFF_PASSWORD` | for the demo | One password (8+ characters) for every demo sign-in (`docs/KEWALRAM_DEMO.md`). While it is set, each production build makes or refreshes the demo people in the demo organisation; never printed, never in code. Not set: no demo sign-ins at all. |
+| `DEMO_CUSTOMER_PASSWORD` | optional | The four customer-portal demo sign-ins' password; the staff password when not set. |
+| `RESET_DEMO_PASSWORDS` | optional | `yes` sets every demo password again on the next build (and signs those accounts out). Set it for one deploy, then remove it. |
+| `DEMO_ORG_SLUG` | optional | Which organisation is the demo when none is marked yet (default `kewalram-nigeria`, the seed's own). Only a marked organisation (`organisations.isDemo`) ever gets demo people. |
+| `DEMO_STRICT` | optional | `1` makes a demo-people problem stop the build (by default it is reported and the app still deploys). |
 
 ### Website and customer portal (Vercel project for `apps/website`)
 

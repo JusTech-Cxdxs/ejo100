@@ -115,9 +115,32 @@ payment.
 
 Loading or removing the demo records needs `admin.structure.manage` (an
 administrator), typed words to confirm, and is refused during an assisted
-session; both are audited. The 13 demo people are staff records on the
-plant in the roles above with no account, so nobody can sign in as them;
-they never carry a real person's name.
+session; both are audited. The 13 demo people on the plant are the demo
+organisation's own people (below); they never carry a real person's name.
+
+### The demo people (D1)
+
+One sign-in for every role — eight at Headquarters (no branch, so
+organisation-wide), seventeen at Isolo, sixteen at Afprint — and four
+customer-portal sign-ins (`docs/KEWALRAM_DEMO.md`, generated from
+`apps/portal/lib/demo/people.ts`). What keeps them safe:
+
+- **Only a demo organisation** (`organisations.isDemo`) ever gets them; a
+  demo person found anywhere else is switched off and signed out on the
+  next run, never deleted.
+- **No password in code.** The accounts exist only while
+  `DEMO_STAFF_PASSWORD` (8+ characters) is set in the environment; nothing
+  is printed. A password already set is never changed, and an account an
+  administrator switched off stays off, unless `RESET_DEMO_PASSWORDS=yes`
+  is set for one run (which also signs those accounts out).
+- **Nothing is emailed:** every address is on `demo.kewalram.local`, a
+  reserved name.
+- **The rules hold for them as for anyone:** a demo technician sees only
+  their jobs; the Finance Officer at Headquarters confirms no branch's
+  money; a line operator cannot open a job card (`e2e/demo-people.spec.ts`).
+- Every run is audited (`demo.people_loaded`); making the accounts is a
+  deploy-time or terminal step (`npm run demo:people`, `npm run demo:reset`),
+  not a portal action — the platform team's button comes with D3.
 
 ## The walkthrough
 

@@ -414,16 +414,20 @@ no real person or vehicle in it).
 - **In EJO:** an administrator, on **Assembly plant → Demo records**, types
   *load the demo* (or *remove the demo*). Audited as `demo.plant_loaded` /
   `demo.plant_removed`.
-- **From a terminal:** `npm run demo:reset` (`-- --org <slug>` when several
-  organisations have a plant; `-- --remove` to take it out). Against a
+- **From a terminal:** `npm run demo:reset` — the demo people with their
+  sign-ins first (when `DEMO_STAFF_PASSWORD` is set), then the plant demo
+  (`-- --org <slug>` marks that organisation as the demo; `-- --remove`
+  takes the records out). Against a
   hosted database (Supabase, Render, Neon, RDS, or `NODE_ENV=production`)
   it refuses unless `DEMO_RESET_CONFIRM="replace the demo records"` is set.
 - Every demo record carries `externalSource = EJO-DEMO`; a reload or a
   removal deletes exactly those records (and what hangs off them: checks,
   issues, station visits, defects, audits, PDI items) and never a record a
-  person made. The demo people (13 invented staff on the plant, employee
-  numbers AP-001…AP-013, addresses on the reserved `.example` domain) are
-  kept and have no sign-in.
+  person made. The demo people on the plant are the demo organisation's
+  own people (`apps/portal/lib/demo/people.ts`: invented names, employee
+  numbers DEMO-AP-001…, addresses on the reserved `demo.kewalram.local`
+  name) — kept by a removal; their sign-ins come from the demo people step
+  ([KEWALRAM_DEMO.md](KEWALRAM_DEMO.md)), never from the plant demo itself.
 - The same records are written as files by `npx tsx
   apps/portal/scripts/demo-files.ts` into `docs/demo/correct/`:
   `10_plant_shipments_demo.csv`, `11_plant_kits_demo.csv`,

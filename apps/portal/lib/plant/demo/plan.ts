@@ -18,6 +18,7 @@
  * Pure: no database here. `loadPlantDemo` (./load.ts) writes a plan, and
  * scripts/demo-files.ts writes the same plan as the plant's demo files.
  */
+import { PLANT_DEMO_STAFF } from '../../demo/people';
 import { DEFAULT_ROUTES, DEFECT_TYPES, type AuditFinding, type CheckResult, type RouteStation, type Severity, type StationCheck, type StationKind } from '../line';
 import { PDI_TEMPLATES, PLANT_MODELS, type PdiFamily } from '../pdi';
 import { DEFAULT_KIT_TYPE, KIT_TEMPLATES, type KitType } from '../kits';
@@ -81,25 +82,13 @@ const later = (a: Date, b: Date) => (a > b ? a : b);
 const plusMin = (d: Date, m: number) => new Date(d.getTime() + m * 60_000);
 
 // ── The people (invented) ──────────────────────────────────────────────
-export type DemoPerson = { key: string; fullName: string; employeeId: string; email: string; role: string; department: string };
-const person = (key: string, fullName: string, n: number, role: string, department: string): DemoPerson => ({
-  key, fullName, employeeId: `AP-${String(n).padStart(3, '0')}`, email: `${fullName.toLowerCase().replace(/[^a-z]+/g, '.')}@afprint-demo.example`, role, department,
-});
-export const DEMO_PEOPLE: DemoPerson[] = [
-  person('pm', 'Adaeze Okafor', 1, 'plant-manager', 'plant-production'),
-  person('prod', 'Musa Bello', 2, 'production-supervisor', 'plant-production'),
-  person('op1', 'Chinedu Eze', 3, 'line-operator', 'plant-production'),
-  person('op2', 'Gbenga Ogunleye', 4, 'line-operator', 'plant-production'),
-  person('op3', 'Ifeanyi Nwosu', 5, 'line-operator', 'plant-production'),
-  person('op4', 'Sadiq Abubakar', 6, 'line-operator', 'plant-production'),
-  person('qc', 'Funke Adeyemi', 7, 'qc-inspector', 'plant-quality'),
-  person('qs', 'Ngozi Okonkwo', 8, 'quality-supervisor', 'plant-quality'),
-  person('qa', 'Halima Ibrahim', 9, 'qa-auditor', 'plant-quality'),
-  person('kit1', 'Kelechi Balogun', 10, 'kit-inspector', 'plant-kit-receiving'),
-  person('kit2', 'Damilola Adebayo', 11, 'kit-inspector', 'plant-kit-receiving'),
-  person('pdi1', 'Rotimi Yusuf', 12, 'pdi-inspector', 'plant-pdi'),
-  person('pdi2', 'Temitope Okoro', 13, 'pdi-supervisor', 'plant-pdi'),
-];
+export type DemoPerson = { key: string; fullName: string; employeeId: string; email: string; previousEmail?: string; role: string; department: string };
+/**
+ * The plant's people are the demo organisation's people (lib/demo/people.ts,
+ * the ones with a plantKey): the same accounts the sign-ins are made for, so
+ * loading the plant demo never makes a second set.
+ */
+export const DEMO_PEOPLE: DemoPerson[] = PLANT_DEMO_STAFF.map((s) => ({ key: s.plantKey!, fullName: s.name, employeeId: s.employeeId, email: s.email, previousEmail: s.previousEmail, role: s.role, department: s.dept ?? 'plant-production' }));
 const OPERATORS = ['op1', 'op2', 'op3', 'op4'] as const;
 
 // ── What the plan holds ─────────────────────────────────────────────────

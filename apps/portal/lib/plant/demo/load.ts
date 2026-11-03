@@ -5,8 +5,9 @@
  * Every demo record carries externalSource "EJO-DEMO", so a reset deletes
  * exactly the records the last load made (their station visits, defects,
  * audits, PDIs, kits, checks and issues go with them) and never a record a
- * person made in EJO. The demo people are kept (upserted by email); they
- * have no sign-in. Used by `npm run demo:reset` and by the administrator's
+ * person made in EJO. The demo people are the demo organisation's people
+ * (lib/demo/people.ts): kept, upserted by email; their sign-ins are made by
+ * lib/demo/people-load.ts, not here. Used by `npm run demo:reset` and by the administrator's
  * button on the plant page; the callers decide who may run it and when.
  */
 import { Prisma, prisma } from '@ejo/database';
@@ -37,7 +38,7 @@ export async function removePlantDemo(organisationId: string): Promise<{ vehicle
   return { vehicles: vehicles.count, shipments: shipments.count };
 }
 
-/** The demo people on the plant: created or updated by email, in their roles and departments, with no sign-in. */
+/** The demo people on the plant: created or updated by email, in their roles and departments (no password here). */
 async function ensurePeople(organisationId: string, plantId: string): Promise<Map<string, string>> {
   const [roles, departments] = await Promise.all([
     prisma.role.findMany({ where: { organisationId, slug: { in: [...new Set(DEMO_PEOPLE.map((p) => p.role))] } }, select: { id: true, slug: true } }),
@@ -46,12 +47,20 @@ async function ensurePeople(organisationId: string, plantId: string): Promise<Ma
   const ids = new Map<string, string>();
   for (const p of DEMO_PEOPLE) {
     const department = departments.find((d) => d.slug === p.department)?.id ?? null;
+    // The plant demo's first release used other addresses: that account is renamed, never doubled.
+    if (p.previousEmail && !(await prisma.user.findUnique({ where: { email: p.email }, select: { id: true } }))) {
+      const old = await prisma.user.findUnique({ where: { email: p.previousEmail }, select: { id: true, organisationId: true } });
+      if (old && (!old.organisationId || old.organisationId === organisationId)) await prisma.user.update({ where: { id: old.id }, data: { email: p.email } });
+    }
     const taken = await prisma.user.findUnique({ where: { employeeId: p.employeeId }, select: { id: true, email: true } });
-    const employeeId = !taken || taken.email === p.email ? p.employeeId : null; // another organisation's number: leave it
+    const employeeId = !taken || taken.email === p.email ? p.employeeId : null; // another account's number: leave it
+    const existing = await prisma.user.findUnique({ where: { email: p.email }, select: { id: true, organisationId: true, isActive: true } });
+    if (existing?.organisationId && existing.organisationId !== organisationId) throw new Error(`${p.email} belongs to another organisation.`);
     const user = await prisma.user.upsert({
       where: { email: p.email },
-      update: { fullName: p.fullName, organisationId, branchId: plantId, departmentId: department, isActive: true, ...(employeeId ? { employeeId } : {}) },
-      create: { email: p.email, fullName: p.fullName, organisationId, branchId: plantId, departmentId: department, employeeId, accountType: 'EMPLOYEE', isActive: true, emailVerified: false },
+      // An account an administrator switched off stays off.
+      update: { fullName: p.fullName, organisationId, branchId: plantId, departmentId: department, ...(employeeId ? { employeeId } : {}) },
+      create: { email: p.email, fullName: p.fullName, organisationId, branchId: plantId, departmentId: department, employeeId, accountType: 'EMPLOYEE', isActive: true, emailVerified: true },
       select: { id: true },
     });
     ids.set(p.key, user.id);
