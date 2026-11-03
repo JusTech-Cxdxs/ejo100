@@ -126,13 +126,9 @@ const KIT_PARTS: Record<PdiFamily, [string, string, string][]> = {
 type DefectSeed = { check: string; location: string; type: string; cause: string; text: string; rework: string };
 const DEFECT_SEEDS: Record<PdiFamily, Record<string, DefectSeed[]>> = {
   'isuzu-n': {
-    C1: [{ check: 'C1-03', location: 'FR', type: 'LOOSE', cause: 'TQ', text: 'Cross-member bolts below 180 N·m on the left side', rework: 'Re-torqued to 200 N·m with the calibrated wrench' }, { check: 'C1-04', location: 'BR', type: 'ROUTE', cause: 'OP', text: 'Brake line unclipped behind the second cross-member', rework: 'Clipped and routed to the drawing' }],
-    C2: [{ check: 'C2-03', location: 'AX', type: 'LOOSE', cause: 'TQ', text: 'Rear U-bolt nuts under torque', rework: 'Torqued to 220 N·m in sequence' }, { check: 'C2-04', location: 'AX', type: 'MISS', cause: 'KIT', text: 'Shackle pin grease nipple missing', rework: 'Fitted from the plant store' }],
-    C3: [{ check: 'C3-05', location: 'PT', type: 'FIT', cause: 'OP', text: 'Exhaust hanger not seated, pipe touching the frame', rework: 'Hanger seated and pipe aligned with clearance' }, { check: 'C3-07', location: 'EL', type: 'LOOSE', cause: 'OP', text: 'Battery positive terminal loose', rework: 'Terminal tightened and greased' }],
-    T1: [{ check: 'T1-01', location: 'EL', type: 'ROUTE', cause: 'OP', text: 'Cab harness pinched under the dash bracket', rework: 'Harness re-routed over the bracket, insulation checked' }],
-    T2: [{ check: 'T2-01', location: 'DR', type: 'FIT', cause: 'SEAL', text: 'Windscreen bead not seated at the top left corner', rework: 'Re-bedded and left to cure' }, { check: 'T2-02', location: 'DR', type: 'FUNC', cause: 'PART', text: 'Right door regulator binds halfway', rework: 'Regulator replaced from the claim stock' }],
-    T3: [{ check: 'T3-02', location: 'CB', type: 'LOOSE', cause: 'TQ', text: 'Cab mounting bolt at 70 N·m, limit 90', rework: 'Torqued to 100 N·m' }],
-    F1: [{ check: 'F1-06', location: 'FL', type: 'LEAK', cause: 'SEAL', text: 'Coolant weep at the lower radiator hose clip', rework: 'Clip repositioned and tightened; no weep after warm-up' }, { check: 'F1-01', location: 'WH', type: 'LOOSE', cause: 'TQ', text: 'Two wheel nuts on the rear left below 540 N·m', rework: 'All nuts torqued and marked' }],
+    C1: [{ check: 'C1-03', location: 'AX', type: 'LOOSE', cause: 'TQ', text: 'Rear U-bolt nuts under torque as delivered', rework: 'Torqued to 220 N·m in sequence' }, { check: 'C1-06', location: 'BR', type: 'ROUTE', cause: 'OP', text: 'Brake line unclipped behind the second cross-member', rework: 'Clipped and routed to the drawing' }, { check: 'C1-05', location: 'WH', type: 'LOOSE', cause: 'TQ', text: 'Two wheel nuts on the rear left below 540 N·m', rework: 'All nuts torqued and marked' }],
+    C2: [{ check: 'C2-02', location: 'CB', type: 'LOOSE', cause: 'TQ', text: 'Cab mounting bolt at 70 N·m, limit 90', rework: 'Torqued to 100 N·m' }, { check: 'C2-04', location: 'EL', type: 'ROUTE', cause: 'OP', text: 'Cab harness pinched under the dash bracket', rework: 'Harness re-routed over the bracket, insulation checked' }, { check: 'C2-05', location: 'DR', type: 'FUNC', cause: 'PART', text: 'Right door regulator binds halfway', rework: 'Regulator replaced from the claim stock' }],
+    C3: [{ check: 'C3-01', location: 'FL', type: 'LEAK', cause: 'SEAL', text: 'Coolant weep at the lower radiator hose clip', rework: 'Clip repositioned and tightened; no weep after warm-up' }, { check: 'C3-04', location: 'EL', type: 'LOOSE', cause: 'OP', text: 'Battery positive terminal loose', rework: 'Terminal tightened and greased' }],
     E1: [{ check: 'E1-02', location: 'EL', type: 'ALIGN', cause: 'OP', text: 'Left headlamp aim 0.2% high', rework: 'Aim adjusted on the beam setter' }, { check: 'E1-03', location: 'BR', type: 'ALIGN', cause: 'UNK', text: 'Front brake imbalance 24%', rework: 'Left caliper slide pins freed and greased; re-tested at 8%' }],
     R1: [{ check: 'R1-05', location: 'PT', type: 'NOISE', cause: 'OP', text: 'Rattle from the exhaust heat shield over bumps', rework: 'Heat shield bolt fitted with a spring washer' }],
     G1: [{ check: 'G1-03', location: 'PA', type: 'SCR', cause: 'DMG', text: 'Light scratch on the left door below the handle', rework: 'Polished out' }],
@@ -343,7 +339,7 @@ function buildVehicle(input: BuildInput): DemoVehicle {
     // One vehicle at a station at a time: wait for the vehicle ahead, then a few minutes to move.
     const start = plusMin(later(t, stationFree.get(s.code) ?? new Date(0)), i === 0 ? 0 : Math.round(between(r, 20, 60))); // parts picked, crane, the move
     const startedAt = addWorkingMinutes(start, 0);
-    const slow = s.code === 'C3' || s.code === 'M1' ? 1.12 : 1; // the bottleneck
+    const slow = s.code === 'C2' || s.code === 'M1' ? 1.12 : 1; // the bottleneck (the cab on the Isuzu line, the marriage on the S07 line)
     let minutes = Math.round(s.standardMinutes * slow * between(r, 0.9, 1.4));
     const visit: DemoVisit = { code: s.code, name: s.name, kind: s.kind, sort: i, standardMinutes: s.standardMinutes, checks: s.checks, results: [], status: 'PENDING', operator: null, startedAt: null, finishedAt: null, passedBy: null, passedAt: null, notes: null };
     v.visits.push(visit);
@@ -352,7 +348,7 @@ function buildVehicle(input: BuildInput): DemoVehicle {
     visit.operator = who; visit.startedAt = startedAt; visit.status = 'IN_PROGRESS';
     if (s.kind === 'GATE') gateRecorder = who;
     // A defect here? Roughly 0.35 per vehicle over the route, more at the bottleneck and the tests.
-    const p = (s.code === 'C3' || s.code === 'M1' || s.kind === 'TEST' ? 0.045 : 0.022) * (seq % 5 === 0 ? 1.6 : 1);
+    const p = (s.code === 'C2' || s.code === 'M1' || s.kind === 'TEST' ? 0.045 : 0.022) * (seq % 5 === 0 ? 1.6 : 1);
     const seedList = seeds[s.code] ?? [];
     const defectHere = seedList.length && chance(r, p) ? pick(r, seedList) : null;
     const checkAt = (k: number) => plusMin(startedAt, Math.round(((k + 1) / s.checks.length) * minutes * 0.85));
@@ -433,7 +429,7 @@ function afterGate(input: BuildInput, v: DemoVehicle, passedAt: Date) {
       v.audits.push(audit);
       if (finishedAt > now) return; // being audited now
       audit.finishedAt = finishedAt; audit.result = fails || demerits >= 20 ? 'FAIL' : 'PASS';
-      audit.notes = audit.result === 'PASS' ? (findings.length ? 'Findings polished out in the yard.' : 'Clean.') : 'Fuel return union weeping under pressure: back to F1 for the union and a pressure test.';
+      audit.notes = audit.result === 'PASS' ? (findings.length ? 'Findings polished out in the yard.' : 'Clean.') : 'Fuel return union weeping under pressure: back to the line for the union and a pressure test.';
       if (audit.result === 'FAIL') {
         // Back to the line: the gate is failed, the findings are defects; the vehicle sits at G1 in rework now.
         const gate = v.visits.find((x) => x.kind === 'GATE')!;

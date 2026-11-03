@@ -444,25 +444,29 @@ all of it).
 
 1. As the **Production Supervisor**: **Assembly plant → The line**. The
    board shows one column per station of the live routes (the Isuzu
-   truck line C1…G1, the Soueast S07 line B1…G1), every VIN at its station
+   truck line C1, C2, C3, E1, R1, G1 — the simple line Kewalram runs: the
+   kit's chassis arrives as built, so the line is *chassis on the line →
+   cab fitted → fluids, battery and first start*, then the tests, the road
+   test and the gate; the Soueast S07 line B1…G1, fuller), every VIN at its station
    with its minutes there and its open defects, and the figures: on the line,
    in rework, passed today, **first-time-through** and **defects per unit**
    over 30 days, open A-defects. A vehicle released from its kit but not yet
    started is listed below: press **Start the build** and the route becomes
    its stations.
 2. As the **Line Operator** on a tablet, open the vehicle. Stations run in
-   order: trying C2 before C1 is refused. At **C1 Chassis frame dress**, tap
-   each check Pass; type **150** for the cross-member bolt torque (limits
-   180–220 N·m) — it fails at once. *Finish the station* is refused until
-   the defect is raised: **Frame and chassis · Loose / under torque · Tool:
-   torque setting**, which the catalogue grades **A (safety)**. The station is
+   order: trying C2 before C1 is refused. At **C1 Chassis on the line**, tap
+   each check Pass; type **150** for the spring U-bolt torque (limits
+   200–240 N·m) — it fails at once. *Finish the station* is refused until
+   the defect is raised: **Axles and suspension · Loose / under torque ·
+   Tool: torque setting**, which the catalogue grades **A (safety)**. The station is
    now *Failed, in rework*. Type what was done and press **Reworked**: the
    operator cannot verify their own rework.
 3. As the **QC Inspector**: **Approvals → Plant → Verify rework DEF-…** →
    **Verified: close** (or *Still wrong*, with a note, which reopens it).
    Back as the operator, re-record the torque (**200**) and finish C1:
-   *Passed*. Work the remaining stations through the end-of-line tests and
-   the road test.
+   *Passed*. Work C2 (the cab) and C3 (fluids and first start), then the
+   end-of-line tests and the road test. A plant whose kit comes less
+   complete adds stations under **Routes** (step 6).
 4. At **G1 Final inspection** the operator records the gate's checks and
    presses *Finish the gate checks*. The gate itself is passed by quality,
    never by whoever recorded its checks, and never while an A- or B-defect
@@ -478,7 +482,7 @@ all of it).
    raises every finding as a defect, fails the gate and sends the vehicle
    back to the line. A clean audit passes and is kept with its score.
 6. The **Production Supervisor** edits a route under **Routes**: the stations
-   and checks as text (`# C1 | Chassis frame dress | STATION | 45 min`, then
+   and checks as text (`# C1 | Chassis on the line | STATION | 40 min`, then
    one check per line, measurements with unit and limits). Problems show as
    you type and nothing saves while one remains; saving makes a new version,
    and vehicles already on the line keep the version they started with.

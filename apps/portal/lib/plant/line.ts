@@ -7,10 +7,13 @@
  * station list it started with. Two default routes, from how a CKD/SKD truck
  * line runs (docs/DEMO_WALKTHROUGH.md §12):
  *
- *  Isuzu N/Q-series (CKD): kit receiving (D2) → chassis frame dress → axles
- *  and suspension → powertrain → cab line → cab mounting → wheels, fluids and
- *  first start → end-of-line tests → road test → final inspection (gate) →
- *  QA audit (a sample) → PDI (D1) → yard → dispatch.
+ *  Isuzu N/Q-series (CKD): the simple line Kewalram runs. The kit's chassis
+ *  arrives as built — frame, axles, springs, wheels, engine and gearbox on it —
+ *  so the line starts from the chassis: kit receiving (D2) → chassis on the
+ *  line (checked, torques) → cab fitted → fluids, battery and first start →
+ *  end-of-line tests → road test → final inspection (gate) → QA audit (a
+ *  sample) → PDI (D1) → yard → dispatch. Three assembly stations, two tests,
+ *  one gate; the plant manager adds stations when the kit changes.
  *
  *  Soueast S07 (SKD): body receiving → trim and glazing → chassis and
  *  powertrain marriage → wheels and fluids → end-of-line (alignment,
@@ -41,13 +44,9 @@ export const DEFAULT_ROUTES: Record<PdiFamily, RouteTemplate> = {
   'isuzu-n': {
     key: 'isuzu-n', name: 'Isuzu N/Q-series truck line (CKD)',
     stations: [
-      { code: 'C1', name: 'Chassis frame dress', kind: 'STATION', standardMinutes: 45, checks: [pf('C1-01', 'Frame on stands, level, identity label matches the kit'), pf('C1-02', 'Cross-members fitted'), m('C1-03', 'Cross-member bolts torque', 'N·m', 180, 220), pf('C1-04', 'Brake lines routed and clipped, no kinks'), pf('C1-05', 'Fuel lines routed and clipped'), pf('C1-06', 'Main wiring harness routed, connectors clipped')] },
-      { code: 'C2', name: 'Axles and suspension', kind: 'STATION', standardMinutes: 45, checks: [pf('C2-01', 'Front axle fitted'), pf('C2-02', 'Rear axle fitted'), m('C2-03', 'Spring U-bolt torque', 'N·m', 200, 240), pf('C2-04', 'Leaf springs and shackles fitted, pins greased'), pf('C2-05', 'Shock absorbers fitted'), m('C2-06', 'Shock absorber mounting torque', 'N·m', 80, 100)] },
-      { code: 'C3', name: 'Powertrain', kind: 'STATION', standardMinutes: 50, checks: [pf('C3-01', 'Engine and transmission married'), m('C3-02', 'Engine mounting torque', 'N·m', 60, 80), pf('C3-03', 'Propeller shaft fitted, phased'), m('C3-04', 'Propeller shaft flange torque', 'N·m', 85, 105), pf('C3-05', 'Exhaust fitted and hangers in place'), pf('C3-06', 'Fuel tank fitted and strapped'), pf('C3-07', 'Batteries fitted and terminals tight')] },
-      { code: 'T1', name: 'Cab trim and wiring', kind: 'STATION', standardMinutes: 45, checks: [pf('T1-01', 'Cab wiring harness routed and connected'), pf('T1-02', 'Dashboard fitted'), pf('T1-03', 'Pedals and steering column fitted'), pf('T1-04', 'Headlining and trim panels fitted')] },
-      { code: 'T2', name: 'Cab glass and seats', kind: 'STATION', standardMinutes: 40, checks: [pf('T2-01', 'Windscreen bonded and seated'), pf('T2-02', 'Door glass and regulators work'), pf('T2-03', 'Seats and seat belts fitted'), m('T2-04', 'Seat-belt anchor torque', 'N·m', 40, 55)] },
-      { code: 'T3', name: 'Cab mounting', kind: 'STATION', standardMinutes: 45, checks: [pf('T3-01', 'Cab lowered onto mounts, tilt lock engages'), m('T3-02', 'Cab mounting bolt torque', 'N·m', 90, 110), pf('T3-03', 'Steering shaft connected and pinned'), pf('T3-04', 'Cab-to-chassis harness and hoses connected')] },
-      { code: 'F1', name: 'Wheels, fluids and first start', kind: 'STATION', standardMinutes: 45, checks: [m('F1-01', 'Wheel nut torque', 'N·m', 540, 600), pf('F1-02', 'Coolant filled and bled'), pf('F1-03', 'Brake and clutch fluid filled and bled'), pf('F1-04', 'Engine, gearbox and axle oils filled'), pf('F1-05', 'Fuel added'), pf('F1-06', 'First start: engine runs, no leaks, no warning lamps')] },
+      { code: 'C1', name: 'Chassis on the line', kind: 'STATION', standardMinutes: 40, checks: [pf('C1-01', 'Chassis on the line, identity label matches the kit (VIN and engine number)'), pf('C1-02', 'Axles, springs and tyres as delivered: nothing loose, bent or damaged'), m('C1-03', 'Spring U-bolt torque', 'N·m', 200, 240), pf('C1-04', 'Engine and gearbox on their mounts, propeller shaft bolted'), m('C1-05', 'Wheel nut torque', 'N·m', 540, 600), pf('C1-06', 'Brake and fuel lines and the main harness routed and clipped, no kinks')] },
+      { code: 'C2', name: 'Cab fitted', kind: 'STATION', standardMinutes: 45, checks: [pf('C2-01', 'Cab lowered onto its mounts, tilt lock engages'), m('C2-02', 'Cab mounting bolt torque', 'N·m', 90, 110), pf('C2-03', 'Steering shaft connected and pinned'), pf('C2-04', 'Cab-to-chassis harness, hoses and cables connected'), pf('C2-05', 'Glass, seats and seat belts in place; doors close and lock')] },
+      { code: 'C3', name: 'Fluids, battery and first start', kind: 'STATION', standardMinutes: 40, checks: [pf('C3-01', 'Coolant filled and bled'), pf('C3-02', 'Brake and clutch fluid filled and bled'), pf('C3-03', 'Engine, gearbox and axle oils at level'), pf('C3-04', 'Batteries fitted, terminals tight; fuel added'), pf('C3-05', 'First start: engine runs, no leaks, no warning lamps')] },
       { code: 'E1', name: 'End-of-line tests', kind: 'TEST', standardMinutes: 40, checks: [m('E1-01', 'Side-slip (front)', 'm/km', -3, 3), m('E1-02', 'Headlamp aim (dip, left)', '%', -1.5, -0.5), m('E1-03', 'Roller brake imbalance (front axle)', '%', 0, 20), m('E1-04', 'Speedometer at 60 km/h reads', 'km/h', 60, 66), pf('E1-05', 'Under-body inspection on the pit: no leaks, all clips'), pf('E1-06', 'Shower (water-leak) test: cab dry')] },
       { code: 'R1', name: 'Road test', kind: 'TEST', standardMinutes: 30, checks: [pf('R1-01', 'Starts and idles'), pf('R1-02', 'Clutch and all gears'), pf('R1-03', 'Steering centred, no pull'), pf('R1-04', 'Brakes, ABS, parking brake'), pf('R1-05', 'No abnormal noise or vibration'), pf('R1-06', 'No leaks after the test')] },
       { code: 'G1', name: 'Final inspection', kind: 'GATE', standardMinutes: 30, checks: [pf('G1-01', 'Every station passed and signed'), pf('G1-02', 'No open A or B defect'), pf('G1-03', 'Fit and finish walk-round: paint, gaps, labels'), pf('G1-04', 'Build papers complete (VIN, engine, build date)')] },

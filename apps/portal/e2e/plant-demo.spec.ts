@@ -58,7 +58,7 @@ test('the administrator loads the demo: the plant, the line, the kits, QA, Headq
   // A demo vehicle's page: its kit, its stations, its PDI.
   const yard = await db().plantVehicle.findFirstOrThrow({ where: { organisationId: org.id, externalSource: 'EJO-DEMO', stage: 'YARD' }, select: { vin: true } });
   await open(page, `/vehicles/${yard.vin}`);
-  await expect(page.getByText('C1 Chassis frame dress').or(page.getByText('B1 Body receiving')).first()).toBeVisible();
+  await expect(page.getByText('C1 Chassis on the line').or(page.getByText('B1 Body receiving')).first()).toBeVisible();
   await expect(page.locator('li', { hasText: 'Pre-delivery inspection' }).first().getByText('Done')).toBeVisible();
 });
 
