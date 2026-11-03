@@ -415,9 +415,11 @@ no real person or vehicle in it).
   *load the demo* (or *remove the demo*). Audited as `demo.plant_loaded` /
   `demo.plant_removed`.
 - **From a terminal:** `npm run demo:reset` — the demo people with their
-  sign-ins first (when `DEMO_STAFF_PASSWORD` is set), then the plant demo
-  (`-- --org <slug>` marks that organisation as the demo; `-- --remove`
-  takes the records out). Against a
+  sign-ins first (when `DEMO_STAFF_PASSWORD` is set), then the plant demo,
+  then the workshop demo (`-- --org <slug>` marks that organisation as the
+  demo; `-- --remove` takes the records out). `npm run demo:ensure` loads
+  both demos only when the demo organisation has none yet (the production
+  build runs it). Against a
   hosted database (Supabase, Render, Neon, RDS, or `NODE_ENV=production`)
   it refuses unless `DEMO_RESET_CONFIRM="replace the demo records"` is set.
 - Every demo record carries `externalSource = EJO-DEMO`; a reload or a
@@ -428,6 +430,14 @@ no real person or vehicle in it).
   numbers DEMO-AP-001…, addresses on the reserved `demo.kewalram.local`
   name) — kept by a removal; their sign-ins come from the demo people step
   ([KEWALRAM_DEMO.md](KEWALRAM_DEMO.md)), never from the plant demo itself.
+- The workshop demo's records carry no `externalSource` of their own (job
+  cards, services, receipts, warranties, security, scheduling, support…):
+  each is listed in **`demo_records`** (model and id) when made, and a
+  reload or removal deletes exactly that list, children first, including
+  the demo's own audit entries under the trail's recorded maintenance
+  switch. Customers, vehicles, suppliers and parts also carry
+  `externalSource = EJO-DEMO`. Only an organisation marked as a demo
+  (`organisations.isDemo`) is ever loaded.
 - The same records are written as files by `npx tsx
   apps/portal/scripts/demo-files.ts` into `docs/demo/correct/`:
   `10_plant_shipments_demo.csv`, `11_plant_kits_demo.csv`,

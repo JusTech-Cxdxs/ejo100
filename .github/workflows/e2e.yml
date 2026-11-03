@@ -115,7 +115,9 @@ jobs:
       - name: The demo people with sign-ins (lib/demo; the test password from e2e/people.ts, test database only)
         env:
           DEMO_STAFF_PASSWORD: 'Demo-E2e-Pass-2026!'
-        run: npx tsx apps/portal/scripts/demo-people.ts
+        run: |
+          npx tsx apps/portal/scripts/demo-people.ts
+          npx tsx apps/portal/scripts/demo-ensure.ts
       # A real IMAP + SMTP test server for the work-mailbox spec (apps/portal/e2e/mailbox.spec.ts):
       # plain IMAP on 3143 and SMTP on 3025, one mailbox (wura@mail.e2e.test, password
       # "wura-mail-pass"); mail sent to it lands in its inbox. Test-only credentials.

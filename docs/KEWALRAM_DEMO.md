@@ -123,9 +123,14 @@ in kit receiving, quality and PDI: they are these same accounts.
 
 ## Where the records come from
 
-The workshop's six months (customers, vehicles, job cards in every status,
-the store, warranty, security, scheduling, support) and the daily life of
-the demo arrive with the next demo releases (D2, D3); the plant's six weeks
-are already there (DEMO_WALKTHROUGH §13). The four customers above exist
-from the first run so the portal can be shown at once; their vehicles,
-jobs, warranty claim and Afprint-built vehicle come with D2.
+The plant's six weeks (DEMO_WALKTHROUGH §13) and the workshop's six months
+(§15) are loaded once by the first production build after
+`DEMO_STAFF_PASSWORD` is set (`npm run demo:ensure`), as of that minute:
+customers, vehicles, job cards in every status, services, the store,
+warranty and claims, security, scheduling, support, imports and exports,
+and the six Afprint-built vehicles sold through Isolo. A later deploy
+leaves what people did in the demo alone; `npm run demo:reset` starts the
+story again from now, removing exactly the demo's own records. The four
+customers above each have their story: Adaora's S07 in service today, the
+fleet's trucks (one open job card, one ready for collection), the warranty
+customer's submitted claim, the Afprint-built NQR with its passport.

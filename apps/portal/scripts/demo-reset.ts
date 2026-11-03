@@ -1,11 +1,12 @@
 /**
  * Loads (or removes) the whole demo in the demo organisation: the demo people
  * with their sign-ins (lib/demo/people-load.ts, when DEMO_STAFF_PASSWORD is
- * set) and the plant demo in its assembly plant (lib/plant/demo):
+ * set), the plant demo in its assembly plant (lib/plant/demo) and the six
+ * months of the workshop at Isolo (lib/workshop/demo):
  *
  *   npm run demo:reset                 the organisation marked as the demo (the seed's own when none is)
  *   npm run demo:reset -- --org kewalram-nigeria    marks that organisation as the demo first
- *   npm run demo:reset -- --remove     take the demo records out, load nothing (people are kept, switched off only by un-marking the organisation)
+ *   npm run demo:reset -- --remove     take the demo records out (workshop and plant), load nothing (people are kept, switched off only by un-marking the organisation)
  *
  * Refused against a production database unless DEMO_RESET_CONFIRM is set to
  * "replace the demo records": the reset deletes the previous demo's records
@@ -14,6 +15,7 @@
  */
 import { prisma } from '@ejo/database';
 import { loadPlantDemo, removePlantDemo } from '../lib/plant/demo/load';
+import { loadWorkshopDemo, removeWorkshopDemo } from '../lib/workshop/demo/load';
 import { describeDemoPeople, loadDemoPeople } from '../lib/demo/people-load';
 import { demoOrganisations } from './demo-people';
 
@@ -42,8 +44,9 @@ async function main() {
   const org = orgs[0]!;
   if (org.marked) console.log(`${org.name} (${org.slug}) is now marked as the demo organisation.`);
   if (remove) {
+    const w = await removeWorkshopDemo(org.id);
     const r = await removePlantDemo(org.id);
-    console.log(`Removed the plant demo from ${org.name}: ${r.vehicles} vehicles and ${r.shipments} shipments (with everything hanging off them).`);
+    console.log(`Removed the workshop demo from ${org.name}: ${w} records. Removed the plant demo: ${r.vehicles} vehicles and ${r.shipments} shipments (with everything hanging off them).`);
     return;
   }
   const started = Date.now();
@@ -53,6 +56,10 @@ async function main() {
   console.log(`Removed first: ${r.removed.vehicles} vehicles, ${r.removed.shipments} shipments.`);
   console.log(`Made: ${r.made.people} people, ${r.made.shipments} shipments, ${r.made.kits} kits, ${r.made.vehicles} vehicles, ${r.made.visits} station visits, ${r.made.defects} defects, ${r.made.audits} QA audits, ${r.made.pdis} PDIs.`);
   console.log(`Figures: ${JSON.stringify(r.figures.byStage)} · FTT ${r.figures.ftt}% · ${r.figures.dpu} defects per unit.`);
+  const w = await loadWorkshopDemo(org.id, new Date());
+  console.log(`Workshop demo loaded into ${w.branchName} in ${Math.round((Date.now() - started) / 100) / 10}s total (removed ${w.removed} records of the previous demo).`);
+  console.log(`Made: ${Object.entries(w.made).map(([k, v]) => `${v} ${k}`).join(', ')}.`);
+  console.log(`Figures: ${JSON.stringify(w.figures)}`);
 }
 
 main().catch((e) => { console.error(e instanceof Error ? e.message : e); process.exit(1); }).finally(() => prisma.$disconnect());

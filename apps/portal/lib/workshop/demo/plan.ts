@@ -21,7 +21,7 @@ import { addWorkingMinutes, planPlantDemo } from '../../plant/demo/plan';
 import { MINIMUM_DEPOSIT_FRACTION } from '../../workshop-constants';
 import { getApplicableTemplate } from '../../vehicle-inspection-template';
 import {
-  APPOINTMENT_TITLES, BROADCASTS, CATEGORIES, COLOURS, COMMERCIAL_COMPLAINTS, CUSTOMERS, DEMO_SOURCE, EXIT_REASONS, EXPORTS, IMPORTS, INCIDENTS, JOB_LINES, MODELS, PARTS, PASSENGER_COMPLAINTS,
+  APPOINTMENT_TITLES, BROADCASTS, COLOURS, COMMERCIAL_COMPLAINTS, CUSTOMERS, DEMO_SOURCE, EXIT_REASONS, EXPORTS, IMPORTS, INCIDENTS, JOB_LINES, MODELS, PARTS, PASSENGER_COMPLAINTS,
   PLATE_PREFIXES, POLICIES, PROVIDERS, SERVICE_TEXTS, SUPPLIERS, TICKETS, VISITOR_COMPANIES, VISITOR_PURPOSES, type CatalogueModel, type LineSpec,
 } from './catalogue';
 
@@ -360,7 +360,7 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
   };
   const deposit = (total: number) => Math.min(total, round500(total * MINIMUM_DEPOSIT_FRACTION));
 
-  type JobOpts = { vehicle: DemoVehicle; openedAt: Date; kind?: string; service?: boolean; target?: JobCardStatus; slow?: 'customer' | 'parts' | null; rework?: boolean; warranty?: DemoWarranty | null; fromServiceKey?: string | null; /** A quick job: the customer pays within the hour and the work is short, so a card opened a few days ago reaches its stage. */ quick?: boolean };
+  type JobOpts = { vehicle: DemoVehicle; openedAt: Date; kind?: string; service?: boolean; target?: JobCardStatus; slow?: 'customer' | 'parts' | null; rework?: boolean; warranty?: DemoWarranty | null; fromServiceKey?: string | null; /** A quick job: the customer pays within the hour and the work is short, so a card opened a few days ago reaches its stage. */ quick?: boolean; /** With slow 'parts': where the slip waits. */ slipStage?: 'PENDING_HOD_APPROVAL' | 'PENDING_STORE_APPROVAL' | 'APPROVED'; /** A cancelled card: was the vehicle handed back (CHECKED_OUT)? */ collected?: boolean };
   /**
    * One job card from check-in to its state at the anchor. The timeline is
    * built in working time; the status is wherever the timeline has reached
@@ -420,7 +420,8 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
         jc.status = 'CANCELLED'; log('cancellation.approved', decidedAt, P.manager);
         if (paid) { const refAt = wm(decidedAt, int(r, 120, 900)); if (refAt <= now) jc.refund = { amount: jc.payments[0]!.amount, method: 'BANK_TRANSFER', at: refAt, paidToName: customer.name, reason: 'Job card cancelled before work started; deposit returned.' }; }
         const outAt = wm(decidedAt, int(r, 60, 600));
-        if (outAt <= now && chance(r, 0.6)) { jc.status = 'CHECKED_OUT'; jc.checkedOutAt = outAt; jc.collectedByName = collectorName(customer); jc.gateExit = { at: plus(outAt, 12 * 60_000), driverName: jc.collectedByName }; log('job_card.status_updated', outAt, P.frontdesk, { status: 'CHECKED_OUT' }); }
+        const collected = o.collected ?? chance(r, 0.6);
+        if (outAt <= now && collected) { jc.status = 'CHECKED_OUT'; jc.checkedOutAt = outAt; jc.collectedByName = collectorName(customer); jc.gateExit = { at: plus(outAt, 12 * 60_000), driverName: jc.collectedByName }; log('job_card.status_updated', outAt, P.frontdesk, { status: 'CHECKED_OUT' }); }
       }
       return jc;
     }
@@ -447,7 +448,7 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
     // 4. Parts: the slip. A slow store (parts awaited) holds the card at AWAITING_PARTS.
     const slipAt = wm(t, int(r, 10, 60));
     if (o.slow === 'parts') {
-      const slip = makeSlip(est, slipAt, 'PENDING_STORE_APPROVAL', tech);
+      const slip = makeSlip(est, slipAt, o.slipStage ?? 'PENDING_STORE_APPROVAL', tech);
       if (slip) { jc.slips.push(slip); if (slipAt <= now) { jc.status = 'AWAITING_PARTS'; log('job_card.status_updated', slipAt, sup, { status: 'AWAITING_PARTS' }); } }
       return jc;
     }
@@ -506,7 +507,9 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
     return jc;
   };
 
-  const makeService = (v: DemoVehicle, createdAt: Date, target?: ServiceStatus): DemoService => {
+  const makeService = (v: DemoVehicle, createdAt: Date, target?: ServiceStatus, quick = false): DemoService => {
+    /** A quick service moves in clock minutes (a quarter of the usual), so one booked this morning is at its stage now. */
+    const adv = (from: Date, lo: number, hi: number) => (quick ? plus(from, int(r, Math.ceil(lo / 4), Math.ceil(hi / 4)) * 60_000) : wm(from, int(r, lo, hi)));
     const customer = customerByKey.get(v.customerKey)!;
     const dept = deptOf(v);
     const { tech, sup } = peopleFor(dept);
@@ -521,23 +524,23 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
     };
     log('vehicle_service.created', createdAt, P.frontdesk);
     if (target === 'SCHEDULED') return sv;
-    let t = wm(createdAt, int(r, 10, 90)); if (t > now) return sv;
+    let t = adv(createdAt, 10, 90); if (t > now) return sv;
     sv.approvalStatus = 'APPROVED'; sv.approvedAt = t;
     if (target === 'CANCELLED') {
       const reqAt = wm(t, int(r, 60, 300)); const decAt = wm(reqAt, int(r, 30, 200));
       sv.cancellation = { reason: 'Customer did not bring the vehicle; rebooked for next month', requestedAt: reqAt, decidedAt: decAt, status: 'APPROVED' }; sv.status = 'CANCELLED'; sv.cancelledAt = decAt; log('vehicle_service.cancelled', decAt, P.manager);
       return sv;
     }
-    t = wm(t, int(r, 15, 120)); if (t > now) return sv;
+    t = adv(t, 15, 120); if (t > now) return sv;
     sv.status = 'CHECKED_IN'; sv.checkedInAt = t; log('vehicle_service.status_updated', t, P.frontdesk, { status: 'CHECKED_IN' });
     if (target === 'CHECKED_IN') return sv;
     // The inspection: every item in the template, a few needing attention.
-    const insStart = wm(t, int(r, 10, 40));
+    const insStart = adv(t, 10, 40);
     if (insStart <= now) {
       const template = getApplicableTemplate(v.type);
       const items = template.flatMap((s) => s.items.map((i) => ({ section: s.section, name: i.name, condition: i.conditionOptions[0] ?? 'Good', severity: 'GOOD' as const, action: i.actionOptions[0] ?? 'No action' })));
       for (const i of items) if (chance(r, 0.12)) { const sev = pick(r, ['ATTENTION', 'ATTENTION', 'SERVICE_REQUIRED', 'CRITICAL'] as const); Object.assign(i, { severity: sev, condition: sev === 'CRITICAL' ? 'Unsafe' : 'Worn', action: sev === 'ATTENTION' ? 'Monitor' : 'Replace' }); }
-      const insEnd = wm(insStart, int(r, 25, 60));
+      const insEnd = adv(insStart, 25, 60);
       sv.inspection = { status: insEnd <= now ? 'COMPLETED' : 'IN_PROGRESS', startedAt: insStart, completedAt: insEnd <= now ? insEnd : null, items };
       t = insEnd <= now ? insEnd : insStart;
     }
@@ -549,15 +552,15 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
     // The service estimate (labour and the parts): submitted, approved, the customer told, the deposit, the work.
     const est = makeEstimate(JOB_LINES[v.type === 'COMMERCIAL' ? 'service-truck' : 'service']!, t, tech, null);
     sv.estimate = est;
-    t = wm(t, int(r, 10, 40)); if (t > now) return sv;
+    t = adv(t, 10, 40); if (t > now) return sv;
     est.status = 'SUBMITTED'; est.submittedAt = t;
-    t = wm(t, int(r, 15, 90)); if (t > now) return sv;
+    t = adv(t, 15, 90); if (t > now) return sv;
     est.status = 'APPROVED'; est.approvedAt = t;
-    t = wm(t, int(r, 15, 120)); if (t > now) return sv;
+    t = adv(t, 15, 120); if (t > now) return sv;
     est.status = 'MANAGER_APPROVED'; est.managerApprovedAt = t; est.matchingRequestedAt = wm(t, 5);
-    t = wm(t, int(r, 5, 20)); if (t > now) return sv;
+    t = adv(t, 5, 20); if (t > now) return sv;
     est.customerNotifiedAt = t;
-    t = wm(t, int(r, 30, 400)); if (t > now) return sv;
+    t = adv(t, 30, 400); if (t > now) return sv;
     const dep = deposit(est.customerTotal);
     sv.payments.push({ key: `${sv.key}-p1`, amount: dep, method: chance(r, 0.7) ? 'BANK_TRANSFER' : 'CASH', at: t, note: 'Deposit (70%) before work starts', byKey: who(P.finance) }); log('payment.recorded', t, P.finance, { amount: dep });
     sv.status = 'IN_SERVICE'; sv.workStartedAt = t; log('vehicle_service.status_updated', t, P.finance, { status: 'IN_SERVICE' });
@@ -640,20 +643,29 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
   }
   // Job cards that show every stage today, whatever the dice did above.
   const stageDays: [JobCardStatus, number, Partial<JobOpts>][] = [
-    ['CHECKED_IN', 0, {}], ['CHECKED_IN', 0, {}], ['AWAITING_CUSTOMER_APPROVAL', 1, {}], ['AWAITING_CUSTOMER_APPROVAL', 9, { slow: 'customer' }], ['IN_PROGRESS', 2, {}], ['AWAITING_PARTS', 3, { slow: 'parts' }],
-    ['QUALITY_CHECK', 3, { quick: true }], ['QUALITY_CHECK', 4, { quick: true, rework: true }], ['COMPLETED', 4, { quick: true }], ['COMPLETED', 5, { quick: true }], ['READY_FOR_COLLECTION', 5, { quick: true }], ['READY_FOR_COLLECTION', 6, { quick: true }], ['CLOSED', 6, { quick: true }], ['CANCELLED', 2, {}],
+    ['CHECKED_IN', 0, {}], ['CHECKED_IN', 0, {}], ['AWAITING_CUSTOMER_APPROVAL', 1, {}], ['AWAITING_CUSTOMER_APPROVAL', 9, { slow: 'customer' }], ['IN_PROGRESS', 2, {}], ['AWAITING_PARTS', 3, { slow: 'parts', quick: true, kind: 'brakes' }], ['AWAITING_PARTS', 2, { slow: 'parts', slipStage: 'APPROVED', quick: true, kind: 'cooling' }], ['AWAITING_PARTS', 4, { slow: 'parts', slipStage: 'PENDING_HOD_APPROVAL', quick: true, kind: 'clutch' }],
+    ['QUALITY_CHECK', 3, { quick: true }], ['QUALITY_CHECK', 4, { quick: true, rework: true }], ['COMPLETED', 4, { quick: true }], ['COMPLETED', 5, { quick: true }], ['READY_FOR_COLLECTION', 5, { quick: true }], ['READY_FOR_COLLECTION', 6, { quick: true }], ['CLOSED', 6, { quick: true }], ['CANCELLED', 2, { collected: false }], ['CANCELLED', 5, { collected: true }],
   ];
   for (const [target, daysAgo, extra] of stageDays) {
     let d = plus(today, -daysAgo * DAY); while (!isWorkDay(d)) d = plus(d, -DAY);
     const v = pickVehicle();
-    const jc = makeJobCard({ vehicle: v, openedAt: at(d, int(r, 8, 11), int(r, 0, 59)), target, ...extra });
+    const openedAt = at(d, int(r, 8, 11), int(r, 0, 59));
+    const jc = makeJobCard({ vehicle: v, openedAt: openedAt > now ? plus(now, -int(r, 15, 60) * 60_000) : openedAt, target, ...extra });
     jobCards.push(jc); busy(v, null);
+  }
+  // Services that show every stage today, whatever the dice did above.
+  for (const [target, daysAgo] of [['CHECKED_IN', 0], ['CHECKED_IN', 0], ['IN_SERVICE', 1], ['IN_SERVICE', 1], ['COMPLETED', 2], ['READY_FOR_COLLECTION', 2], ['CLOSED', 3]] as [ServiceStatus, number][]) {
+    let d = plus(today, -daysAgo * DAY); while (!isWorkDay(d)) d = plus(d, -DAY);
+    const v = pickVehicle();
+    const createdAt = daysAgo === 0 ? plus(now, -int(r, 150, 240) * 60_000) : at(d, int(r, 7, 9), int(r, 0, 59));
+    const sv = makeService(v, createdAt, target, true);
+    services.push(sv); busy(v, null);
   }
   // The four sign-ins' own stories.
   const adaora = vehicles.find((v) => v.customerKey === 'customer.adaora')!;
-  { const sv = makeService(adaora, at(plus(today, -1 * DAY), 8, 5), 'IN_SERVICE'); services.push(sv); busy(adaora, null); }
+  { const sv = makeService(adaora, at(plus(today, -1 * DAY), 8, 5), 'IN_SERVICE', true); services.push(sv); busy(adaora, null); }
   const fleetTrucks = vehicles.filter((v) => v.customerKey === 'customer.fleet');
-  { const jc = makeJobCard({ vehicle: fleetTrucks[0]!, openedAt: at(today, 7, 50), kind: 'airbrake', target: 'CHECKED_IN' }); jobCards.push(jc); busy(fleetTrucks[0]!, null); }
+  { const jc = makeJobCard({ vehicle: fleetTrucks[0]!, openedAt: plus(now, -35 * 60_000), kind: 'airbrake', target: 'CHECKED_IN' }); jobCards.push(jc); busy(fleetTrucks[0]!, null); }
   { const jc = makeJobCard({ vehicle: fleetTrucks[1]!, openedAt: at(plus(today, -2 * DAY), 9, 10), kind: 'spring', target: 'READY_FOR_COLLECTION' }); jobCards.push(jc); busy(fleetTrucks[1]!, null); }
   // Every service on the plant-built vehicles, so their passports read from kit to first service.
   for (const v of plantVehicles) {
@@ -688,8 +700,9 @@ function build(anchor: Date, consumption: Map<string, number> | null): WorkshopD
     const logistics = i % 3 === 0 ? 12_000 : 0;
     const claimed = labour + parts + logistics;
     const createdAt = wm(jc.openedAt, int(r, 200, 400));
-    const step = (k: number) => wm(createdAt, k * int(r, 300, 900));
     const idx = claimStages.indexOf(status);
+    // The stage stamps sit evenly between the claim's opening and now (a recent claim moved fast).
+    const step = (k: number) => new Date(createdAt.getTime() + Math.round((k / (idx + 1)) * (now.getTime() - createdAt.getTime()) * between(r, 0.85, 0.98)));
     const provider = PROVIDERS.find((p) => p.key === w.providerKey)!;
     const approved = status === 'PARTIALLY_ACCEPTED' ? Math.round(claimed * 0.6) : status === 'ACCEPTED' || status === 'SETTLED' ? claimed : status === 'REJECTED' ? 0 : null;
     claims.push({

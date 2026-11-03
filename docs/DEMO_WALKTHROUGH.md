@@ -556,7 +556,69 @@ employee numbers `DEMO-…`.
    same password (or `DEMO_CUSTOMER_PASSWORD`).
 4. The plant's people here are the ones §13 puts on the line: one set of
    accounts. Their records in the workshop — six months of job cards,
-   services, the store, warranty, security, support — come with D2.
+   services, the store, warranty, security, support — are §15.
+
+## 15. Six months of the workshop in one go: the workshop demo (D2)
+
+*The question: "show me the workshop as it is on a Tuesday morning — not an
+empty list."*
+
+People: everyone at Isolo (§14); the Administrator loads it.
+
+1. The demo organisation gets its records once, by itself: the production
+   build (when `DEMO_STAFF_PASSWORD` is set) runs `npm run demo:ensure` after
+   the demo people — the plant's six weeks (§13) and then **six months of
+   Isolo Branch** as of that minute. From a terminal: `npm run demo:reset`
+   (people → plant → workshop; refused against a hosted database unless
+   `DEMO_RESET_CONFIRM` is set). Every record it makes is listed in
+   `demo_records`, so a reload or `-- --remove` takes out exactly those and
+   nothing a person made — even the demo's own audit entries, under the
+   trail's recorded maintenance switch, so a job card's history is never
+   doubled.
+2. As the **Manager** (`manager@demo.kewalram.local`): the dashboard, then
+   **Workshop → Job cards**: about 175 over six months and, today, one at
+   every status — checked in this morning, waiting for the customer's
+   approval (one nine days overdue, with its reminder), in progress,
+   waiting for parts (the slip with the HOD, with the store, approved and
+   reserved), at quality check (one sent back for rework, in the history),
+   completed, ready for collection, closed, checked out, and cancelled
+   (one with its refund). Open any: the complaint, the diagnosis, the
+   estimate with labour, store parts matched to the catalogue, an outside
+   part or job, the parts slip and what the store issued (batch numbers for
+   oil, serial numbers for batteries), the 70% deposit that started the
+   work and the balance at collection, the close request, the gate exit.
+3. **Vehicle services**: ~80 services, every status, the inspection on each
+   (a few items needing attention), the service estimate, two escalated
+   into job cards, the **service tracker** with the next service due from
+   each completed one and three reminders sent.
+4. As the **Store Manager**: stock from 35 goods receipts (an opening count
+   and monthly orders from six suppliers), four parts **below their reorder
+   point**, two open **pricing alerts** (an injector bought at a loss, pads
+   that ate the margin) and two resolved ones, batches with what is left,
+   serials in stock and issued.
+5. As the **Warranty HOD**: four providers and policies, the makers'
+   warranties on the Afprint-built and newer vehicles (one waiting for
+   verification), part warranties made automatically for every battery and
+   pad set issued, and **nine claims, one at each stage** from draft to
+   settled — the warranty customer's is the submitted one.
+6. As the **Chief Security Officer**: **Security → Overdue** shows the
+   insurance assessor three hours past his time and the Store Officer out
+   on an exit pass past its return; a visitor just in, two expected, a
+   delivery at the gate and one expected, the roofing contractor's team on
+   site, an open incident from this morning, 40 road tests on the job
+   cards that needed one.
+7. **Scheduling, broadcasts, support**: today's appointments in the two
+   rooms, a branch notice about Saturday's generator service, a greeting
+   for the new month, the Support centre with an open complaint about a
+   scratch, a staff *Get help* about the scanner, replies drafted by Enyo.
+8. **Data Exchange**: the seven completed imports of the cut-over
+   (customers, equipment, vendors, materials, stock with Finance's
+   sign-off, invoices, job card history) and four exports.
+9. The six oldest vehicles in the plant demo's yard are **sold** through
+   Isolo — the plant vehicle points at the customer's vehicle — with the
+   maker's warranty and their first service; `/vehicles/<VIN>` reads from
+   the kit to that service. The four portal customers each have their story
+   (§14).
 
 ---
 
