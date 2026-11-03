@@ -21,13 +21,15 @@ const ROOT = join(__dirname, '..', '..', '..');
 const pulse = (at?: string, env: Record<string, string> = {}) => execFileSync('npx', ['tsx', 'apps/portal/scripts/demo-pulse.ts', ...(at ? ['--at', at] : [])], { cwd: ROOT, env: { ...process.env, ...env }, encoding: 'utf8', timeout: 180_000 });
 // Far enough ahead that no other run of this spec on the same database has used the day.
 const DAY = 86_400_000;
-const later = (days: number) => { const d = new Date(Date.UTC(2030, 0, 7) + (Math.floor(Date.now() / 60_000) % 900) * 7 * DAY + days * DAY); d.setUTCHours(9, 0, 0, 0); return d.toISOString(); };
+const WEEK = Math.floor(Date.now() / 60_000) % 900; // chosen once per run
+const later = (days: number) => { const d = new Date(Date.UTC(2030, 0, 7) + WEEK * 7 * DAY + days * DAY); d.setUTCHours(9, 0, 0, 0); return d.toISOString(); };
 
 async function demoOrg() {
   return db().organisation.findUniqueOrThrow({ where: { slug: 'kewalram-nigeria' }, select: { id: true, isDemo: true } });
 }
 
 test('today is already in the story (the load claimed it); a later Monday adds its working day once, the Tuesday moves Monday’s check-ins on; the switch stops it; a real organisation never gets one', async () => {
+  test.setTimeout(600_000); // six runs of the script, each starting its own process
   const org = await demoOrg();
   expect(org.isDemo).toBe(true);
   expect(pulse()).toMatch(/: already/);
@@ -41,7 +43,7 @@ test('today is already in the story (the load claimed it); a later Monday adds i
   const jobs = await db().demoRecord.findMany({ where: { organisationId: org.id, model: 'PulseJobCard' }, select: { recordId: true } });
   const monJobs = await db().jobCard.findMany({ where: { id: { in: jobs.map((j) => j.recordId) }, createdAt: { gte: new Date(`${dayKey}T00:00:00Z`), lt: new Date(new Date(`${dayKey}T00:00:00Z`).getTime() + DAY) } }, select: { id: true, status: true, technicianAcceptanceStatus: true, jobNumber: true } });
   expect(monJobs).toHaveLength(3);
-  for (const j of monJobs) { expect(j.status).toBe('CHECKED_IN'); expect(j.jobNumber).toMatch(/^JC-2030-\d{6}$/); }
+  for (const j of monJobs) { expect(j.status).toBe('CHECKED_IN'); expect(j.jobNumber).toMatch(new RegExp(`^JC-${dayKey.slice(0, 4)}-\\d{6}$`)); }
   // Every record it made is listed for the reset.
   for (const j of monJobs) expect(await db().demoRecord.count({ where: { model: 'JobCard', recordId: j.id } })).toBe(1);
   // Monday's notice: to Isolo only, never emailed.
