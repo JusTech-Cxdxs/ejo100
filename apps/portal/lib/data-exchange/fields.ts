@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'registers';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -241,6 +241,46 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS) the work was done at. When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
     ],
   },
+  openJobs: {
+    key: 'openJobs',
+    label: 'Open job cards (at the cut-over)',
+    noun: 'open job card',
+    plural: 'open job cards',
+    description: 'The job cards still in the workshop on the day EJO takes over: each becomes a live EJO job card at its stage — old number kept, estimate marked approved before EJO, parts issued before EJO, deposits as opening payments that Finance confirms — with the customer and vehicle already in EJO. No emails are sent.',
+    needs: 'workshop.close.approve',
+    approver: 'a Workshop manager or an administrator, then Finance confirms the opening payments',
+    branch: true,
+    branchArea: 'workshop',
+    financeSignOff: true,
+    matchOrder: ['job number'],
+    after: 'vehicles',
+    fields: [
+      { key: 'jobNumber', label: 'Job number', help: 'The job card’s number in SAP (AUFNR, the 6-digit order) or the old system. Kept on the EJO job card and searchable; EJO gives it its own JC number.', aliases: ['AUFNR', 'order', 'order number', 'service order', 'job number', 'job no', 'job card number', 'job card no', 'job card', 'jc number', 'work order', 'wo number', 'repair order'], example: '483211', required: true },
+      { key: 'customerExternalId', label: 'Customer number (SAP)', help: 'Whose vehicle it is (KUNUM / KUNNR), or give the phone or email. When the vehicle is in EJO, its owner is used.', aliases: ['KUNUM', 'KUNNR', 'KUNAG', 'customer SAP number', 'customer number', 'customer no', 'customer', 'account number', 'bp number', 'partner'], example: '1000123' },
+      { key: 'customerPhone', label: 'Customer phone', help: 'Alternative way to find the customer.', aliases: ['customer phone', 'phone', 'telephone', 'mobile'], example: '' },
+      { key: 'customerEmail', label: 'Customer email', help: 'Alternative way to find the customer.', aliases: ['customer email', 'email', 'e-mail'], example: '' },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle in the workshop (VHVIN). It must already be in EJO (load the vehicles file first); give the VIN or the plate.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'frame number', 'vehicle'], example: 'JAANLR85EL7100001' },
+      { key: 'plateNumber', label: 'Plate number', help: 'Alternative way to find the vehicle (LICENSE_NUM).', aliases: ['LICENSE_NUM', 'LICNUM', 'plate', 'plate number', 'plate no', 'registration', 'registration number', 'reg no'], example: 'LND 123 AB' },
+      { key: 'openedAt', label: 'Opened on', help: 'When the vehicle came in — SAP created on (ERDAT), e.g. 28.10.2026. The EJO job card carries this date.', aliases: ['ERDAT', 'GSTRP', 'opened on', 'opened', 'date opened', 'created on', 'check-in date', 'date in', 'received', 'date'], example: '28.10.2026', required: true },
+      { key: 'status', label: 'Stage', help: 'Where the job card is: Checked in, In progress, Awaiting parts, Quality check, Awaiting customer approval, Completed or Ready for collection. SAP statuses are understood (CRTD → checked in, REL → in progress, TECO → completed). A closed or cancelled job card belongs in the job card history file.', aliases: ['stage', 'status', 'job status', 'order status', 'system status', 'user status', 'ISTAT', 'STAT'], example: 'In progress', choices: ['Checked in', 'In progress', 'Awaiting parts', 'Quality check', 'Awaiting customer approval', 'Completed', 'Ready for collection'] },
+      { key: 'mileage', label: 'Mileage at check-in (km)', help: 'Optional: the odometer reading when the vehicle came in (RECDV).', aliases: ['RECDV', 'mileage', 'odometer', 'km', 'mileage at check-in', 'odometer reading'], example: '41200' },
+      { key: 'complaint', label: 'Complaint / work requested', help: 'What the customer asked for, as written on the job card (KTEXT). Several complaints: separate them with ";".', aliases: ['KTEXT', 'QMTXT', 'complaint', 'complaints', 'work requested', 'description', 'short text', 'request', 'job description'], example: 'Carry out service 40,000 km; brakes squeal', required: true },
+      { key: 'diagnosis', label: 'Findings so far', help: 'Optional: the technician’s findings or work done so far (LTXA1).', aliases: ['LTXA1', 'findings', 'diagnosis', 'work done', 'work so far', 'notes', 'remarks'], example: 'Front pads worn to the metal' },
+      { key: 'technician', label: 'Technician (employee ID)', help: 'Optional: the technician’s employee ID in EJO (or SAP personnel number, PERNR, when it is the same). A name is tried too; nobody found leaves the job card unassigned.', aliases: ['PERNR', 'technician', 'technician id', 'mechanic', 'assigned to', 'employee id', 'personnel number'], example: 'EMP-0042' },
+      { key: 'supervisor', label: 'Supervisor (employee ID)', help: 'Optional: the supervising person’s employee ID in EJO. Empty: left for the workshop to set.', aliases: ['supervisor', 'supervisor id', 'service advisor', 'advisor', 'foreman'], example: 'EMP-0007' },
+      { key: 'labourAmount', label: 'Labour estimate (₦)', help: 'Optional: labour on the approved estimate, in naira.', aliases: ['labour', 'labor', 'labour amount', 'labour estimate', 'labour charge'], example: '35000' },
+      { key: 'partsAmount', label: 'Parts estimate (₦)', help: 'Optional: parts on the approved estimate, in naira (the part lines below add up to it; any remainder is one line).', aliases: ['parts', 'parts amount', 'parts estimate', 'materials'], example: '128500' },
+      { key: 'estimateTotal', label: 'Estimate total (₦)', help: 'Optional: the approved estimate’s total. Empty: labour + parts.', aliases: ['estimate', 'estimate total', 'quotation', 'quote', 'total', 'total amount', 'NETWR', 'amount'], example: '163500' },
+      { key: 'estimateApproved', label: 'Estimate approved', help: 'Yes when the customer approved the estimate before EJO (the default when amounts are given); No when it is still waiting for the customer.', aliases: ['estimate approved', 'approved', 'customer approved', 'approval'], example: 'Yes', choices: ['Yes', 'No'] },
+      { key: 'partsIssued', label: 'Parts issued', help: 'Optional: parts already issued from the store before EJO, one per item separated by ";" — part number or name, "x" quantity, "@" unit price: "8-97366-430-0 x2 @45000; Oil filter x1 @6500". Shown on the estimate as issued before EJO; stock is not moved (the opening stock already counts them out).', aliases: ['parts issued', 'issued parts', 'parts used', 'materials issued', 'components', 'items'], example: '8-97366-430-0 x2 @45000; Oil filter x1 @6500' },
+      { key: 'paidAmount', label: 'Paid so far (₦)', help: 'Optional: deposits or payments already taken on this job card before EJO. Recorded as an opening payment; Finance confirms the total after the load.', aliases: ['paid', 'paid so far', 'deposit', 'deposit paid', 'amount paid', 'payments', 'advance'], example: '50000' },
+      { key: 'paymentMethod', label: 'How it was paid', help: 'Optional: Bank transfer or Cash. Empty: Bank transfer.', aliases: ['payment method', 'how paid', 'method', 'paid by'], example: 'Bank transfer', choices: ['Bank transfer', 'Cash'] },
+      { key: 'paymentReference', label: 'Payment reference', help: 'Optional: the receipt or transfer reference from the old system.', aliases: ['payment reference', 'receipt', 'receipt number', 'receipt no', 'transfer reference', 'reference'], example: 'RCPT-2026-0412' },
+      { key: 'paidOn', label: 'Paid on', help: 'Optional: when the deposit was taken. Empty: the opening date.', aliases: ['paid on', 'payment date', 'receipt date', 'date paid'], example: '28.10.2026' },
+      { key: 'notes', label: 'Notes', help: 'Optional: anything the workshop should know (kept on the job card’s notes).', aliases: ['note', 'internal notes', 'comments', 'memo'], example: 'Customer wants the old parts back' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS) the job card is in. When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
+    ],
+  },
   registers: {
     key: 'registers',
     label: 'Production, QC and PDI registers',
@@ -352,6 +392,7 @@ export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   for (const f of ENTITIES[entity].fields) if (f.required && mapping[f.key] == null) out.push(`Choose the column for “${f.label}”.`);
   if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
   if (entity === 'invoices' && mapping.customerExternalId == null && mapping.customerPhone == null) out.push('Choose how to find each invoice’s customer: their SAP customer number or phone.');
+  if (entity === 'openJobs' && mapping.vin == null && mapping.plateNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate: an open job card is on a vehicle.');
   if (entity === 'jobs' && mapping.customerExternalId == null && mapping.customerPhone == null && mapping.customerEmail == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each job’s customer: their SAP customer number, phone or email — or the vehicle’s chassis number or plate.');
   if (entity === 'vehicles') {
     if (mapping.customerExternalId == null && mapping.customerEmail == null && mapping.customerPhone == null) out.push('Choose how to find each vehicle’s customer: their customer number, email or phone.');

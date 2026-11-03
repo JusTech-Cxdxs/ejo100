@@ -98,6 +98,19 @@ customer portal. A past job card can be marked *attended to* or its vehicle's
 tracking stopped by the people who may manage customers in the workshop
 (`workshop.customer.manage`), checked against the vehicle's branch.
 
+### Open job cards at the cut-over (P5)
+
+Approval is a **Workshop manager or an administrator**; **Finance** then
+confirms the opening payments (the same sign-off as opening stock and
+invoice history). The loader writes the job cards directly in the chosen
+workshop branch (never the assembly plant) with the approving person as the
+record's creator; it sends no email or notification. Technician and
+supervisor are matched to active staff of the organisation by employee ID or
+name and otherwise left unset. Undo may bin a job card with a payment only
+when the payment came in with the import and nothing has been recorded on
+the job card since — the desk's own delete still refuses any job card with a
+payment.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an

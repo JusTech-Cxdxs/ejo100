@@ -211,6 +211,24 @@ someone in **Finance**. Sections 1 and 2 loaded first.
    it (*482913 (SAP, before EJO)*), with the same interval rules, until EJO
    completes a service of its own. Search the 6-digit number anywhere.
    Exports: **SAP job card history**, in job card format.
+10. **Open job cards (P5).** The vehicles in the workshop on the cut-over
+    day. Preparer → Data Exchange → *Open job cards* → choose **Isolo
+    Branch** → drop `docs/demo/with-mistakes/15_SAP_open_job_cards_demo.csv`
+    (eight vehicles from section 2 at every stage: CRTD, REL, awaiting
+    parts, QC, awaiting customer approval, TECO, ready for collection — with
+    estimates, the parts already issued, deposits and receipt numbers). The
+    check shows **how many job cards, the estimates and what is already
+    paid**; the planted mistakes: **a closed job card** (CLSD — history), **a
+    stage EJO does not know**, **no vehicle**, **the same vehicle twice**, **a
+    future date**, **a vehicle EJO does not have**. Workshop manager approves
+    and loads; **Finance** confirms the opening payments. Open **Workshop →
+    Job Cards**: the eight are live at their stages with EJO numbers; open
+    one — the banner says *Brought in from SAP as job card 483203*, the
+    estimate reads *approved before EJO* with its *issued before EJO* part
+    lines, the payment *Paid before EJO (receipt RCPT-2026-1041)*. Search
+    **483203**. Nobody was emailed. **Undo** moves the untouched ones to the
+    Recycle bin whole (estimate and payments too); one that has had work
+    recorded since stays and is reported.
 
 ## 6. Staged files are released, not kept for ever
 

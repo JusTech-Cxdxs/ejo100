@@ -95,3 +95,14 @@ and invoices, the parts catalogue before opening stock).
 | 128 | A job card still open (status REL) | Status “REL”: a job still open belongs in the open job cards file, not in history. | Rejected (not loaded) | the check (this row alone) |
 | 129 | A job card of another branch in this branch’s file | This row is for the branch “Afprint Assembly Plant”, but this import loads into Isolo Branch. Import it into its own branch. | Rejected (not loaded) | the check (against what EJO already holds) |
 
+## 15_SAP_open_job_cards_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 10 | A job card already closed (CLSD): it belongs in the history file | Stage “CLSD”: a closed, checked-out or cancelled job card belongs in the job card history file, not here. | Rejected (not loaded) | the check (this row alone) |
+| 11 | A stage EJO does not know | “Somewhere” is not a stage EJO knows: use Checked in, In progress, Awaiting parts, Quality check, Awaiting customer approval, Completed or Ready for collection (or SAP’s CRTD, REL, TECO). | Rejected (not loaded) | the check (this row alone) |
+| 12 | No chassis number or plate | Which vehicle is it? Give the chassis number (VIN) or the plate: an open job card is on a vehicle that is in EJO. | Rejected (not loaded) | the check (this row alone) |
+| 13 | Vehicle JAANLR85EL7100002 a second time (row 3 has it): one open job card per vehicle | Same chassis number as row 3 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 14 | Opened on a date in the future | The opening date 2027-03-15 is in the future. | Rejected (not loaded) | the check (this row alone) |
+| 15 | A vehicle EJO does not have | The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate. | Rejected (not loaded) | the check (against what EJO already holds) |
+

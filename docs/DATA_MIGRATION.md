@@ -293,6 +293,64 @@ exported in job card format (**SAP job card history**).
   `docs/demo/correct/14_SAP_job_card_history_demo.csv` (one job card per
   invoice in 06); the copy in `with-mistakes/` has six bad rows.
 
+## 7a3. Open job cards at the cut-over (P5)
+
+On the day EJO takes over, the vehicles already in the workshop keep their
+job cards: **Open job cards** turns each row into a **live EJO job card** in
+the chosen workshop branch, at the stage it is at, on the customer and the
+vehicle already in EJO (load customers and vehicles first). Nobody is
+emailed — the customer and the staff were told at the time.
+
+What each job card carries:
+
+- **Its old number**, kept (`externalId`) and searchable (*SAP job card
+  483211 → JC-2026-000045*); EJO gives it its own JC number; its opening
+  date is the day the vehicle came in (ERDAT). A banner on the job card says
+  where it came from and which import brought it.
+- **Its stage**, mapped from EJO's words or SAP's statuses:
+
+  | In the file (EJO words / SAP) | EJO stage |
+  | --- | --- |
+  | empty, Checked in, Received, CRTD | Checked in |
+  | In progress, Work in progress, WIP, REL | In progress |
+  | Awaiting parts, Parts, MATS, On hold | Awaiting parts |
+  | QC, Quality check, Inspection, Road test | Quality check |
+  | Awaiting customer approval, Estimate sent, Quotation | Awaiting customer approval |
+  | Completed, Done, TECO | Completed |
+  | Ready, Ready for collection, Invoiced | Ready for collection |
+  | Closed, Checked out, Collected, Cancelled, CLSD, CNCL, DLFL | **refused** — history (§7a2) |
+
+- **Its estimate as it stood**: labour, the parts already issued from the
+  store (by part number when the catalogue has them; "x" quantity, "@" unit
+  price), the rest of the parts as one line — marked **approved before
+  EJO** (the job card's approval too). EJO's own approval flow is not
+  replayed and **stock is not moved**: the opening stock already counts the
+  issued parts out. *Estimate approved = No* leaves it submitted, waiting
+  for the customer.
+- **Deposits taken before EJO** as **opening payments** (bank transfer or
+  cash, the old receipt number in the note), which **Finance confirms**
+  after the load against the old system's receipts — the import's totals
+  show them before approval.
+- **Technician and supervisor by employee ID** (a name is tried too);
+  nobody found leaves them unset for the workshop.
+- A **Branch**/WERKS column, when given, must be the branch chosen.
+
+Refused: no job number, no opening date, a future date, a closed or
+cancelled job card, a stage EJO does not know, no VIN or plate, a vehicle not
+in EJO, a vehicle that already has an open job card (one at a time), a row
+for another branch. The second row for the same vehicle in a file is a
+duplicate.
+
+**Undo** moves the job cards nobody has worked on since the import to the
+Recycle bin — each with its complaints, estimate and opening payments, so it
+restores whole — and **keeps** (and reports) any job card that has had a
+payment, a parts request, a warranty or anything else recorded on it since.
+
+Demo: `docs/demo/correct/15_SAP_open_job_cards_demo.csv` (eight vehicles
+from 02 in the workshop at every stage); `with-mistakes/` adds a closed job
+card, an unknown stage, no vehicle, the same vehicle twice, a future date and
+a vehicle EJO does not have.
+
 ## 7b. Production, QC and PDI registers
 
 The plant's existing Excel registers — the production line, quality checks
