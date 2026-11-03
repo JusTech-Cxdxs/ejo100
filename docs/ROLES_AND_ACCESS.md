@@ -142,6 +142,21 @@ customer-portal sign-ins (`docs/KEWALRAM_DEMO.md`, generated from
   deploy-time or terminal step (`npm run demo:people`, `npm run demo:reset`),
   not a portal action — the platform team's button comes with D3.
 
+### The workshop demo (D2)
+
+Six months of Isolo Branch (DEMO_WALKTHROUGH §15), loaded only into the
+demo organisation, by the build the first time and by `npm run demo:reset`
+after. Every record it makes is written as the demo people and obeys the
+same rules the actions enforce (the tests in
+`apps/portal/tests/workshop-demo.test.ts` check them: deposits at 70%
+before work, closing only through a decided request, refunds only after a
+cancellation, stock never negative, claims with their stage stamps). Every
+record is listed in `demo_records`, so removing the demo deletes exactly
+those — a person's own records are never touched. The load and the removal
+are audited (`demo.workshop_loaded`); the demo's own audit entries are
+removed with it under the trail's recorded maintenance switch, in one
+transaction, so a reload never doubles a history.
+
 ## The walkthrough
 
 | Role | What this role does | What they see (menu · dashboard) | What they approve | What they never see |

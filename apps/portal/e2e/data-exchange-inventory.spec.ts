@@ -13,6 +13,8 @@ import { who } from './people';
 test.describe.configure({ mode: 'serial' });
 
 const T = uniq().replace(/[^A-Z0-9]/g, '').slice(-6);
+// Digits that differ every run (the clock): a second run on the same database never meets the last run's vendor numbers.
+const D = String(Date.now()).slice(-7);
 const csv = (rows: (string | number)[][]) => rows.map((r) => r.map((c) => (/[,"]/.test(String(c)) ? `"${String(c).replace(/"/g, '""')}"` : String(c))).join(',')).join('\r\n');
 const pn = (n: number) => `E2E-${T}-${n}`;
 
@@ -48,9 +50,9 @@ test('suppliers from the SAP vendor list: the Store Manager approves; the Suppli
   await as(page, 'it-administrator');
   const url = await upload(page, 'suppliers', `vendors-${T}.csv`, csv([
     ['LIFNR', 'NAME1', 'NAME2', 'TELF1', 'SMTP_ADDR'],
-    [`00003${T.replace(/\D/g, '1').slice(0, 4)}1`, `Isuzu Parts ${T}`, 'Africa', '+234 1 270 1000', `parts.${T.toLowerCase()}@example.com`],
+    [`00${D}1`, `Isuzu Parts ${T}`, 'Africa', '+234 1 270 1000', `parts.${T.toLowerCase()}@example.com`],
     ['', '', '', '', ''],
-    [`00003${T.replace(/\D/g, '1').slice(0, 4)}2`, '', '', '', ''],
+    [`00${D}2`, '', '', '', ''],
   ]));
   await expect(page.getByText('Name is required.')).toBeVisible();
   await page.getByRole('button', { name: /Send for approval/ }).click();

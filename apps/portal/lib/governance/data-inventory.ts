@@ -218,6 +218,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   PlantKit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER' },
   PlantKitCheck: { tenancy: 'VIA_PARENT', owner: 'kitId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its kit', ai: 'AUTHORISED_USER' },
   // D3 Assembly line: routes (versions), each vehicle's station visits, defects and QA audits — the build record, kept for the life of the vehicle.
+  // D2: which records the demo organisation's demo load made (model and id), so a reset removes exactly those. Demo data only; no personal data of its own.
+  DemoRecord: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'Until the demo is removed or reloaded (deleted with the records it lists)', ai: 'NEVER' },
   PlantRoute: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Every version kept (vehicles refer to the one they were built with)', ai: 'AUTHORISED_USER' },
   PlantStationVisit: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (build evidence)', ai: 'AUTHORISED_USER' },
   PlantDefect: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Life of the vehicle (quality and warranty evidence)', ai: 'AUTHORISED_USER' },
