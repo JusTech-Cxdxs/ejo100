@@ -62,7 +62,7 @@ test('a vehicle on the line has the Isuzu route; the board shows it at C1', asyn
   await page.waitForURL(new RegExp(`/plant/line/${vehicleId}$`));
   await expect(page.getByRole('heading', { name: 'Build · Isuzu NQR (medium truck)' })).toBeVisible();
   const visits = await db().plantStationVisit.findMany({ where: { plantVehicleId: vehicleId }, orderBy: { sort: 'asc' } });
-  expect(visits.map((x) => x.code)).toEqual(['C1', 'C2', 'C3', 'T1', 'T2', 'T3', 'F1', 'E1', 'R1', 'G1']);
+  expect(visits.map((x) => x.code)).toEqual(['C1', 'C2', 'C3', 'E1', 'R1', 'G1']);
   await open(page, '/plant/line');
   await expect(page.locator('section[data-column="C1"]').locator(`a[data-vin="${VIN}"]`)).toBeVisible();
 });
@@ -84,10 +84,10 @@ test('the operator works C1: a torque outside its limits fails and needs a defec
   await page.getByRole('button', { name: 'Finish the station' }).click();
   await expect(page.locator('p[role="alert"]')).toContainText('1 check failed: raise the defect');
   await page.getByText('Raise a defect').click();
-  await field(page, 'Where').selectOption('FR');
+  await field(page, 'Where').selectOption('AX');
   await field(page, 'What').selectOption('LOOSE');
   await field(page, 'Cause').selectOption('TQ');
-  await page.locator('label').filter({ hasText: /^Describe it/ }).locator('input').fill('Cross-member bolts at 150 N·m, below the 180 minimum');
+  await page.locator('label').filter({ hasText: /^Describe it/ }).locator('input').fill('U-bolt nuts at 150 N·m, below the 200 minimum');
   await page.getByRole('button', { name: 'Raise it' }).click();
   await expect(page.locator('li[data-defect]')).toHaveCount(1); // the notifications bar also shows DEF numbers, so wait for this vehicle's row
   defectNumber = (await db().plantDefect.findFirstOrThrow({ where: { plantVehicleId: vehicleId }, orderBy: { raisedAt: 'desc' } })).number;
@@ -95,7 +95,7 @@ test('the operator works C1: a torque outside its limits fails and needs a defec
   await expect(page.locator(`li[data-defect="${defectNumber}"]`)).toContainText('Open');
   // The station is now failed (in rework). The operator records the rework; cannot verify it.
   expect((await db().plantStationVisit.findFirstOrThrow({ where: { plantVehicleId: vehicleId, code: 'C1' } })).status).toBe('FAILED');
-  await page.getByLabel(`What was done to put right ${defectNumber}`).fill('Bolts re-torqued to 200 N·m with the calibrated wrench');
+  await page.getByLabel(`What was done to put right ${defectNumber}`).fill('Nuts torqued to 200 N·m in sequence with the calibrated wrench');
   await page.locator(`li[data-defect="${defectNumber}"]`).getByRole('button', { name: 'Reworked' }).click();
   await expect(page.locator(`li[data-defect="${defectNumber}"]`)).toContainText('Reworked, waiting for verification');
   await expect(page.getByRole('button', { name: 'Verified: close' })).toHaveCount(0);
@@ -119,7 +119,7 @@ test('the QC inspector verifies the rework from Approvals; the operator re-recor
   await page.getByRole('button', { name: 'Finish the station' }).click();
   await expect(page.locator('button[data-station="C1"]')).toContainText('Passed');
   // The rest of the stations up to the gate, passing everything.
-  for (const code of ['C2', 'C3', 'T1', 'T2', 'T3', 'F1', 'E1', 'R1']) {
+  for (const code of ['C2', 'C3', 'E1', 'R1']) {
     await show(page, code);
     await passAll(page, code);
     await page.getByRole('button', { name: 'Finish the station' }).click();
@@ -198,7 +198,7 @@ test('the QA auditor audits it: an A finding fails the audit and sends the vehic
   await expect(page.locator('section[data-column="G1"]').locator(`a[data-vin="${VIN}"]`)).toContainText('1 A');
   await open(page, `/vehicles/${VIN}`);
   await expect(page.getByText('QA audit', { exact: true }).first()).toBeVisible();
-  await expect(page.getByText('C1 Chassis frame dress').first()).toBeVisible();
+  await expect(page.getByText('C1 Chassis on the line').first()).toBeVisible();
   await open(page, '/dashboard');
   const box = page.getByRole('combobox', { name: 'Search everything' });
   await box.fill(defectNumber);
@@ -219,9 +219,9 @@ test('the routes: the production supervisor saves a new version with a problem r
   await expect(card.getByText('Station X9 (Extra station with no checks) has no checks.')).toBeVisible();
   await expect(card.getByRole('button', { name: 'Save as a new version' })).toBeDisabled();
   // C1's standard time goes up by five minutes in a new version; the vehicle already on the line keeps the time it started with.
-  const current = Number(/# C1 \| Chassis frame dress \| STATION \| (\d+) min/.exec(text)![1]);
+  const current = Number(/# C1 \| Chassis on the line \| STATION \| (\d+) min/.exec(text)![1]);
   const visitBefore = (await db().plantStationVisit.findFirstOrThrow({ where: { plantVehicleId: vehicleId, code: 'C1' } })).standardMinutes;
-  await box.fill(text.replace(`# C1 | Chassis frame dress | STATION | ${current} min`, `# C1 | Chassis frame dress | STATION | ${current + 5} min`));
+  await box.fill(text.replace(`# C1 | Chassis on the line | STATION | ${current} min`, `# C1 | Chassis on the line | STATION | ${current + 5} min`));
   await card.getByRole('button', { name: 'Save as a new version' }).click();
   await expect(card.getByText(/Saved as version \d+\./)).toBeVisible();
   const route = await db().plantRoute.findFirstOrThrow({ where: { familyKey: 'isuzu-n', isActive: true }, orderBy: { version: 'desc' } });

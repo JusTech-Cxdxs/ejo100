@@ -167,7 +167,7 @@ of a finished vehicle.
 | EJO | SAP | Notes |
 | --- | --- | --- |
 | Route (family, version) | Routing (PLKO / PLPO), one operation per station | Versions are kept; a vehicle keeps the version it started with |
-| Station code (C1, T3, G1) | Work centre (ARBPL) / operation number (VORNR) | Stable codes per family; plant WERKS from the branch |
+| Station code (C1, C2, G1) | Work centre (ARBPL) / operation number (VORNR) | Stable codes per family; plant WERKS from the branch |
 | Standard minutes | Standard value (VGW01) | Median actual minutes are shown beside it on the board |
 | Station passed (operator, started, finished) | Order confirmation (CO11N: AFRU — ISMNW actual time, ISDD/ISDZ) | Per vehicle and operation; the gate's pass is a separate confirmation by quality |
 | Check result (pass/fail or measured value with limits) | Inspection characteristic result (QAMR), with the characteristic's limits | Codes are stable (C1-03 cross-member bolt torque, N·m 180–220) |

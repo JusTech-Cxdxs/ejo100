@@ -14,11 +14,15 @@ import { REFERENCE_TYPES } from '../lib/search-plan';
 
 const read = (rel: string) => readFileSync(join(__dirname, '..', '..', rel), 'utf8');
 
-test('two default routes from a real CKD/SKD line: the truck route has the chassis, axles, powertrain, cab, wheels, tests, road test and a gate; the SUV route its own; every code unique', () => {
+test('two default routes: the Isuzu truck line is the simple one Kewalram runs — it starts from the chassis as delivered (three assembly stations), then the tests, the road test and a gate; the SUV route is fuller; every code unique', () => {
   const truck = DEFAULT_ROUTES['isuzu-n'];
-  assert.deepEqual(truck.stations.map((s) => s.code), ['C1', 'C2', 'C3', 'T1', 'T2', 'T3', 'F1', 'E1', 'R1', 'G1']);
+  assert.deepEqual(truck.stations.map((s) => s.code), ['C1', 'C2', 'C3', 'E1', 'R1', 'G1']);
+  assert.deepEqual(truck.stations.map((s) => s.kind), ['STATION', 'STATION', 'STATION', 'TEST', 'TEST', 'GATE']);
+  assert.match(truck.stations[0]!.name, /Chassis on the line/);
+  assert.match(truck.stations[1]!.name, /Cab fitted/);
+  assert.match(truck.stations[2]!.name, /first start/);
   assert.equal(truck.stations.at(-1)!.kind, 'GATE');
-  assert.ok(truck.stations.find((s) => s.code === 'F1')!.checks.some((c) => c.type === 'MEASURE' && c.unit === 'N·m' && c.min === 540 && c.max === 600), 'wheel-nut torque with limits');
+  assert.ok(truck.stations.find((s) => s.code === 'C1')!.checks.some((c) => c.type === 'MEASURE' && c.unit === 'N·m' && c.min === 540 && c.max === 600), 'wheel-nut torque with limits');
   assert.ok(truck.stations.find((s) => s.code === 'E1')!.checks.some((c) => /Shower/.test(c.label)), 'the water-leak test');
   const suv = DEFAULT_ROUTES['soueast-s07'];
   assert.deepEqual(suv.stations.map((s) => s.code), ['B1', 'T1', 'M1', 'F1', 'E1', 'W1', 'R1', 'G1']);
@@ -53,7 +57,7 @@ test('route text: every problem named with its line; a route ends with a gate; n
 });
 
 test('a measurement is judged against its limits; a pass/fail as recorded; a station finishes only when every check is in', () => {
-  const torque = DEFAULT_ROUTES['isuzu-n'].stations.find((s) => s.code === 'F1')!.checks[0]!;
+  const torque = DEFAULT_ROUTES['isuzu-n'].stations.find((s) => s.code === 'C1')!.checks.find((c) => c.code === 'C1-05')!;
   assert.deepEqual(judgeCheck(torque, { value: '570' }), { pass: true, value: 570, why: null });
   assert.deepEqual(judgeCheck(torque, { value: '520,5' }), { pass: false, value: 520.5, why: '520.5 N·m is outside 540–600 N·m.' });
   assert.equal(judgeCheck(torque, { value: '' }).why, 'Record the measurement (N·m).');
