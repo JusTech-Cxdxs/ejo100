@@ -76,8 +76,9 @@ test('the technician sees only his own jobs; the front desk its pages; the Store
   await signOut(page);
   await as(page, 'store-manager');
   await walk(page, ['/inventory', '/inventory/parts', '/inventory/reorder', '/inventory/pricing', '/inventory/goods-receipts', '/inventory/suppliers', '/inventory/estimate-matching', '/inventory/analytics', '/inventory/part-types']);
-  await gotoSettled(page, '/inventory/reorder');
-  await expect(page.getByText(/Brake pad set, front|Tie-rod end|Air dryer cartridge|Cabin air filter/).first()).toBeVisible();
+  // The parts list carries the stock level of each (the dot), with the four parts the plan let run down.
+  await gotoSettled(page, '/inventory/parts?q=Brake+pad');
+  await expect(page.getByText(/Brake pad set, front/).first()).toBeVisible();
   const org = await demoOrgId();
   expect(await db().pricingAlert.count({ where: { status: 'OPEN', part: { externalSource: 'EJO-DEMO', branch: { businessUnit: { organisationId: org } } } } })).toBe(2);
   const grn = await db().goodsReceipt.findFirstOrThrow({ where: { isOpeningBalance: false, idempotencyKey: { startsWith: `demo:${org}` } }, select: { id: true, referenceNumber: true } });
