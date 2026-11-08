@@ -297,6 +297,105 @@
     "says": "The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate."
   },
   {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 22,
+    "entity": "warranties",
+    "what": "No warranty number",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Warranty number is required (SAP MGANR or the old system’s warranty or certificate number)."
+  },
+  {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 23,
+    "entity": "warranties",
+    "what": "A warranty that starts in the future",
+    "expect": "rejected",
+    "by": "check",
+    "says": "The start date 2027-03-15 is in the future: a warranty starts on the day the vehicle or part was delivered."
+  },
+  {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 24,
+    "entity": "warranties",
+    "what": "A policy EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "There is no warranty policy “DEMO-XYZ-9Y” in EJO. Create it under Warranty → Policies (its code or name), or give the months and km so it can be found."
+  },
+  {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 25,
+    "entity": "warranties",
+    "what": "A vehicle EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The vehicle is not in EJO. Import the vehicles file first (a vehicle warranty needs the vehicle it covers), or check the chassis number or plate."
+  },
+  {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 26,
+    "entity": "warranties",
+    "what": "Warranty W-2021-0402 a second time (row 3 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same warranty number as row 3 of the file; only the first is loaded."
+  },
+  {
+    "file": "16_SAP_warranties_demo.csv",
+    "row": 27,
+    "entity": "warranties",
+    "what": "A status EJO does not know",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“Pending?” is not a warranty status EJO knows: use Active, Suspended, Void or Transferred."
+  },
+  {
+    "file": "17_SAP_open_claims_demo.csv",
+    "row": 10,
+    "entity": "claims",
+    "what": "A settled claim: it is history",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Stage “Settled”: a settled or cancelled claim is history and stays in the old system; bring in the claims still open."
+  },
+  {
+    "file": "17_SAP_open_claims_demo.csv",
+    "row": 11,
+    "entity": "claims",
+    "what": "A warranty EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "Warranty W-1999-0001 is not in EJO. Import the warranties file first (the claim is on a warranty), or check the number."
+  },
+  {
+    "file": "17_SAP_open_claims_demo.csv",
+    "row": 12,
+    "entity": "claims",
+    "what": "No complaint",
+    "expect": "rejected",
+    "by": "check",
+    "says": "The complaint is required: what the customer reported."
+  },
+  {
+    "file": "17_SAP_open_claims_demo.csv",
+    "row": 13,
+    "entity": "claims",
+    "what": "Partially accepted with no accepted amount",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Partially accepted: give the amount the provider accepted."
+  },
+  {
+    "file": "17_SAP_open_claims_demo.csv",
+    "row": 14,
+    "entity": "claims",
+    "what": "Claim C-2026-0181 a second time (row 3 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same claim number as row 3 of the file; only the first is loaded."
+  },
+  {
     "file": "07_PDI_register_demo.xlsx",
     "row": 62,
     "entity": "registers",

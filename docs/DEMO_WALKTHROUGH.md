@@ -229,6 +229,28 @@ someone in **Finance**. Sections 1 and 2 loaded first.
     **483203**. Nobody was emailed. **Undo** moves the untouched ones to the
     Recycle bin whole (estimate and payments too); one that has had work
     recorded since stays and is reported.
+11. **Warranties and open claims (P6).** In the demo organisation (its
+    workshop demo has the policies). Preparer → Data Exchange → *Warranties
+    (sold before EJO)* → drop
+    `docs/demo/with-mistakes/16_SAP_warranties_demo.csv` (fourteen vehicles
+    from section 2 under the Isuzu and Soueast policies — two with no policy
+    named, found from *36 months / 100,000 km* and the provider — most long
+    ended and kept for their history, one suspended; four batteries and two
+    sets of brake pads fitted before EJO). The check shows **how many on
+    vehicles and on parts** and the planted mistakes (no number, a future
+    start, an unknown policy, a vehicle EJO does not have, a number twice, an
+    unknown status). Sign in as **warranty.hod** and approve: the HOD's
+    approval is the second person on every warranty. Open one: *Brought in
+    from SAP as warranty W-2024-0425*, active from its start. Then *Open
+    warranty claims* →
+    `docs/demo/with-mistakes/17_SAP_open_claims_demo.csv`: eight claims, one
+    at every stage; the check shows **₦ claimed and ₦ accepted by the
+    providers, not yet settled**, and refuses a settled claim, an unknown
+    warranty, no complaint, a partial acceptance with no amount, a claim
+    number twice. Approve, load, open the claim *With the Warranty HOD* and
+    approve it — it moves on to the Manager; the claim *Submitted* shows its
+    chain *before EJO*. Search **C-2026-0184**. Undo the claims import: the
+    one you approved stays.
 
 ## 6. Staged files are released, not kept for ever
 

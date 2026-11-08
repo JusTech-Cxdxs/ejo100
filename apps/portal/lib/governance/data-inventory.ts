@@ -51,8 +51,10 @@ export type DataEntry = {
   retention: string;
   ai: AiAccess;
   /** A record created by mistake may be moved to the Recycle bin while nothing
-   * of consequence has happened to it (lib/recycle-bin/rules.ts decides). */
-  recycleBin?: true;
+   * of consequence has happened to it (lib/recycle-bin/rules.ts decides).
+   * IMPORT_UNDO: never by hand — only undoing the import that brought it in
+   * (P6: a warranty or claim nobody has used since) moves it there. */
+  recycleBin?: true | 'IMPORT_UNDO';
 };
 
 const FIN_RETENTION = 'At least 6 years after the financial year (Nigerian accounting-record retention)';
@@ -153,8 +155,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   // ── Warranty ───────────────────────────────────────────────────────
   WarrantyProvider: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract', ai: 'AUTHORISED_USER' },
   WarrantyPolicy: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract', ai: 'AUTHORISED_USER' },
-  Warranty: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Warranty term + 6 years', ai: 'AUTHORISED_USER' },
-  WarrantyClaim: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER' },
+  Warranty: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: 'Warranty term + 6 years', ai: 'AUTHORISED_USER', recycleBin: 'IMPORT_UNDO' },
+  WarrantyClaim: { tenancy: 'VIA_PARENT', owner: 'customerId', classification: ['FINANCIAL'], lifecycle: 'STATE_MACHINE', retention: FIN_RETENTION, ai: 'AUTHORISED_USER', recycleBin: 'IMPORT_UNDO' },
   WarrantyPolicyDeletionRequest: { tenancy: 'VIA_PARENT', owner: 'policyId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
   WarrantyProviderDeletionRequest: { tenancy: 'VIA_PARENT', owner: 'providerId', classification: ['INTERNAL'], lifecycle: 'STATE_MACHINE', retention: OPS_RETENTION, ai: 'AUTHORISED_USER' },
 

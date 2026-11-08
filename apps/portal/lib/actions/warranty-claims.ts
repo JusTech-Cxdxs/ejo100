@@ -1,4 +1,5 @@
 'use server';
+import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { masterAdminsFor } from '@/lib/master-fallback';
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl } from '@/lib/portal-url';
@@ -68,9 +69,12 @@ async function notify(recipients: { fullName: string; email: string }[], subject
 /** WC-2026-000001 */
 async function nextClaimNumber(): Promise<string> {
   const prefix = `WC-${lagosYear()}-`;
-  const latest = await prisma.warrantyClaim.findFirst({ where: { claimNumber: { startsWith: prefix } }, orderBy: { claimNumber: 'desc' }, select: { claimNumber: true } });
-  const next = latest ? parseInt(latest.claimNumber.slice(prefix.length), 10) + 1 : 1;
-  return `${prefix}${String(next).padStart(6, '0')}`;
+  // A claim in the Recycle bin (an undone import) keeps its number: never given out twice.
+  const [latest, binned] = await Promise.all([
+    prisma.warrantyClaim.findFirst({ where: { claimNumber: { startsWith: prefix } }, orderBy: { claimNumber: 'desc' }, select: { claimNumber: true } }),
+    prisma.recycleBinItem.findFirst({ where: { entityType: 'WarrantyClaim', reference: { startsWith: prefix } }, orderBy: { reference: 'desc' }, select: { reference: true } }),
+  ]);
+  return `${prefix}${String(highestSequence(prefix, [latest?.claimNumber, binned?.reference]) + 1).padStart(6, '0')}`;
 }
 
 async function audit(userId: string, claimId: string, action: string, metadata: Record<string, unknown>) {

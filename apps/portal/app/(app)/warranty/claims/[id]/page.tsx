@@ -31,6 +31,7 @@ import { SubmitButton } from '@/components/SubmitButton';
 import { WarrantyClaimFields } from '@/components/WarrantyClaimFields';
 import { CLAIM_STATUS_LABEL, REMEDY_LABEL, PART_RETURN_LABEL, CUSTOMER_RESOLUTION_LABEL, coverageLabel } from '@/lib/warranty-claim-status';
 import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
+import { getImportOrigin } from '@/lib/actions/data-exchange';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 
@@ -96,12 +97,15 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
           prisma.vehicleService.findMany({ where: { vehicleId: c.vehicleId }, orderBy: { createdAt: 'desc' }, take: 30, select: { id: true, serviceNumber: true, createdAt: true } }),
         ])
       : [[], []];
+  // A claim brought in at the cut-over (P6): the steps taken in the old system are dated, by nobody in EJO.
+  const origin = c.importJobId ? await getImportOrigin(c.importJobId).catch(() => null) : null;
+  const beforeEjo = (at: Date | null) => (c.importJobId && at ? 'before EJO' : undefined);
   const steps: { label: string; done: boolean; who?: string | null; at?: Date | null }[] = [
     { label: 'Draft', done: true, who: c.createdBy.fullName, at: c.createdAt },
-    { label: 'Warranty HOD', done: Boolean(c.hodApprovedAt), who: c.hodApprovedBy?.fullName, at: c.hodApprovedAt },
-    { label: 'Branch Manager', done: Boolean(c.managerApprovedAt), who: c.managerApprovedBy?.fullName, at: c.managerApprovedAt },
-    { label: 'With the provider', done: Boolean(c.submittedAt), who: c.submittedBy?.fullName, at: c.submittedAt },
-    { label: 'Decision', done: Boolean(c.decidedAt), who: c.decidedBy?.fullName, at: c.decidedAt },
+    { label: 'Warranty HOD', done: Boolean(c.hodApprovedAt), who: c.hodApprovedBy?.fullName ?? beforeEjo(c.hodApprovedAt), at: c.hodApprovedAt },
+    { label: 'Branch Manager', done: Boolean(c.managerApprovedAt), who: c.managerApprovedBy?.fullName ?? beforeEjo(c.managerApprovedAt), at: c.managerApprovedAt },
+    { label: 'With the provider', done: Boolean(c.submittedAt), who: c.submittedBy?.fullName ?? beforeEjo(c.submittedAt), at: c.submittedAt },
+    { label: 'Decision', done: Boolean(c.decidedAt), who: c.decidedBy?.fullName ?? beforeEjo(c.decidedAt), at: c.decidedAt },
     { label: 'Settled', done: Boolean(c.settledAt), who: c.settledBy?.fullName, at: c.settledAt },
   ];
 
@@ -125,6 +129,13 @@ export default async function WarrantyClaimPage({ params, searchParams }: { para
           <PrintMenu orgHref={`/print/warranty-claims/${c.id}`} clientHref={`/print/warranty-claims/${c.id}?variant=client`} clientLabel="Provider Copy" />
         </div>
       </div>
+
+      {c.externalId ? (
+        <div className="mb-6 max-w-3xl rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-4 py-3 text-sm text-[var(--ejo-text)]" role="note" data-testid="claim-origin">
+          <span className="font-semibold">Brought in from {c.externalSource === 'LEGACY' ? 'the old system' : 'SAP'} as claim {c.externalId}</span>, open at the cut-over{origin ? <> (import {origin.mayOpen ? <LoadingLink href={`/data-exchange/imports/${c.importJobId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{origin.number}</LoadingLink> : origin.number}{origin.loadedAt ? `, ${formatDateOnly(origin.loadedAt)}` : ''})</> : null}.
+          {c.hodApprovedAt && !c.hodApprovedById ? ' The steps marked “before EJO” were taken in the old system and are not asked again; ' : ' '}it carries on in EJO from its stage.
+        </div>
+      ) : null}
 
       {c.status === 'DRAFT' && c.returnReason ? (
         <div className="mb-6 max-w-3xl rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5 p-4 text-sm text-[var(--ejo-text)]">

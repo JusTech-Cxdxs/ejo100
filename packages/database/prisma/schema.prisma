@@ -2537,6 +2537,11 @@ model Warranty {
   verifiedById        String?
   verifiedAt          DateTime?
   statusReason        String?
+  // Brought in from another system at the cut-over (P6): where from (SAP,
+  // LEGACY), its number there (kept and searchable) and the import.
+  externalSource      String?
+  externalId          String?
+  importJobId         String?
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @default(now()) @updatedAt
 
@@ -2558,6 +2563,8 @@ model Warranty {
   @@index([vehicleServiceId])
   @@index([slipLineId])
   @@index([endsAt])
+  @@index([importJobId])
+  @@index([externalSource, externalId])
   @@map("warranties")
   claims WarrantyClaim[]
   coveredEstimateLines EstimateLineItem[] @relation("EstimateLineCoveringWarranty")
@@ -2690,6 +2697,11 @@ model WarrantyClaim {
   decidedAt         DateTime?
   settledById       String?
   settledAt         DateTime?
+  // An open claim brought in at the cut-over (P6): where from, its number
+  // there (kept and searchable) and the import.
+  externalSource    String?
+  externalId        String?
+  importJobId       String?
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @default(now()) @updatedAt
 
@@ -2710,6 +2722,8 @@ model WarrantyClaim {
   @@index([status])
   @@index([jobCardId])
   @@index([vehicleServiceId])
+  @@index([importJobId])
+  @@index([externalSource, externalId])
   @@map("warranty_claims")
 }
 

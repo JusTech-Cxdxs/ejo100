@@ -111,6 +111,23 @@ when the payment came in with the import and nothing has been recorded on
 the job card since — the desk's own delete still refuses any job card with a
 payment.
 
+### Warranties and open claims at the cut-over (P6)
+
+Approval is **the Warranty HOD or a Branch Manager** (`warranty.claim.approve`
+on top of `dataexchange.import.approve`, which the Warranty HOD now holds for
+exactly this: no other import needs a right the HOD has). Both imports are
+organisation-wide and read only the organisation's own customers, vehicles,
+parts, policies and warranties. The person who ran the import is recorded as
+each warranty's registration and the approver as its verification — the
+desk's two-person rule, kept — so the two can never be the same person (the
+platform administrator excepted, and recorded). Claims are created by the
+person who ran the import, so they cannot approve them afterwards; the steps
+taken before EJO name nobody in EJO. Nothing is emailed or notified. Undo
+(the same two rights) bins only what nobody has used since; it is the only
+way a warranty or a claim reaches the Recycle bin (governance inventory:
+`recycleBin: 'IMPORT_UNDO'`), and restoring needs the Recycle bin right as
+for anything else.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an
@@ -168,7 +185,7 @@ transaction, so a reload never doubles a history.
 | **Finance Officer** | Records payments and refunds, reviews outside purchases, pays out cash once approved. | Dashboard, Approvals, Workshop (read), Inventory, My exit passes, My visitors, Business Analytics, Notifications. My numbers: *Payments I recorded this month*, *Outside purchases with Finance*. Activity: every payment, refund and outside purchase in the branch. | Outside purchases (review, then pay out). | The gate, approving purchases (the Manager does), administration. |
 | **Store Manager** | Runs the store: parts, prices, stock levels, goods receipts, matching estimate parts, releasing parts. Authorises exit passes for the store team. | Dashboard, Approvals, Workshop (read), Inventory (all of it), My exit passes, My visitors, Deliveries, Notifications. My numbers: *Parts requests for the Store*, *Parts at or below reorder point*. | Parts requests (approve, reserve, release); exit passes for their department. | The gate registers, money, administration. |
 | **Store Officer** | Records goods receipts, matches parts, approves, reserves and releases parts requests. | Same as the Store Manager, without exit-pass authorisation. | Parts requests (approve, reserve, release). | The gate registers, money, administration. |
-| **Warranty HOD** | Registers and verifies warranties, approves claims, manages providers and policies. Authorises exit passes for the warranty team. | Dashboard, Approvals, Workshop (read), Inventory (including goods receipts, to trace parts), Warranty, My exit passes, My visitors, Notifications. My numbers: *Warranties awaiting verification*, *Warranty claims open*. | Warranty verifications and claims, policy and provider removals; exit passes for their department. | The gate, money, administration. |
+| **Warranty HOD** | Registers and verifies warranties, approves claims, manages providers and policies. Authorises exit passes for the warranty team. Approves the warranties and open claims brought in from SAP at the cut-over (and only those imports). | Dashboard, Approvals, Workshop (read), Inventory (including goods receipts, to trace parts), Warranty, Data Exchange (warranty imports to approve), My exit passes, My visitors, Notifications. My numbers: *Warranties awaiting verification*, *Warranty claims open*. | Warranty verifications and claims, policy and provider removals, warranty and open-claim imports; exit passes for their department. | The gate, money, administration. |
 | **Warranty Officer** | Registers warranties and prepares claims. | Like the Warranty HOD, without Approvals. | Nothing. | The gate, money, administration. |
 | **Department Head** | Authorises exit passes for the people in their department. | Dashboard, Approvals, My exit passes, My visitors (plus Contractors: the passes they asked for or are responsible for), Scheduling, Notifications. | Exit passes (the Department Head step). | Workshop, Store, Warranty, the gate registers. |
 | **Chief Security Officer** | Runs the Security desk and handles incidents. | Dashboard, Approvals, Security (the whole desk), Notifications. My numbers: *Visitors on site*, *Staff out on passes*, *Vehicles on road test*. Activity: all security records in the branch. | Incidents (assigns, closes, reopens). Exit passes only when they are someone's reporting manager. | Workshop, Store, money. |

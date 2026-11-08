@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'registers';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'warranties' | 'claims' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -34,7 +34,7 @@ export type EntityDef = {
   plural: string;
   description: string;
   /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
-  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve';
+  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve' | 'warranty.claim.approve';
   /** Loads into one branch (its catalogue / stock / sales / workshop), chosen when the import starts. */
   branch?: boolean;
   /** What kind of branch it loads into (lib/branch-types.ts): a store (parts, stock, invoices) or a workshop (job history). */
@@ -281,6 +281,75 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS) the job card is in. When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
     ],
   },
+  warranties: {
+    key: 'warranties',
+    label: 'Warranties (sold before EJO)',
+    noun: 'warranty',
+    plural: 'warranties',
+    description: 'The warranties on vehicles sold, and on serial-numbered parts fitted, before EJO: each becomes an EJO warranty (WR number) under one of EJO’s warranty policies, its old number kept and searchable, on the customer and vehicle already in EJO. Active from the day it started: the import’s two people are its registration and its verification. Nobody is emailed.',
+    needs: 'warranty.claim.approve',
+    approver: 'the Warranty HOD or a Branch Manager',
+    matchOrder: ['warranty number'],
+    after: 'vehicles',
+    fields: [
+      { key: 'warrantyNumber', label: 'Warranty number', help: 'The warranty’s number in SAP (master warranty MGANR, or the warranty counter) or the old system. Kept on the EJO warranty and searchable; EJO gives it its own WR number.', aliases: ['MGANR', 'warranty number', 'warranty no', 'warranty', 'warranty id', 'certificate', 'certificate number', 'certificate no', 'master warranty'], example: 'W-2024-0412', required: true },
+      { key: 'kind', label: 'Covers', help: 'Vehicle (the default) or Part. A part warranty names the part number and, when it has one, its serial.', aliases: ['covers', 'kind', 'type', 'warranty type', 'object type'], example: 'Vehicle', choices: ['Vehicle', 'Part'] },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle covered (VHVIN). It must already be in EJO (load the vehicles file first); give the VIN or the plate. For a part, the vehicle it is fitted to, when known.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'frame number', 'vehicle', 'EQUNR', 'equipment'], example: 'JAANLR85EL7100001' },
+      { key: 'plateNumber', label: 'Plate number', help: 'Alternative way to find the vehicle (LICENSE_NUM).', aliases: ['LICENSE_NUM', 'LICNUM', 'plate', 'plate number', 'plate no', 'registration', 'registration number', 'reg no'], example: 'LND 123 AB' },
+      { key: 'customerExternalId', label: 'Customer number (SAP)', help: 'Whose warranty it is (KUNNR), or give the phone or email. For a vehicle, its owner in EJO is used.', aliases: ['KUNNR', 'KUNUM', 'customer SAP number', 'customer number', 'customer no', 'customer', 'account number', 'bp number', 'partner'], example: '1000123' },
+      { key: 'customerPhone', label: 'Customer phone', help: 'Alternative way to find the customer.', aliases: ['customer phone', 'phone', 'telephone', 'mobile'], example: '' },
+      { key: 'customerEmail', label: 'Customer email', help: 'Alternative way to find the customer.', aliases: ['customer email', 'email', 'e-mail'], example: '' },
+      { key: 'policy', label: 'Warranty policy', help: 'The EJO warranty policy it is under, by its code or name (Warranty → Policies). Empty: the policy with the same provider, months and km is used, when there is exactly one.', aliases: ['policy', 'policy code', 'warranty policy', 'warranty plan', 'plan', 'warranty terms', 'terms'], example: 'ISZ-NQR-36' },
+      { key: 'provider', label: 'Provider', help: 'Optional: who stands behind it (the manufacturer or supplier). When given it must be the policy’s provider.', aliases: ['provider', 'warranty provider', 'manufacturer', 'warrantor', 'vendor', 'LIFNR'], example: 'Isuzu Motors' },
+      { key: 'months', label: 'Months', help: 'Optional: the warranty’s length in months, to find the policy when none is named.', aliases: ['months', 'duration', 'warranty months', 'period', 'term'], example: '36' },
+      { key: 'distanceLimit', label: 'Km limit', help: 'Optional: the distance limit in km, to find the policy when none is named.', aliases: ['km', 'km limit', 'distance', 'distance limit', 'mileage limit', 'kilometres'], example: '100000' },
+      { key: 'startsAt', label: 'Starts on', help: 'The day the warranty started — the delivery or fitting date (GWLDT), e.g. 14.03.2024.', aliases: ['GWLDT', 'starts on', 'start date', 'warranty start', 'start', 'delivery date', 'sale date', 'date sold', 'fitted on', 'from'], example: '14.03.2024', required: true },
+      { key: 'endsAt', label: 'Ends on', help: 'Optional: the day it ends (GWLEN). Empty: worked out from the policy.', aliases: ['GWLEN', 'ends on', 'end date', 'warranty end', 'expiry', 'expiry date', 'valid until', 'until', 'to'], example: '13.03.2027' },
+      { key: 'startReading', label: 'Odometer at start (km)', help: 'Optional: the reading on the day it started, for the km limit.', aliases: ['start reading', 'odometer at start', 'odometer at delivery', 'delivery mileage', 'start km', 'mileage', 'RECDV'], example: '25' },
+      { key: 'partNumber', label: 'Part number', help: 'For a part warranty: the part (MATNR), as in EJO’s parts catalogue.', aliases: ['MATNR', 'part number', 'part no', 'part', 'material', 'material number'], example: '8-97366-430-0' },
+      { key: 'serialNumber', label: 'Serial number', help: 'Optional, for a part warranty: the part’s serial (SERNR).', aliases: ['SERNR', 'serial', 'serial number', 'serial no'], example: 'ALT-2024-0091' },
+      { key: 'evidence', label: 'Evidence', help: 'The sales invoice, delivery note or fitting record it rests on, e.g. "Invoice 90012345 of 14.03.2024". Kept on the warranty.', aliases: ['evidence', 'invoice', 'invoice number', 'delivery note', 'document', 'reference', 'VBELN'], example: 'Invoice 90012345' },
+      { key: 'status', label: 'Status', help: 'Active (the default), Suspended, Void or Transferred. An expired warranty is fine: EJO works expiry out from the dates.', aliases: ['status', 'warranty status', 'state'], example: 'Active', choices: ['Active', 'Suspended', 'Void', 'Transferred'] },
+      { key: 'notes', label: 'Notes', help: 'Optional: anything to keep with it (the reason for a suspension, for example).', aliases: ['note', 'notes', 'remarks', 'comments', 'reason'], example: '' },
+    ],
+  },
+  claims: {
+    key: 'claims',
+    label: 'Open warranty claims (at the cut-over)',
+    noun: 'open warranty claim',
+    plural: 'open warranty claims',
+    description: 'The warranty claims still open on the day EJO takes over: each becomes a live EJO claim (WC number) at its stage — drafted, with the Warranty HOD or the Manager, approved, with the provider, accepted or rejected — on its warranty, its old number kept and searchable, and carries on in EJO from there. Settled and cancelled claims are history and stay in the old system. Nobody is emailed.',
+    needs: 'warranty.claim.approve',
+    approver: 'the Warranty HOD or a Branch Manager',
+    matchOrder: ['claim number'],
+    after: 'warranties',
+    fields: [
+      { key: 'claimNumber', label: 'Claim number', help: 'The claim’s number in SAP (CLMNO, or the notification QMNUM) or the old system. Kept on the EJO claim and searchable; EJO gives it its own WC number.', aliases: ['CLMNO', 'QMNUM', 'claim number', 'claim no', 'claim', 'claim id', 'notification', 'notification number'], example: 'C-2026-0187', required: true },
+      { key: 'warrantyNumber', label: 'Warranty number', help: 'The warranty it is claimed on: its old number (as in the warranties file) or its EJO WR number. Empty: the vehicle’s warranty in force on the failure date, when there is exactly one.', aliases: ['MGANR', 'warranty number', 'warranty no', 'warranty', 'certificate', 'certificate number'], example: 'W-2024-0412' },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'Optional: the vehicle, to find its warranty when no warranty number is given.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'vehicle'], example: 'JAANLR85EL7100001' },
+      { key: 'plateNumber', label: 'Plate number', help: 'Optional: alternative way to find the vehicle.', aliases: ['LICENSE_NUM', 'plate', 'plate number', 'registration'], example: 'LND 123 AB' },
+      { key: 'status', label: 'Stage', help: 'Where the claim is: Draft, With the Warranty HOD, With the Manager, Approved to submit, Submitted to the provider, Accepted, Partially accepted or Rejected. A settled or cancelled claim is history and is refused.', aliases: ['stage', 'status', 'claim status', 'state', 'ISTAT'], example: 'Submitted', choices: ['Draft', 'With the Warranty HOD', 'With the Manager', 'Approved to submit', 'Submitted', 'Accepted', 'Partially accepted', 'Rejected'] },
+      { key: 'failureDate', label: 'Failure date', help: 'When it failed or was repaired (REPDA), e.g. 21.10.2026.', aliases: ['REPDA', 'failure date', 'date of failure', 'repair date', 'damage date', 'date', 'claim date'], example: '21.10.2026', required: true },
+      { key: 'failureReading', label: 'Odometer at failure (km)', help: 'Optional: the reading when it failed.', aliases: ['failure reading', 'odometer at failure', 'odometer', 'mileage', 'km', 'RECDV'], example: '41200' },
+      { key: 'complaint', label: 'Complaint', help: 'What the customer reported (the first of the three Cs).', aliases: ['complaint', 'customer complaint', 'symptom', 'concern', 'KTEXT', 'QMTXT', 'description'], example: 'Engine overheats on long trips', required: true },
+      { key: 'cause', label: 'Cause', help: 'What was found to cause it.', aliases: ['cause', 'root cause', 'diagnosis', 'finding', 'findings', 'damage'], example: 'Water pump bearing failed' },
+      { key: 'correction', label: 'Correction', help: 'What was done to put it right.', aliases: ['correction', 'repair', 'action', 'work done', 'remedy done', 'corrective action'], example: 'Replaced the water pump and coolant' },
+      { key: 'causalPart', label: 'Causal part', help: 'The part that failed, in words. Empty: its part number.', aliases: ['causal part', 'failed part', 'part', 'part name', 'component'], example: 'Water pump' },
+      { key: 'causalPartNumber', label: 'Causal part number', help: 'Optional: its part number (MATNR).', aliases: ['MATNR', 'causal part number', 'part number', 'part no', 'material'], example: '8-97363-271-0' },
+      { key: 'labourAmount', label: 'Labour (₦)', help: 'Optional: labour claimed, in naira.', aliases: ['labour', 'labor', 'labour amount', 'labour claimed'], example: '35000' },
+      { key: 'partsAmount', label: 'Parts (₦)', help: 'Optional: parts claimed, in naira.', aliases: ['parts', 'parts amount', 'parts claimed', 'material amount'], example: '128500' },
+      { key: 'otherAmount', label: 'Other (₦)', help: 'Optional: anything else claimed (sublet, consumables).', aliases: ['other', 'other amount', 'sublet', 'consumables'], example: '0' },
+      { key: 'logisticsAmount', label: 'Logistics (₦)', help: 'Optional: freight for the replacement and the failed part’s return.', aliases: ['logistics', 'freight', 'courier', 'shipping'], example: '0' },
+      { key: 'claimedAmount', label: 'Claimed total (₦)', help: 'Optional: the total claimed. Empty: labour + parts + other + logistics.', aliases: ['claimed', 'claimed amount', 'claim amount', 'total', 'total claimed', 'amount'], example: '163500' },
+      { key: 'approvedAmount', label: 'Accepted amount (₦)', help: 'For an accepted or partially accepted claim: what the provider accepted.', aliases: ['approved amount', 'accepted amount', 'accepted', 'credited', 'credit amount', 'approved'], example: '150000' },
+      { key: 'providerReference', label: 'Provider reference', help: 'For a claim with the provider: the provider’s own claim reference.', aliases: ['provider reference', 'provider claim number', 'manufacturer reference', 'external reference', 'REFNO'], example: 'ISZ-WTY-55102' },
+      { key: 'submittedOn', label: 'Submitted on', help: 'Optional: when it went to the provider. Empty: the failure date.', aliases: ['submitted on', 'submission date', 'date submitted', 'sent on'], example: '24.10.2026' },
+      { key: 'decidedOn', label: 'Decided on', help: 'Optional: when the provider accepted or rejected it. Empty: the submission date.', aliases: ['decided on', 'decision date', 'date decided', 'accepted on', 'rejected on'], example: '30.10.2026' },
+      { key: 'remedy', label: 'Remedy', help: 'Optional: Reimbursement, Replacement or Repair. Empty: the policy’s usual remedy.', aliases: ['remedy', 'settlement type', 'resolution type'], example: 'Reimbursement', choices: ['Reimbursement', 'Replacement', 'Repair'] },
+      { key: 'partReturnRequired', label: 'Failed part to return', help: 'Optional: Yes when the provider wants the failed part back (Sent and Received are understood too). Empty: when the provider has a part-retention rule.', aliases: ['part return', 'failed part return', 'return part', 'part return required', 'return required'], example: 'Yes', choices: ['Yes', 'No', 'Sent', 'Received'] },
+      { key: 'decisionNotes', label: 'Notes', help: 'Optional: the provider’s reasons, or anything to keep with the claim.', aliases: ['notes', 'decision notes', 'remarks', 'comments', 'rejection reason', 'reason'], example: '' },
+    ],
+  },
   registers: {
     key: 'registers',
     label: 'Production, QC and PDI registers',
@@ -393,6 +462,8 @@ export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
   if (entity === 'invoices' && mapping.customerExternalId == null && mapping.customerPhone == null) out.push('Choose how to find each invoice’s customer: their SAP customer number or phone.');
   if (entity === 'openJobs' && mapping.vin == null && mapping.plateNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate: an open job card is on a vehicle.');
+  if (entity === 'warranties' && mapping.vin == null && mapping.plateNumber == null && mapping.partNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate, or the part number: a warranty covers a vehicle or a part.');
+  if (entity === 'claims' && mapping.warrantyNumber == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each claim’s warranty: its warranty number, or the vehicle’s chassis number or plate.');
   if (entity === 'jobs' && mapping.customerExternalId == null && mapping.customerPhone == null && mapping.customerEmail == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each job’s customer: their SAP customer number, phone or email — or the vehicle’s chassis number or plate.');
   if (entity === 'vehicles') {
     if (mapping.customerExternalId == null && mapping.customerEmail == null && mapping.customerPhone == null) out.push('Choose how to find each vehicle’s customer: their customer number, email or phone.');

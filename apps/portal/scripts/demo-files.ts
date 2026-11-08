@@ -310,6 +310,74 @@ emit('15_SAP_open_job_cards_demo.csv', 'openJobs', OPEN_HEADER, openRows, [
   { cells: ['483295', '0009999999', 'JAANLR85EL7999999', 'XYZ 999 ZZ', sapDate(addDays(CUTOVER, -2)), 'REL', '', 'Vehicle not in EJO', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate.' },
 ]);
 
+// ── 16: the warranties sold before EJO (become EJO warranties under the demo policies) ───
+// Fourteen vehicles from 02, each delivered a few days after its PDI with 25 km on the clock, under the Isuzu or Soueast
+// policy of the workshop demo (DEMO-ISZ-3Y, DEMO-SEM-5Y): most name the policy, two leave it to be found from the months,
+// km and provider. Most of these vehicles were sold years ago, so their warranty has ended: kept for its history. Vehicle 25
+// (sold in 2024) is still covered. Six parts fitted before EJO and still covered: four batteries (part 18 of 03a, with their
+// serials) under DEMO-BAT-12M, two sets of brake pads (part 1 of 03a) under DEMO-PAD-6M. One warranty suspended, with its reason.
+const WTY_HEADER = ['MGANR', 'Covers', 'VHVIN', 'LICENSE_NUM', 'KUNNR', 'Policy', 'Provider', 'Months', 'Km', 'GWLDT', 'GWLEN', 'Start km', 'MATNR', 'SERNR', 'Evidence', 'Status', 'Notes'];
+const wtyNumber = (i: number) => `W-${buildOf(i).pdi.getUTCFullYear()}-${String(400 + i).padStart(4, '0')}`;
+const deliveredOf = (i: number) => addDays(buildOf(i).pdi, 5 + (i % 3));
+const soueast = (i: number) => MODELS[i % MODELS.length]![0] === 'Soueast';
+const WTY_VEHICLES = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 25, 30];
+const wtyRows: string[][] = [];
+for (const i of WTY_VEHICLES) {
+  const named = i !== 3 && i !== 9; // 3 and 9: no policy named, found from the months, km and provider
+  const [code, months, km, provider] = soueast(i) ? ['DEMO-SEM-5Y', '60', '150000', 'Soueast Motor Co., Ltd (demo)'] : ['DEMO-ISZ-3Y', '36', '100000', 'Isuzu Motors Ltd (demo)'];
+  wtyRows.push([wtyNumber(i), 'Vehicle', vin(i), plateOf(i), kunnr(i), named ? code : '', named ? '' : provider, named ? '' : months, named ? '' : km, sapDate(deliveredOf(i)), '', '25', '', '', `Invoice ${90100000 + i} of ${sapDate(deliveredOf(i))}`, i === 6 ? 'Suspended' : 'Active', i === 6 ? 'Engine tampered with outside an authorised workshop; under investigation' : '']);
+}
+const battery = partRow(17);
+const pads = partRow(0);
+/** Parts fitted before EJO: [warranty number, vehicle, part, policy, days before the cut-over, serial]. */
+const FITTED: [string, number, string[], string, number, string][] = [
+  ['B-2026-0001', 2, battery, 'DEMO-BAT-12M', 210, 'EXB-2026-7101'], ['B-2026-0002', 5, battery, 'DEMO-BAT-12M', 160, 'EXB-2026-7102'],
+  ['B-2026-0003', 7, battery, 'DEMO-BAT-12M', 300, 'EXB-2025-6950'], ['B-2026-0004', 11, battery, 'DEMO-BAT-12M', 95, 'EXB-2026-7188'],
+  ['P-2026-0001', 1, pads, 'DEMO-PAD-6M', 70, ''], ['P-2026-0002', 8, pads, 'DEMO-PAD-6M', 45, ''],
+];
+for (const [no, i, part, code, days, serial] of FITTED) {
+  const fitted = addDays(CUTOVER, -days);
+  wtyRows.push([no, 'Part', vin(i), plateOf(i), kunnr(i), code, '', '', '', sapDate(fitted), '', '', part[0]!, serial, `Job card ${483000 + days} of ${sapDate(fitted)}`, 'Active', '']);
+}
+emit('16_SAP_warranties_demo.csv', 'warranties', WTY_HEADER, wtyRows, [
+  { cells: ['', 'Vehicle', vin(13), plateOf(13), kunnr(13), 'DEMO-ISZ-3Y', '', '', '', '04.05.2025', '', '25', '', '', 'Invoice 90100013', 'Active', ''], what: 'No warranty number', expect: 'rejected', by: 'check', says: 'Warranty number is required (SAP MGANR or the old system’s warranty or certificate number).' },
+  { cells: ['W-2027-0901', 'Vehicle', vin(14), plateOf(14), kunnr(14), 'DEMO-ISZ-3Y', '', '', '', '15.03.2027', '', '25', '', '', 'Invoice 90100014', 'Active', ''], what: 'A warranty that starts in the future', expect: 'rejected', by: 'check', says: 'The start date 2027-03-15 is in the future: a warranty starts on the day the vehicle or part was delivered.' },
+  { cells: ['W-2025-0902', 'Vehicle', vin(15), plateOf(15), kunnr(15), 'DEMO-XYZ-9Y', '', '', '', '04.05.2025', '', '25', '', '', 'Invoice 90100015', 'Active', ''], what: 'A policy EJO does not have', expect: 'rejected', by: 'database', says: 'There is no warranty policy “DEMO-XYZ-9Y” in EJO. Create it under Warranty → Policies (its code or name), or give the months and km so it can be found.' },
+  { cells: ['W-2025-0903', 'Vehicle', 'JAANLR85EL7999999', 'XYZ 999 ZZ', '0009999999', 'DEMO-ISZ-3Y', '', '', '', '04.05.2025', '', '25', '', '', 'Invoice 90100016', 'Active', ''], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (a vehicle warranty needs the vehicle it covers), or check the chassis number or plate.' },
+  { cells: [wtyNumber(2), 'Vehicle', vin(16), plateOf(16), kunnr(16), 'DEMO-ISZ-3Y', '', '', '', '04.05.2025', '', '25', '', '', 'Invoice 90100017', 'Active', ''], what: `Warranty ${wtyNumber(2)} a second time (row 3 has it)`, expect: 'duplicate', by: 'file', says: 'Same warranty number as row 3 of the file; only the first is loaded.' },
+  { cells: ['W-2025-0904', 'Vehicle', vin(17), plateOf(17), kunnr(17), 'DEMO-ISZ-3Y', '', '', '', '04.05.2025', '', '25', '', '', 'Invoice 90100018', 'Pending?', ''], what: 'A status EJO does not know', expect: 'rejected', by: 'check', says: '“Pending?” is not a warranty status EJO knows: use Active, Suspended, Void or Transferred.' },
+]);
+
+// ── 17: the warranty claims still open on the cut-over day (become live EJO claims) ───
+// Eight claims on the warranties of 16 still in force, one at every open stage: a draft, one with the Warranty HOD, one
+// with the Manager, one approved to submit, two with the provider (one with its failed part sent), one accepted (the failed
+// battery received by the provider) and one rejected.
+const CLAIM_HEADER = ['CLMNO', 'MGANR', 'Stage', 'REPDA', 'Odometer', 'Complaint', 'Cause', 'Correction', 'Causal part', 'Causal part number', 'Labour', 'Parts', 'Other', 'Logistics', 'Accepted amount', 'Provider reference', 'Submitted on', 'Decided on', 'Remedy', 'Part return', 'Notes'];
+const vehicleWty = wtyNumber(25);
+const CLAIMS: [string, number, string, number, string, string, string, string, string, string, string, string, string, string, string][] = [
+  // warranty, vehicle, stage, days before cut-over, complaint, cause, correction, causal part, part number, labour, parts, accepted, provider ref, part return, notes
+  ['B-2026-0001', 2, 'Draft', 3, 'Battery will not hold a charge overnight', '', '', '', '', '', '', '', '', '', 'Waiting for the load test'],
+  ['P-2026-0001', 1, 'With the Warranty HOD', 6, 'Brakes squeal; pads cracked across the face', 'Friction material separated from the backing plate', 'Pads replaced (front axle)', pads[1]!, pads[0]!, '15000', pads[6]!, '', '', 'Yes', ''],
+  [vehicleWty, 25, 'With the Manager', 9, 'Fuel gauge reads empty when the tank is full', 'Fuel sender unit open circuit', 'Fuel sender unit replaced', 'Fuel sender unit', '8-98100026-6', '18000', '42000', '', '', '', ''],
+  [vehicleWty, 25, 'Approved to submit', 12, 'Water pump leaking coolant', 'Water pump seal failed', 'Water pump replaced; coolant refilled', 'Water pump assembly', partRow(6)[0]!, '35000', partRow(6)[6]!, '', '', 'Yes', ''],
+  ['B-2026-0002', 5, 'Submitted', 18, 'Vehicle will not start in the morning', 'Battery cell short-circuited (load test failed)', 'Battery replaced', battery[1]!, battery[0]!, '5000', battery[6]!, '', 'OAE-WC-2026-031', 'Sent', ''],
+  ['P-2026-0002', 8, 'Submitted', 15, 'Brake pedal pulsates', 'Pad compound glazed within 2,000 km', 'Pads replaced; discs skimmed', pads[1]!, pads[0]!, '15000', pads[6]!, '', 'IBF-CLM-0711', '', ''],
+  ['B-2026-0003', 7, 'Accepted', 30, 'Battery swollen', 'Battery case deformed by an internal fault', 'Battery replaced', battery[1]!, battery[0]!, '5000', battery[6]!, battery[6]!, 'OAE-WC-2026-024', 'Received', 'Replacement battery to follow from the supplier'],
+  ['B-2026-0004', 11, 'Rejected', 26, 'Battery flat after a week parked', 'Deep discharge from a faulty alarm drawing current', 'Alarm wiring repaired; battery recharged', battery[1]!, battery[0]!, '8000', '0', '', 'OAE-WC-2026-027', '', 'Rejected: deep discharge from a fault elsewhere in the vehicle is excluded'],
+];
+const claimRows = CLAIMS.map(([wty, i, stage, days, complaint, cause, correction, part, partNo, labour, parts, accepted, ref, ret, notes], k) => {
+  const failed = addDays(CUTOVER, -days);
+  const withProvider = ['Submitted', 'Accepted', 'Rejected'].includes(stage);
+  return [`C-2026-${String(180 + k).padStart(4, '0')}`, wty, stage, sapDate(failed), String((lastServiceKm.get(vin(i)) ?? 5000) + 900), complaint, cause, correction, part, partNo, labour, parts, '', '', accepted, ref, withProvider ? sapDate(addDays(failed, 2)) : '', stage === 'Accepted' || stage === 'Rejected' ? sapDate(addDays(failed, 9)) : '', '', ret, notes];
+});
+emit('17_SAP_open_claims_demo.csv', 'claims', CLAIM_HEADER, claimRows, [
+  { cells: ['C-2026-0290', vehicleWty, 'Settled', sapDate(addDays(CUTOVER, -60)), '', 'Wiper motor stopped', 'Wiper motor failed', 'Wiper motor replaced', 'Wiper motor', '', '12000', '38000', '', '', '50000', 'ISZ-WTY-53001', sapDate(addDays(CUTOVER, -58)), sapDate(addDays(CUTOVER, -50)), '', '', ''], what: 'A settled claim: it is history', expect: 'rejected', by: 'check', says: 'Stage “Settled”: a settled or cancelled claim is history and stays in the old system; bring in the claims still open.' },
+  { cells: ['C-2026-0291', 'W-1999-0001', 'Draft', sapDate(addDays(CUTOVER, -4)), '', 'Door lock jammed', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''], what: 'A warranty EJO does not have', expect: 'rejected', by: 'database', says: 'Warranty W-1999-0001 is not in EJO. Import the warranties file first (the claim is on a warranty), or check the number.' },
+  { cells: ['C-2026-0292', vehicleWty, 'Draft', sapDate(addDays(CUTOVER, -4)), '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''], what: 'No complaint', expect: 'rejected', by: 'check', says: 'The complaint is required: what the customer reported.' },
+  { cells: ['C-2026-0293', vehicleWty, 'Partially accepted', sapDate(addDays(CUTOVER, -20)), '', 'Turbo whistle under load', 'Turbo bearing worn', 'Turbo replaced', 'Turbocharger', '', '40000', '310000', '', '', '', 'ISZ-WTY-55050', sapDate(addDays(CUTOVER, -18)), sapDate(addDays(CUTOVER, -10)), '', '', ''], what: 'Partially accepted with no accepted amount', expect: 'rejected', by: 'check', says: 'Partially accepted: give the amount the provider accepted.' },
+  { cells: ['C-2026-0181', 'P-2026-0002', 'Draft', sapDate(addDays(CUTOVER, -2)), '', 'The same claim number again', '', '', '', '', '', '', '', '', '', '', '', '', '', '', ''], what: 'Claim C-2026-0181 a second time (row 3 has it)', expect: 'duplicate', by: 'file', says: 'Same claim number as row 3 of the file; only the first is loaded.' },
+]);
+
 // ── The plant's registers (Excel, as kept on the line today) ────────────
 // PDI register: one workbook, no "register" column (chosen when importing). Two steps per vehicle.
 const INSPECTORS = ['A. Bello', 'C. Okoro', 'F. Adebayo', 'M. Yusuf'];
@@ -424,6 +492,8 @@ this order (later files refer to earlier ones):
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
 6a. \`14_SAP_job_card_history_demo.csv\` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
 6b. \`15_SAP_open_job_cards_demo.csv\` — Open job cards at the cut-over (into Isolo Branch): eight vehicles from 02 in the workshop at every stage, with estimates, parts issued and deposits; they become live EJO job cards
+6c. \`16_SAP_warranties_demo.csv\` — Warranties sold before EJO (the workshop demo’s policies must be in EJO): fourteen vehicles from 02 under the Isuzu and Soueast policies (two found from their months and km; most have ended and are kept for their history), four batteries and two sets of brake pads fitted before EJO, one suspended warranty; they become EJO warranties, active from the day they started
+6d. \`17_SAP_open_claims_demo.csv\` — Open warranty claims at the cut-over: eight claims on the warranties of 16 still in force, one at every open stage, from a draft to one accepted and one rejected; they become live EJO claims
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
 8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
 9. \`10_plant_shipments_demo.csv\`, \`11_plant_kits_demo.csv\`, \`12_plant_kit_issues_demo.csv\`, \`13_plant_vehicles_demo.csv\` — the plant's six demo weeks as files (the same records \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.

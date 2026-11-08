@@ -1,4 +1,5 @@
 'use server';
+import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { masterAdminsFor } from '@/lib/master-fallback';
 import { actorLabel } from '@/lib/assist/rules';
 import { portalBaseUrl, websiteBaseUrl } from '@/lib/portal-url';
@@ -113,13 +114,12 @@ async function notifyStaff(recipients: { fullName: string; email: string }[], su
 /** WR-2026-000001 */
 async function nextWarrantyNumber(): Promise<string> {
   const prefix = `WR-${lagosYear()}-`;
-  const latest = await prisma.warranty.findFirst({
-    where: { warrantyNumber: { startsWith: prefix } },
-    orderBy: { warrantyNumber: 'desc' },
-    select: { warrantyNumber: true },
-  });
-  const next = latest ? parseInt(latest.warrantyNumber.slice(prefix.length), 10) + 1 : 1;
-  return `${prefix}${String(next).padStart(6, '0')}`;
+  // A warranty in the Recycle bin (an undone import) keeps its number: never given out twice.
+  const [latest, binned] = await Promise.all([
+    prisma.warranty.findFirst({ where: { warrantyNumber: { startsWith: prefix } }, orderBy: { warrantyNumber: 'desc' }, select: { warrantyNumber: true } }),
+    prisma.recycleBinItem.findFirst({ where: { entityType: 'Warranty', reference: { startsWith: prefix } }, orderBy: { reference: 'desc' }, select: { reference: true } }),
+  ]);
+  return `${prefix}${String(highestSequence(prefix, [latest?.warrantyNumber, binned?.reference]) + 1).padStart(6, '0')}`;
 }
 
 // ── Providers ─────────────────────────────────────────────────────────

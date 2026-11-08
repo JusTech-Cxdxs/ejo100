@@ -235,6 +235,18 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes a live job card at its stage, with its old number kept, its estimate marked approved before EJO and its deposit as an opening payment that Finance confirms after the load. Nobody is emailed. Compare the count with the workshop’s open orders in SAP (IW38) before sending it for approval.</p>
             </div>
           ) : null}
+          {job.entity === 'warranties' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="warranty-import-totals">
+              <p className="font-medium">To bring in: {nf(job.totals.check.lines)} warranties ({nf(job.totals.check.vehicles ?? 0)} on vehicles, {nf(job.totals.check.parts ?? 0)} on parts) {job.totals.check.notActive ? ` · ${nf(job.totals.check.notActive)} suspended, void or transferred` : ''}{job.totals.check.from && job.totals.check.to ? ` · started ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes an EJO warranty under its policy, with its old number kept, active from the day it started (one that has ended stays for its history: EJO works expiry out from the dates): running this import and approving it are its registration and its verification. Nobody is emailed. Compare the count with the warranty register in SAP or the old system before sending it for approval.</p>
+            </div>
+          ) : null}
+          {job.entity === 'claims' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="claim-import-totals">
+              <p className="font-medium">To bring in: {nf(job.totals.check.lines)} open claims · <span className="tabular-nums">{naira(job.totals.check.value)}</span> claimed{job.totals.check.accepted ? <> · <span className="tabular-nums">{naira(job.totals.check.accepted)}</span> accepted by providers, not yet settled</> : null}{job.totals.check.withProvider ? ` · ${nf(job.totals.check.withProvider)} with the provider` : ''}{job.totals.check.from && job.totals.check.to ? ` · failures ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes a live EJO claim at its stage, on its warranty, with its old number kept; approvals and decisions before EJO are recorded as such, not asked again. Nobody is emailed. Compare the count and the amounts with the open-claims list of SAP or the provider’s portal before sending it for approval.</p>
+            </div>
+          ) : null}
           {job.entity === 'jobs' && job.totals?.check ? (
             <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]">
               <p className="font-medium">To load as history of {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.lines)} past jobs{job.totals.check.value ? <> · <span className="tabular-nums">{naira(job.totals.check.value)}</span> charged</> : null}{job.totals.check.from && job.totals.check.to ? ` · opened ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
@@ -381,6 +393,8 @@ function ApprovePanel({ job, pending, act }: { job: ImportJobDetail; pending: bo
       <p className="text-sm text-[var(--ejo-text)]">
         {job.entity === 'invoices' && job.totals?.check ? <>Approving loads <strong>{nf(job.totals.check.lines)}</strong> SAP invoices worth <strong>{naira(job.totals.check.value)}</strong> as read-only history of {job.branch?.name ?? 'the branch'}; they count in the customers’ spend and the analytics, and Finance then confirms the totals. </> : null}
         {job.entity === 'stock' && job.totals?.check ? <>Approving loads <strong>{naira(job.totals.check.value)}</strong> of opening stock ({nf(job.totals.check.lines)} lines) into {job.branch?.name ?? 'the branch'} as opening-balance receipts; Finance then confirms the value. </> : null}
+        {job.entity === 'warranties' ? <>Your approval is the second person on every warranty in this file: they become active from the day each started, as if registered and verified at the desk. </> : null}
+        {job.entity === 'claims' ? <>Each claim carries on in EJO from its stage; the approvals and decisions taken before EJO are not asked again. </> : null}
         Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}{job.branch ? ` of ${job.branch.name}` : ''}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.
       </p>
       {job.me.id === job.createdById ? <p className="text-xs text-[var(--ejo-warning)]">You prepared this import. As the platform administrator you may approve it while nobody else holds the role; this is recorded.</p> : null}
