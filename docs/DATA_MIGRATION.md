@@ -55,6 +55,41 @@ and invoice history have a second signature: after they load, someone in
 **Finance** (not the person who prepared or approved it) confirms the totals.
 Finance opens those two kinds of import only — never a customers file.
 
+## 2a. The cut-over checklist (P9)
+
+**Data Exchange → Cut-over checklist** lists every workshop, warehouse and
+assembly plant with how far its cut-over has come. A branch's page lists the
+files it needs, in the order they load, each with where it stands —
+worked out from the imports themselves, never typed in:
+
+| Branch | Steps, in order |
+| --- | --- |
+| Workshop | Staff, customers, vehicles, suppliers, parts, opening stock, invoice history, job card history, open job cards, open services and bookings, warranties, open claims, registers |
+| Warehouse | Staff, suppliers, parts, opening stock, invoice history |
+| Assembly plant | Staff, plant shipments, plant vehicles, plant kits, plant kit issues |
+
+- **States:** *Not started*, *Being prepared*, *Waiting for approval*,
+  *Loaded* (with how many records it added and filled in), *Loaded —
+  waiting for Finance to confirm the totals* (opening stock and invoice
+  history), *Undone — load it again*, *Not needed*. Staff, customers,
+  vehicles, suppliers, warranties and claims belong to the whole
+  organisation: loaded once, they count on every branch's checklist.
+- **Next:** the first step to do now is outlined; a step that names an
+  earlier one (open job cards name their vehicle) says to load that first.
+- **Not needed here:** a step the branch has nothing for (no open claims on
+  the day) is marked so, with a reason, by someone who approves imports at
+  that branch; *Needed after all* takes it back. A loaded step, or one
+  under way, cannot be marked.
+- **Signing off:** once every step is loaded (and confirmed by Finance,
+  where it asks) or not needed, an approver signs the branch off as cut
+  over. The sign-off records the whole checklist as it stood — each step's
+  state, how many records, which imports, each reason. *Reopen*, with a
+  reason, is for a file that has to be loaded again.
+- Every mark, sign-off and reopening is an entry in the audit trail
+  (`BranchCutover`, actions `data_exchange.cutover_*`): append-only, the
+  latest counts, nothing is ever edited, and each is read back before the
+  page says it is saved. The page shows that history, newest first.
+
 ## 2b. Staff (P7) — load first
 
 The organisation's people from SAP HR (or a staff list) come in before
