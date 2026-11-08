@@ -37,6 +37,7 @@ async function rightsFor(rec: BinRecord): Promise<DeleterRights> {
     openJobs = await allows('workshop.job_card.create', at);
   } else if (rec.entity === 'Customer') ownerRight = await allows('crm.manage');
   else if (rec.entity === 'CustomerVehicle') ownerRight = (await allows('workshop.customer.manage')) || (await allows('crm.manage'));
+  else if (rec.entity === 'Warranty' || rec.entity === 'WarrantyClaim') ownerRight = await allows('warranty.claim.approve');
   else ownerRight = await allows('store.parts.manage', at);
   return { userId: p.userId, isSuperAdmin: p.isSuperAdmin, manageBin, ownerRight, openJobs };
 }

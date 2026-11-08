@@ -351,6 +351,101 @@ from 02 in the workshop at every stage); `with-mistakes/` adds a closed job
 card, an unknown stage, no vehicle, the same vehicle twice, a future date and
 a vehicle EJO does not have.
 
+## 7a4. Warranties and open warranty claims at the cut-over (P6)
+
+Two imports, loaded after the vehicles (and the parts, for part warranties),
+both organisation-wide (no branch to choose), both approved by **the
+Warranty HOD or a Branch Manager**. Nobody is emailed — the customers, the
+providers and the staff were told at the time.
+
+### Warranties (sold before EJO)
+
+Each row becomes an **EJO warranty** (WR number) on the customer and the
+vehicle already in EJO:
+
+- **Its old number**, kept (`externalId`) and searchable (*SAP warranty
+  W-2024-0425 → WR-2026-000031*). A banner on the warranty says where it came
+  from and which import brought it; its origin reads *Brought in at the
+  cut-over*.
+- **Its policy** — one of the organisation's own (Warranty → Policies), by
+  its **code or name**. With no policy named, the one policy of the same kind
+  with the same **months** (and **km**, and **provider** when given) is used;
+  none or several such policies are refused with their codes, so the
+  policies are made in EJO first. The policy's terms (coverage, exclusions,
+  conditions) are copied onto the warranty, as at the desk. An archived or
+  switched-off policy is accepted with a note: the warranty was sold under it.
+- **Its dates** — the start (GWLDT, the delivery or fitting day; never in
+  the future) and the end (GWLEN), or the end worked out from the policy. A
+  warranty that has already ended is kept for its history: EJO works expiry
+  out from the dates and the km, never stores it.
+- **Vehicle or part.** A part warranty names the part number (it must be in
+  the parts catalogue) and, when it has one, its serial (kept in words when
+  the serial is not in EJO's stock records — it was fitted before EJO).
+- **Its status** — Active (the default), Suspended, Void or Transferred, with
+  the reason from *Notes* (or *Suspended before EJO*).
+- **Registered and verified.** At the desk a warranty is registered by one
+  person and verified by another before it covers anything; here the person
+  who ran the import is its registration and the approver its verification
+  (both recorded on the warranty), so it is **active from the day it
+  started**.
+
+Refused: no warranty number, no start date, a future start, a policy EJO does
+not have, a policy of the other kind (a part policy on a vehicle), a
+provider that is not the policy's, a vehicle or a part EJO does not have, a
+vehicle that already holds a warranty under the same policy (one per vehicle
+and policy; the second row of a file for it is skipped), a status EJO does
+not know. The same warranty number twice in a file is a duplicate.
+
+### Open claims
+
+Each row becomes a **live EJO claim** (WC number), on its warranty — by the
+old warranty number (as in the warranties file) or the WR number, or, with
+neither, the vehicle's one warranty in force on the failure date:
+
+| In the file | EJO stage |
+| --- | --- |
+| empty, Draft, New, Open | Draft |
+| With the Warranty HOD, Review, Pending approval | With the Warranty HOD |
+| With the Manager | With the Branch Manager |
+| Approved to submit, Ready | Approved to submit |
+| Submitted, Sent, With provider | Submitted to the provider |
+| Accepted, Approved by provider, Credited | Accepted |
+| Partially accepted | Partially accepted (the accepted amount is required) |
+| Rejected, Declined | Rejected |
+| Settled, Paid, Closed, Cancelled | **refused** — history, stays in the old system |
+
+- **The steps taken before EJO** are dated (the failure, submission and
+  decision dates) and named *before EJO* on the claim's chain — never
+  attributed to anyone in EJO and never asked again. From its stage the
+  claim carries on in EJO like any other: the HOD approves the next one,
+  the provider's decision is recorded, the settlement received.
+- **The three Cs** (complaint required; cause and correction read *Not
+  recorded before EJO* past a draft until filled in), the causal part,
+  **amounts** (labour, parts, other, logistics; the claimed total is what
+  they add up to — a total alone is kept as *Other*), the accepted amount, the
+  provider's reference, the remedy (or the policy's usual one) and the
+  failed-part return (Yes, Sent, Received; or the provider's rule).
+- The provider's claim deadline is set from the failure date, as at the desk.
+
+The import's check shows the count, the amount claimed and what providers
+have accepted but not yet settled — compare them with the old system's open
+claims and the providers' portals before sending it for approval.
+
+**Undo** moves to the Recycle bin only what nobody has used since: a claim
+moved on, a warranty with a claim on it (undo the claims import first) or an
+estimate line it covers is kept and reported. Warranties and claims reach the
+bin only this way — at the desk an issued warranty is voided and a claim
+cancelled, with a reason. Each restores on its own, number kept (a claim
+after its warranty).
+
+Demo: `docs/demo/correct/16_SAP_warranties_demo.csv` and
+`17_SAP_open_claims_demo.csv` (load into the demo organisation, whose
+workshop demo has the Isuzu, Soueast, battery and brake-pad policies);
+`with-mistakes/` adds a warranty without a number, one starting in the
+future, an unknown policy, a vehicle EJO does not have, a number twice and an
+unknown status; and a settled claim, an unknown warranty, no complaint, a
+partial acceptance without its amount and a claim number twice.
+
 ## 7b. Production, QC and PDI registers
 
 The plant's existing Excel registers — the production line, quality checks

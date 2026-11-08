@@ -89,7 +89,7 @@ export default async function PrintWarrantyPage({ params, searchParams }: { para
       </p>
       {isOrgCopy ? (
         <p style={{ marginTop: '10px', fontSize: '11px', color: '#475569' }}>
-          {w.origin === 'AUTO' ? 'Issued automatically with a part release' : 'Registered by staff'} on {formatDateTime(w.issuedAt)}
+          {w.origin === 'AUTO' ? 'Issued automatically with a part release' : w.origin === 'IMPORT' ? 'Brought in from the previous system' : 'Registered by staff'} on {formatDateTime(w.issuedAt)}
           {w.issuedBy ? ` by ${w.issuedBy.fullName}` : ''}
           {w.verifiedAt ? `; verified ${formatDateTime(w.verifiedAt)}${w.verifiedBy ? ` by ${w.verifiedBy.fullName}` : ''}` : ''}.
           {w.evidenceNote ? ` Evidence: ${w.evidenceNote}.` : ''}

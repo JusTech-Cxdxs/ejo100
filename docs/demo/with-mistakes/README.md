@@ -106,3 +106,24 @@ and invoices, the parts catalogue before opening stock).
 | 14 | Opened on a date in the future | The opening date 2027-03-15 is in the future. | Rejected (not loaded) | the check (this row alone) |
 | 15 | A vehicle EJO does not have | The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate. | Rejected (not loaded) | the check (against what EJO already holds) |
 
+## 16_SAP_warranties_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 22 | No warranty number | Warranty number is required (SAP MGANR or the old system’s warranty or certificate number). | Rejected (not loaded) | the check (this row alone) |
+| 23 | A warranty that starts in the future | The start date 2027-03-15 is in the future: a warranty starts on the day the vehicle or part was delivered. | Rejected (not loaded) | the check (this row alone) |
+| 24 | A policy EJO does not have | There is no warranty policy “DEMO-XYZ-9Y” in EJO. Create it under Warranty → Policies (its code or name), or give the months and km so it can be found. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 25 | A vehicle EJO does not have | The vehicle is not in EJO. Import the vehicles file first (a vehicle warranty needs the vehicle it covers), or check the chassis number or plate. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 26 | Warranty W-2021-0402 a second time (row 3 has it) | Same warranty number as row 3 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 27 | A status EJO does not know | “Pending?” is not a warranty status EJO knows: use Active, Suspended, Void or Transferred. | Rejected (not loaded) | the check (this row alone) |
+
+## 17_SAP_open_claims_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 10 | A settled claim: it is history | Stage “Settled”: a settled or cancelled claim is history and stays in the old system; bring in the claims still open. | Rejected (not loaded) | the check (this row alone) |
+| 11 | A warranty EJO does not have | Warranty W-1999-0001 is not in EJO. Import the warranties file first (the claim is on a warranty), or check the number. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 12 | No complaint | The complaint is required: what the customer reported. | Rejected (not loaded) | the check (this row alone) |
+| 13 | Partially accepted with no accepted amount | Partially accepted: give the amount the provider accepted. | Rejected (not loaded) | the check (this row alone) |
+| 14 | Claim C-2026-0181 a second time (row 3 has it) | Same claim number as row 3 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+

@@ -293,7 +293,10 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Staff', hits: staff.map((r) => ({ label: r.fullName, sub: r.email, href: `/users?q=${encodeURIComponent(r.email)}` })) },
   ];
   // Numbers SAP (or the old system) gave records: every match, labelled with its kind and year.
-  const sap = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), opens });
+  // Old-system numbers can look like the start of an EJO reference ("W-2024-0412" after WR-, "C-2026-0184" after CTR-): only a
+  // bare prefix ("WR") or a complete EJO reference (WR-2026-000031) skips them.
+  const sapFits = plan.kind !== 'prefix' && !(plan.kind === 'reference' && plan.textScope === 'none');
+  const sap = !sapFits ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), canWarranty: allowed('warranty.view'), opens });
   if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
   // A VIN typed or scanned (a handheld scanner types it): that vehicle first — also before it is sold (plant registers only).
   const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view']));
@@ -331,13 +334,13 @@ async function vinHits(q: string, mineOrg: Where, mayOpen: boolean): Promise<Sea
  * reach as the other results. SAP reuses document numbers across company
  * codes and fiscal years: every match is listed; "125262 2026" narrows to one year.
  */
-async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; canWorkshop: boolean; canCrm: boolean; canCustomers: boolean; storeReach: Where | null; canSuppliers: boolean; opens: (keys: PermissionKey[], branchId: string | null | undefined) => boolean }): Promise<SearchHit[]> {
+async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; canWorkshop: boolean; canCrm: boolean; canCustomers: boolean; storeReach: Where | null; canSuppliers: boolean; canWarranty: boolean; opens: (keys: PermissionKey[], branchId: string | null | undefined) => boolean }): Promise<SearchHit[]> {
   const n = sapNumberQuery(q);
   if (!n) return [];
   const ext = { in: n.forms };
   const label = (src: string | null) => (src && src.startsWith('LEGACY') ? 'Old system' : 'SAP');
   const take = 6;
-  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs] = await Promise.all([
+  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs, warranties, claims] = await Promise.all([
     ctx.canCustomers ? prisma.customer.findMany({ where: { AND: [ctx.mineOrg as Prisma.CustomerWhereInput, { externalId: ext }] }, take, select: { id: true, fullName: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canWorkshop ? prisma.customerVehicle.findMany({ where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, take, select: { id: true, make: true, model: true, plateNumber: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canSuppliers ? prisma.supplier.findMany({ where: { ...(ctx.sameOrg as Prisma.SupplierWhereInput), externalId: ext }, take, select: { id: true, name: true, externalId: true, externalSource: true } }).catch(() => []) : [],
@@ -359,6 +362,15 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       orderBy: { createdAt: 'desc' }, take: 10,
       select: { id: true, jobNumber: true, externalId: true, externalSource: true, status: true, branchId: true, vehicle: { select: { plateNumber: true, make: true, model: true } } },
     }).catch(() => []) : [],
+    // Warranties and open claims brought in at the cut-over (P6), by the number they had before EJO.
+    ctx.canWarranty ? prisma.warranty.findMany({
+      where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, orderBy: { startsAt: 'desc' }, take,
+      select: { id: true, warrantyNumber: true, externalId: true, externalSource: true, subjectDescription: true, customer: { select: { fullName: true } } },
+    }).catch(() => []) : [],
+    ctx.canWarranty ? prisma.warrantyClaim.findMany({
+      where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, orderBy: { failureDate: 'desc' }, take,
+      select: { id: true, claimNumber: true, externalId: true, externalSource: true, status: true, causalPart: true, warranty: { select: { warrantyNumber: true } } },
+    }).catch(() => []) : [],
   ]);
   const names = invoices.length || pastJobs.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set([...invoices.map((i) => i.customerId), ...pastJobs.map((j) => j.customerId)])] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
   const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
@@ -379,6 +391,8 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       sub: dot(j.status.toLowerCase().replace(/_/g, ' '), [j.vehicle.make, j.vehicle.model].filter(Boolean).join(' '), j.vehicle.plateNumber),
       href: `/workshop/job-cards/${j.id}`,
     })),
+    ...warranties.map((w) => ({ label: `${label(w.externalSource)} warranty ${w.externalId} → ${w.warrantyNumber}`, sub: dot(w.subjectDescription, w.customer.fullName), href: `/warranty/${w.id}` })),
+    ...claims.map((c) => ({ label: `${label(c.externalSource)} claim ${c.externalId} → ${c.claimNumber}`, sub: dot(c.status.toLowerCase().replace(/_/g, ' '), c.causalPart, c.warranty.warrantyNumber), href: `/warranty/claims/${c.id}` })),
     ...pastJobs.map((j) => ({
       label: `${label(j.externalSource)} job card ${j.jobNumber}${j.kind === 'SERVICE' ? ' · service' : ''}`,
       sub: dot(names.get(j.customerId), day(j.completedAt ?? j.openedAt), j.mileage !== null ? `${j.mileage.toLocaleString('en-NG')} km` : null, j.totalAmount !== null ? naira(j.totalAmount) : null, j.description),

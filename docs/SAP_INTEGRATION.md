@@ -109,6 +109,18 @@ order's costs as the approved estimate, issued components (RESB/MSEG) as
 payments Finance confirms. Closed orders (CLSD/TECO with billing done and the
 vehicle collected) go to the history import instead.
 
+### Warranties and open claims — SAP warranty (WTY) or PM/QM
+
+The **warranties** file reads the master warranty (MGANR) or the warranty
+counter as the old number, the equipment or VIN (EQUNR/VHVIN), the customer
+(KUNNR), the warranty start and end (GWLDT, GWLEN), the material and serial
+for a part (MATNR, SERNR) and the billing document as evidence (VBELN);
+EJO's own policy is named by its code, or found from the months, km and
+provider (P6, DATA_MIGRATION.md §7a4). The **open claims** file reads the
+claim number (CLMNO, or the notification QMNUM), the repair date (REPDA),
+the three Cs, the claimed amounts and the provider's reference (REFNO);
+settled claims stay in SAP. EJO writes nothing back to SAP.
+
 ### Invoice history — SAP billing (VBRK) / accounting (BKPF, BSID)
 
 | EJO field | SAP field | Notes |

@@ -24,6 +24,7 @@ export const LOCKABLE = {
   vehicleService: { table: 'vehicle_services', column: 'id' },
   partStockByPart: { table: 'part_stock', column: 'partId' },
   warrantyClaim: { table: 'warranty_claims', column: 'id' },
+  warranty: { table: 'warranties', column: 'id' },
   user: { table: 'users', column: 'id' },
   meetingRoom: { table: 'meeting_rooms', column: 'id' },
   role: { table: 'roles', column: 'id' },

@@ -19,6 +19,7 @@ import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
+import { getImportOrigin } from '@/lib/actions/data-exchange';
 
 const ACTION_LABEL: Record<string, string> = {
   'warranty.covers_job_card_line': 'Covers a Job Card line',
@@ -58,6 +59,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
   if (!w) notFound();
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
+  const origin = w.importJobId ? await getImportOrigin(w.importJobId).catch(() => null) : null;
   const cov = warrantyCoverage(w, w.vehicle?.mileage ?? null);
   const distanceEnd = w.startReading !== null && w.distanceLimit !== null ? w.startReading + w.distanceLimit : null;
   const canChange = w.status !== 'VOID' && w.status !== 'TRANSFERRED';
@@ -83,6 +85,14 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
           <PrintMenu orgHref={`/print/warranty/${w.id}`} clientHref={`/print/warranty/${w.id}?variant=client`} clientLabel="Customer Copy" />
         </div>
       </div>
+
+      {w.externalId ? (
+        <div className="mb-6 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-4 py-3 text-sm text-[var(--ejo-text)]" role="note" data-testid="warranty-origin">
+          <span className="font-semibold">Brought in from {w.externalSource === 'LEGACY' ? 'the old system' : 'SAP'} as warranty {w.externalId}.</span>{' '}
+          It started on {formatDateOnly(w.startsAt)}{origin ? <>; brought into EJO by import {origin.mayOpen ? <LoadingLink href={`/data-exchange/imports/${w.importJobId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{origin.number}</LoadingLink> : origin.number}{origin.loadedAt ? ` on ${formatDateOnly(origin.loadedAt)}` : ''}</> : null}.
+          {' '}Registered by the person who ran the import and verified by the one who approved it.
+        </div>
+      ) : null}
 
       <div className={`mb-6 rounded-[var(--ejo-radius-lg)] border p-4 text-sm ${cov.state === 'COVERED' ? 'border-[var(--ejo-success)]/40 bg-[var(--ejo-success)]/5' : cov.state === 'EXPIRING_SOON' ? 'border-[var(--ejo-warning)]/40 bg-[var(--ejo-warning)]/5' : 'border-[var(--ejo-border)] bg-[var(--ejo-surface)]'}`}>
         <p className="font-medium text-[var(--ejo-text)]">{cov.reason}</p>
@@ -173,7 +183,7 @@ export default async function WarrantyDetailPage({ params, searchParams }: { par
                   <LoadingLink href={`/workshop/parts-requests/${w.slipLine.slip.id}`} className="text-[var(--ejo-primary)] hover:underline">{w.slipLine.slip.referenceNumber}</LoadingLink>
                 </Field>
               ) : null}
-              <Field label="Origin">{w.origin === 'AUTO' ? 'Issued automatically with a part release' : 'Registered by staff'}</Field>
+              <Field label="Origin">{w.origin === 'AUTO' ? 'Issued automatically with a part release' : w.origin === 'IMPORT' ? `Brought in at the cut-over (${w.externalSource === 'LEGACY' ? 'old system' : 'SAP'} ${w.externalId ?? ''})`.replace(' )', ')') : 'Registered by staff'}</Field>
               <Field label="Issued">
                 {formatDateTime(w.issuedAt)}{w.issuedBy ? ` by ${w.issuedBy.fullName}` : ''}
               </Field>

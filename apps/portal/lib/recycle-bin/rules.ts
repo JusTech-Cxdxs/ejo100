@@ -8,8 +8,8 @@
  */
 import { pluralize } from '../utils/pluralize';
 
-export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier';
-export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier'];
+export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier' | 'Warranty' | 'WarrantyClaim';
+export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier', 'Warranty', 'WarrantyClaim'];
 
 /** How each kind is named to people, and the verb prefix of its audit entries. */
 export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: string; icon: string }> = {
@@ -19,6 +19,9 @@ export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: 
   CustomerVehicle: { noun: 'Vehicle', plural: 'Vehicles', audit: 'vehicle', icon: 'car' },
   Part: { noun: 'Part', plural: 'Parts', audit: 'part', icon: 'boxes' },
   Supplier: { noun: 'Supplier', plural: 'Suppliers', audit: 'supplier', icon: 'truck' },
+  // Only an undone import puts these in the bin (P6): an issued warranty or a claim is voided or cancelled, never deleted.
+  Warranty: { noun: 'Warranty', plural: 'Warranties', audit: 'warranty', icon: 'shield-check' },
+  WarrantyClaim: { noun: 'Warranty claim', plural: 'Warranty claims', audit: 'warranty_claim', icon: 'shield' },
 };
 
 /** The record's own page. */
@@ -30,6 +33,8 @@ export function binHref(entity: BinEntity, id: string): string {
     case 'CustomerVehicle': return `/workshop/vehicles/${id}/edit`;
     case 'Part': return `/inventory/parts/${id}`;
     case 'Supplier': return `/inventory/suppliers?q=${encodeURIComponent(id)}`;
+    case 'Warranty': return `/warranty/${id}`;
+    case 'WarrantyClaim': return `/warranty/claims/${id}`;
   }
 }
 
@@ -228,6 +233,14 @@ export type PartFacts = {
   stockReserved: number;
 };
 
+/** An issued warranty, or a warranty claim, is never deleted by hand: it is voided (or the claim cancelled) with a
+ * reason, so its history stays. Only undoing the import that brought it in moves it to the bin (P6). */
+export function warrantyRecordEligibility(entity: 'Warranty' | 'WarrantyClaim'): Eligibility {
+  return entity === 'Warranty'
+    ? verdict('warranty', ['is an issued warranty'], 'Void it, with a reason, instead.')
+    : verdict('warranty claim', ['is a warranty claim'], 'Cancel it, with a reason, instead.');
+}
+
 /** A supplier goes only while no goods receipt names it (receipts are the Store's record). */
 export function supplierEligibility(f: { receipts: number }): Eligibility {
   const b: string[] = [];
@@ -287,6 +300,8 @@ export const SNAPSHOT_ORDER: Record<BinEntity, string[]> = {
   CustomerVehicle: ['customerVehicle', 'serviceReminderLog'],
   Part: ['part', 'partUnitOfMeasure', 'partStock', 'partFitment'],
   Supplier: ['supplier'],
+  Warranty: ['warranty'],
+  WarrantyClaim: ['warrantyClaim'],
 };
 
 export type SnapshotRow = { model: string; data: Record<string, unknown> };

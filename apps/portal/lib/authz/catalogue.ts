@@ -198,7 +198,9 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
   'store-officer': { 'store.view': B, ...VIEW_WORKSHOP, 'store.matching': B, 'store.parts.manage': B, 'store.grn.record': B, 'store.prs.release': B, 'analytics.inventory.view': B },
   // ── Warranty ─────────────────────────────────────────────────────
   // Warranty sets part warranties and follows parts back to their receipts — read-only Store.
-  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'vehicles.label.print': B, 'plant.view': B },
+  // The Warranty HOD approves the warranties and open claims brought in from SAP at the cut-over (P6): the only imports
+  // whose department right (warranty.claim.approve) the HOD holds, so no other import can be approved with it.
+  'warranty-hod': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'warranty.claim.approve': B, 'analytics.warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'dataexchange.import.approve': B, 'vehicles.label.print': B, 'plant.view': B },
   'warranty-officer': { 'warranty.view': B, ...VIEW_WORKSHOP, 'store.view': B, 'warranty.manage': B, 'analytics.warranty.view': B, 'vehicles.label.print': B },
   // ── Assembly plant ───────────────────────────────────────────────
   // Runs the plant: every vehicle in it, registers vehicles, approves PDI results (never their own).

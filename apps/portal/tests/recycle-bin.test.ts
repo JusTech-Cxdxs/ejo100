@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  BIN_ENTITIES, SNAPSHOT_ORDER, binLabel, binState, cleanReason, customerEligibility, daysLeft, jobCardEligibility, mayDeleteJob, mayDeleteOther,
+  BIN_ENTITIES, SNAPSHOT_ORDER, binLabel, binState, cleanReason, customerEligibility, daysLeft, jobCardEligibility, mayDeleteJob, warrantyRecordEligibility, mayDeleteOther,
   nextReference, orderedSnapshot, parseSnapshot, partEligibility, plainRow, purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility,
   vehicleServiceEligibility, type JobCardFacts, type VehicleServiceFacts,
 } from '../lib/recycle-bin/rules';
@@ -116,8 +116,15 @@ test('snapshot: parents first, stable within a table, nothing foreign, exactly o
   // the job card and those opening payments to the bin together (the desk's own delete still refuses any job card with a payment).
   for (const e of BIN_ENTITIES) {
     assert.ok(SNAPSHOT_ORDER[e].length >= 1);
-    for (const m of SNAPSHOT_ORDER[e]) if (!(e === 'JobCard' && m === 'payment')) assert.doesNotMatch(m, /^(payment|refund|goodsReceipt|auditLog|warranty)/i, `${e}: ${m}`);
+    // P6: an imported warranty or claim is its own kind, binned only by undoing its import (never by hand: see below).
+    for (const m of SNAPSHOT_ORDER[e]) if (!(e === 'JobCard' && m === 'payment') && !(e === 'Warranty' && m === 'warranty') && !(e === 'WarrantyClaim' && m === 'warrantyClaim')) assert.doesNotMatch(m, /^(payment|refund|goodsReceipt|auditLog|warranty)/i, `${e}: ${m}`);
   }
+  assert.deepEqual(SNAPSHOT_ORDER.Warranty, ['warranty']);
+  assert.deepEqual(SNAPSHOT_ORDER.WarrantyClaim, ['warrantyClaim']);
+  // Never by hand: an issued warranty is voided, a claim cancelled.
+  assert.equal(warrantyRecordEligibility('Warranty').eligible, false);
+  assert.match(warrantyRecordEligibility('Warranty').message, /Void it, with a reason, instead/);
+  assert.equal(warrantyRecordEligibility('WarrantyClaim').eligible, false);
   assert.ok(SNAPSHOT_ORDER.JobCard.includes('payment'));
   assert.equal(jobCardEligibility({ status: 'CHECKED_IN', payments: 1, refunds: 0, estimateStatus: null, partRequests: 0, outsidePurchases: 0, estimateLinesInUse: 0, warranties: 0, warrantyClaims: 0, gateExit: false, roadTests: 0, escalatedFromService: false, closeRequests: 0, approvalDecided: false, technicianAssigned: false }).eligible, false, 'the desk never deletes a job card with a payment');
   // Round trip through storage.
@@ -172,7 +179,9 @@ test('data inventory: exactly the bin kinds are marked, money and audit never ar
   assert.deepEqual(marked, [...BIN_ENTITIES].sort());
   assert.equal(DATA_INVENTORY.RecycleBinItem?.ai, 'NEVER');
   assert.equal(DATA_INVENTORY.RecycleBinItem?.lifecycle, 'EXPIRES');
-  for (const m of ['Payment', 'Refund', 'AuditLog', 'GoodsReceipt', 'Warranty', 'WarrantyClaim']) assert.equal(DATA_INVENTORY[m]?.recycleBin, undefined, m);
+  for (const m of ['Payment', 'Refund', 'AuditLog', 'GoodsReceipt']) assert.equal(DATA_INVENTORY[m]?.recycleBin, undefined, m);
+  // Warranties and claims: only an undone import (P6), never by hand.
+  for (const m of ['Warranty', 'WarrantyClaim']) assert.equal(DATA_INVENTORY[m]?.recycleBin, 'IMPORT_UNDO', m);
 });
 
 test('server half: locks, checks again under the lock, snapshots and deletes in ONE transaction', () => {
