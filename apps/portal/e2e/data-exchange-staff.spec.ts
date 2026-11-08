@@ -52,8 +52,15 @@ test('the staff file: refusals and the totals; the Organisation Administrator ap
   await expect(page.getByText('Same email as row 2 of the file; only the first is loaded.')).toBeVisible();
   await expect(page.getByText(/Already in EJO \(/)).toBeVisible();
   await expect(page.getByText(/the organisation’s administrators are added by hand on the Users page, never by a file/).first()).toBeVisible();
-  await expect(page.getByText(/There is no branch “Lekki Branch” in this organisation/)).toBeVisible();
-  await expect(page.getByText(new RegExp(`${branch.name} has no department “Canteen”`))).toBeVisible();
+  // Each refusal, read from the import's own rows (the file's rows 8, 9 and 10), so a failure says what the row got instead.
+  const jobId = importUrl.split('/').pop()!.split('?')[0]!;
+  const rowIssues = async (n: number) => {
+    const r = await db().importRow.findFirstOrThrow({ where: { jobId, rowNumber: n }, select: { status: true, issues: true } });
+    return `${r.status}: ${((r.issues as { message: string }[] | null) ?? []).map((i) => i.message).join(' | ')}`;
+  };
+  expect(await rowIssues(8)).toMatch(/^REJECTED: .*There is no branch “Lekki Branch” in this organisation/);
+  expect(await rowIssues(9)).toMatch(new RegExp(`^REJECTED: .*${branch.name} has no department “Canteen”`));
+  expect(await rowIssues(10)).toMatch(/^REJECTED: .*There is no role “Chief Cook” in this organisation/);
   await expect(page.getByText(/There is no role “Chief Cook” in this organisation/)).toBeVisible();
   await expect(page.getByTestId('staff-import-totals')).toContainText('To bring in: 3 people in 1 branch · 1 with no role yet');
   await page.getByRole('button', { name: /Send for approval/ }).click();
