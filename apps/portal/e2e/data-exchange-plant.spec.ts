@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { as, open } from './helpers';
 import { db } from './db';
 import { PLANT_BRANCH } from './people';
+import { DEFAULT_ROUTES } from '../lib/plant/line';
 
 /**
  * P8 — the assembly plant's records at the cut-over, end to end, in their
@@ -70,7 +71,8 @@ test('shipments: refusals in plain words, the totals, approved by the Plant Mana
 test('plant vehicles: on the line at its station (the ones before done before EJO), in the yard with the gate passed before EJO; a sold vehicle refused', async ({ page }) => {
   const route = await db().plantRoute.findFirst({ where: { branchId: plantId, familyKey: 'isuzu-n', isActive: true }, orderBy: { version: 'desc' } });
   const stations = (route?.stations as { code: string }[] | undefined) ?? null;
-  const second = stations?.[1]?.code ?? 'C1';
+  // The plant's live route, or the default one when the plant has not saved its own.
+  const second = (stations?.length ? stations : DEFAULT_ROUTES['isuzu-n'].stations)[1]!.code;
   url.vehicles = await load(page, 'plantVehicles', 'vehicles', csv([
     ['VIN', 'Model', 'Engine number', 'Colour', 'Model year', 'Stage', 'Current station', 'Line started', 'Gate passed', 'AUFNR'],
     [vin(1), 'NQR', `4HK1-${STAMP}1`, 'White', '2026', 'On the line', second, ago(1, '07:30'), '', '000001099101'],
