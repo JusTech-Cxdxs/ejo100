@@ -7,6 +7,10 @@ import {
   type ImportJobDetail,
 } from '@/lib/actions/data-exchange';
 import { ENTITIES, mappingFromProfile, type Mapping } from '@/lib/data-exchange/fields';
+import { ROUND_TRIP_ENTITIES } from '@/lib/data-exchange/round-trip';
+import { RoundTripChanges } from '@/components/data-exchange/RoundTripChanges';
+
+const ROUND_TRIP: readonly string[] = ROUND_TRIP_ENTITIES;
 import { IMPORT_STEPS, bytesText, importStatus } from '@/lib/data-exchange/status';
 import { Icon, SectionCard, StatusChip } from '@/components/ui';
 
@@ -223,7 +227,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
       ) : null}
 
       {['VALIDATED', 'AWAITING_APPROVAL', 'APPROVED', 'LOADING', 'PAUSED', 'COMPLETED', 'UNDOING', 'UNDONE'].includes(job.status) ? (
-        <SectionCard icon="check" title="What the check found" description={`${nf(job.fileRows)} rows in the file · ${job.matchMode === 'FILL_BLANKS' ? 'existing records get only their empty fields filled' : 'existing records are left as they are'} · nothing is ever overwritten`}
+        <SectionCard icon="check" title="What the check found" description={job.matchMode === 'UPDATE' ? `${nf(job.fileRows)} rows in the file · each found by its EJO record and compared with the record as it is now · only the changes below are made, nothing is added, and an empty cell leaves a field as it is` : `${nf(job.fileRows)} rows in the file · ${job.matchMode === 'FILL_BLANKS' ? 'existing records get only their empty fields filled' : 'existing records are left as they are'} · nothing is ever overwritten`}
           actions={<>
             {job.rejectedRows + job.duplicateRows > 0 ? <a className={secondary} href={`/data-exchange/imports/${job.id}/rows?kind=rejects`}><Icon name="download" size={14} /> Rejected rows (to fix in Excel)</a> : null}
             {job.possible.length ? <a className={secondary} href={`/data-exchange/imports/${job.id}/rows?kind=possible`}><Icon name="download" size={14} /> Possible duplicates</a> : null}
@@ -265,6 +269,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">A booking waits for its customer on its day and time, for the front desk to check in; a service in the workshop carries on at its stage, accepted before EJO. Old numbers are kept. Nobody is emailed. Compare the bookings with the old diary before sending it for approval.</p>
             </div>
           ) : null}
+          {job.matchMode === 'UPDATE' ? <RoundTripChanges jobId={job.id} noun={def.noun} plural={def.plural} loaded={['COMPLETED', 'UNDOING', 'UNDONE'].includes(job.status)} records={job.totals?.check?.lines ?? 0} fields={job.totals?.check?.quantity ?? 0} counts={job.totals?.check?.counts ?? {}} /> : null}
           {(job.entity === 'plantShipments' || job.entity === 'plantVehicles' || job.entity === 'plantKits' || job.entity === 'plantKitIssues') && job.totals?.check ? (() => {
             const t = job.totals.check;
             const c = t.counts ?? {};
@@ -458,7 +463,8 @@ function ApprovePanel({ job, pending, act }: { job: ImportJobDetail; pending: bo
         {job.entity === 'stock' && job.totals?.check ? <>Approving loads <strong>{naira(job.totals.check.value)}</strong> of opening stock ({nf(job.totals.check.lines)} lines) into {job.branch?.name ?? 'the branch'} as opening-balance receipts; Finance then confirms the value. </> : null}
         {job.entity === 'warranties' ? <>Your approval is the second person on every warranty in this file: they become active from the day each started, as if registered and verified at the desk. </> : null}
         {job.entity === 'claims' ? <>Each claim carries on in EJO from its stage; the approvals and decisions taken before EJO are not asked again. </> : null}
-        Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}{job.branch ? ` of ${job.branch.name}` : ''}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.
+        {job.matchMode === 'UPDATE' ? <>Approving changes <strong>{nf(job.totals?.check?.lines ?? 0)}</strong> {def.plural} ({nf(job.totals?.check?.quantity ?? 0)} fields) exactly as previewed below, each recorded in its history with what it was; a field changed in EJO since the check is left as it is. Nothing is added. It can be undone afterwards: each field still as the file left it goes back.</> : <>
+        Approving loads <strong>{nf(job.goodRows + job.warningRows)}</strong> rows into {def.plural}{job.branch ? ` of ${job.branch.name}` : ''}: new ones are added{job.matchMode === 'FILL_BLANKS' ? ', and existing ones get only their empty fields filled' : ', existing ones are left as they are'}. Rejected and duplicate rows ({nf(job.rejectedRows + job.duplicateRows)}) are not loaded. It can be undone afterwards while no work has been recorded on what it added.</>}
       </p>
       {job.me.id === job.createdById ? <p className="text-xs text-[var(--ejo-warning)]">You prepared this import. As the platform administrator you may approve it while nobody else holds the role; this is recorded.</p> : null}
       <div className="flex flex-wrap gap-2">
@@ -548,10 +554,11 @@ function MappingEditor({ job, onSaved }: { job: ImportJobDetail; onSaved: () => 
 
       <fieldset className="mt-4 space-y-2">
         <legend className="text-sm font-medium text-[var(--ejo-text)]">When a {def.noun} is already in the system</legend>
-        {([['ADD_ONLY', `Leave it as it is (add only new ${def.plural})`], ['FILL_BLANKS', 'Fill in only its empty fields (nothing is overwritten)']] as const).map(([v, label]) => (
+        {([['ADD_ONLY', `Leave it as it is (add only new ${def.plural})`], ['FILL_BLANKS', 'Fill in only its empty fields (nothing is overwritten)'], ...(ROUND_TRIP.includes(job.entity) ? [['UPDATE', `Update ${def.plural} exported from EJO (found by their EJO record; each change previewed before approval)`] as const] : [])] as const).map(([v, label]) => (
           <label key={v} className="flex items-center gap-2 text-sm text-[var(--ejo-text)]"><input type="radio" name="matchMode" checked={matchMode === v} onChange={() => setMatchMode(v)} className="accent-[var(--ejo-primary)]" />{label}</label>
         ))}
       </fieldset>
+      {matchMode === 'UPDATE' ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]" data-testid="round-trip-help">Export the {def.plural} from EJO, change what needs changing in Excel, and upload the file as it is. Rows are found only by the “EJO record” column; nothing new is added; an empty cell leaves a field as it is; {job.entity === 'parts' ? 'a part’s number, how it is tracked and its base unit are changed on its page' : job.entity === 'vehicles' ? 'a vehicle’s chassis number and owner are changed on its page, and mileage never goes down' : 'nothing is ever blanked'}.</p> : null}
       {job.entity === 'customers' ? (
         <fieldset className="mt-4 space-y-2">
           <legend className="text-sm font-medium text-[var(--ejo-text)]">A row that may be an existing customer (same phone, no matching number or email)</legend>

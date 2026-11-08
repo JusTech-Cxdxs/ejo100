@@ -55,6 +55,41 @@ and invoice history have a second signature: after they load, someone in
 **Finance** (not the person who prepared or approved it) confirms the totals.
 Finance opens those two kinds of import only — never a customers file.
 
+## 2a. The cut-over checklist (P9)
+
+**Data Exchange → Cut-over checklist** lists every workshop, warehouse and
+assembly plant with how far its cut-over has come. A branch's page lists the
+files it needs, in the order they load, each with where it stands —
+worked out from the imports themselves, never typed in:
+
+| Branch | Steps, in order |
+| --- | --- |
+| Workshop | Staff, customers, vehicles, suppliers, parts, opening stock, invoice history, job card history, open job cards, open services and bookings, warranties, open claims, registers |
+| Warehouse | Staff, suppliers, parts, opening stock, invoice history |
+| Assembly plant | Staff, plant shipments, plant vehicles, plant kits, plant kit issues |
+
+- **States:** *Not started*, *Being prepared*, *Waiting for approval*,
+  *Loaded* (with how many records it added and filled in), *Loaded —
+  waiting for Finance to confirm the totals* (opening stock and invoice
+  history), *Undone — load it again*, *Not needed*. Staff, customers,
+  vehicles, suppliers, warranties and claims belong to the whole
+  organisation: loaded once, they count on every branch's checklist.
+- **Next:** the first step to do now is outlined; a step that names an
+  earlier one (open job cards name their vehicle) says to load that first.
+- **Not needed here:** a step the branch has nothing for (no open claims on
+  the day) is marked so, with a reason, by someone who approves imports at
+  that branch; *Needed after all* takes it back. A loaded step, or one
+  under way, cannot be marked.
+- **Signing off:** once every step is loaded (and confirmed by Finance,
+  where it asks) or not needed, an approver signs the branch off as cut
+  over. The sign-off records the whole checklist as it stood — each step's
+  state, how many records, which imports, each reason. *Reopen*, with a
+  reason, is for a file that has to be loaded again.
+- Every mark, sign-off and reopening is an entry in the audit trail
+  (`BranchCutover`, actions `data_exchange.cutover_*`): append-only, the
+  latest counts, nothing is ever edited, and each is read back before the
+  page says it is saved. The page shows that history, newest first.
+
 ## 2b. Staff (P7) — load first
 
 The organisation's people from SAP HR (or a staff list) come in before
@@ -947,9 +982,48 @@ before these names were settled (*SAP / old-system number*, *Supplier number
 (SAP)*, *Invoice number (SAP)*, *Customer SAP number*) are recognised too. A
 leading apostrophe (how a CSV keeps `+234…` from running as a formula) is
 not part of the value. Records already in EJO are recognised by their
-numbers and never added twice; updating them from an edited file, with a
-preview of each change, is the next step (A4b). *Stock and value* is a
-report, not an opening balance: it is not imported again.
+numbers and never added twice. *Stock and value* is a report, not an
+opening balance: it is not imported again.
+
+### Updating records from an edited export (P10)
+
+Export customers, vehicles, parts or suppliers, change what needs changing
+in Excel, and upload the file as it is to the same import with **Update
+customers (vehicles, parts, suppliers) exported from EJO**:
+
+- **Found by the EJO record only.** Every export writes each record's EJO
+  number (*EJO record*; *ZZ_EJO_ID* in SAP's layout). A row is matched by it
+  and by nothing else — never by a name, a phone or a guess — within the
+  organisation (a part within the branch the import loads into). A row
+  without one, or with one that is not the organisation's, is refused.
+  Nothing new is ever added in this mode.
+- **Only real changes.** Each row is compared with the record as it is now.
+  The same value written another way is no change: a phone as *+234 803…*
+  or *0803…*, a plate with or without its space, a SAP number with its
+  leading zeros, an email in capitals. **An empty cell leaves a field as it
+  is**: a file never blanks anything.
+- **What identifies a record stays.** A part's number, how it is tracked and
+  its base unit, and a vehicle's chassis number (filled in if EJO has none)
+  and owner are changed on their pages, never by a file; a mileage lower
+  than EJO's is left out (an odometer only goes up). Values that must stay
+  unique — a customer's email, a plate, a chassis number, a SAP number — are
+  refused when another record holds them.
+- **Previewed before approval.** The check lists every change, row by row,
+  as *Address: 3 Old Road → 12 New Road*, with how many records and fields
+  change and each field counted. The approver (as for any import of that
+  list) approves exactly that.
+- **Applied only while still true.** The load locks each record and makes a
+  change only if the record still holds what the preview said it held; a
+  field changed in EJO since the check is left as it is, and the row says
+  so. Each record changed gets one entry in its history (*customer.updated*,
+  *vehicle.updated*, *part.updated*, *supplier.updated*) with every field's
+  *from* and *to* and the import's number — the same as a change made on its
+  page. Nobody is emailed.
+- **Undo, field by field.** Undoing the import puts each field back to what
+  it was, where it still holds what the file wrote; a field changed since is
+  kept as it is now and named on its row.
+- The templates never carry the *EJO record* column: it comes only from an
+  export. Invoice history and opening stock are never updated by a file.
 
 ### SAP field names: a file for the SAP team
 

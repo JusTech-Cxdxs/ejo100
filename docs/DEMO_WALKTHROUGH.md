@@ -613,6 +613,49 @@ named by employee ID).
    then restore a kit from **Recycle bin** — it comes back with its
    checklist and its KIT number.
 
+## 13c. The cut-over checklist (P9)
+
+*The question: "how do we know a branch is ready to switch off the old
+system?"*
+
+People: the **Plant Manager** (or the Manager at Isolo, or an administrator).
+
+1. **Data Exchange → Cut-over checklist**: every branch with *n of m steps
+   settled* and a bar; a branch signed off shows *Cut over* with the day.
+2. Open **Afprint Assembly Plant**: staff, plant shipments, plant vehicles,
+   plant kits, plant kit issues — in the order they load, each with its
+   state from its imports, how many records it added and links to them.
+   The next one to do is outlined.
+3. On **Plant kit issues**, *Not needed here*: a word like *n/a* is refused
+   (*Say why this branch has none*); *No open shortages on the day* is
+   kept, with your name and the time, and appears under **History**.
+   *Needed after all* takes it back.
+4. When every step is settled, **Sign off Afprint Assembly Plant as cut
+   over**: the checklist as it stood is kept with the sign-off in the audit
+   trail. *Reopen*, with a reason, for a file that has to be loaded again.
+5. Sign in as the IT Administrator: the same checklist, without the marks
+   or the sign-off — preparing files is not approving them.
+
+## 13d. An edited export comes back as updates (P10)
+
+*The question: "SAP has the new phone numbers — do we retype them?"*
+
+People: the **IT Administrator** prepares, the **Workshop Manager** approves.
+
+1. **Customers → Export → Excel**. In Excel change two customers' addresses and
+   the first one's phone, write another customer's phone as *+234 …*
+   instead of *0…*; clear one customer's second phone.
+2. **Data Exchange → Customers**, upload the file. Choose **Update customers
+   exported from EJO**: the *EJO record* column is matched by itself.
+3. The check lists **To change: 2 customers · 3 fields**, each as *from →
+   to*. The phone written the other way is no change; the cleared second
+   phone is left as it is (a file never blanks a field).
+4. Before approving, change one of those customers' phone at the desk. Then
+   approve and load as the Workshop Manager: that phone is *changed in EJO
+   since the check: left as it is*; the rest are made, and each customer's
+   history shows the change with the import's number.
+5. **Undo this import**: each field goes back to what it was.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -766,7 +809,7 @@ as each person.
 
 *Coming in the next releases (each adds a section here):* the yard, sale and
 plant dashboards (D4); the job-card, service, warranty, staff and plant
-records imports with a cut-over checklist per branch; round-trip updates from an
-exported file with a preview of the changes (A4b); bulk PDFs, a customer's
+records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
+exported file (§13d); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
 reconciliation (C1); and inviting imported customers to the portal (B).

@@ -176,6 +176,27 @@ record reaches the Recycle bin (governance inventory: `recycleBin:
 'IMPORT_UNDO'`), and restoring needs the Recycle bin right as for anything
 else.
 
+### Updates from an edited export (P10)
+
+Preparing needs `dataexchange.import.run`; approving needs
+`dataexchange.import.approve` and the list's own right — `crm.manage` for
+customers and vehicles, `store.parts.manage` for parts and suppliers — as
+for any import of that list. Rows are matched only by EJO record, fenced to
+the organisation (parts to the import's branch): a file can never reach
+another organisation's or another branch's records. Each change is audited
+on the record with its from and to; undo needs the same rights.
+
+### The cut-over checklist (P9)
+
+Anyone with a Data Exchange right (`dataexchange.import.run` or
+`.approve`) sees every branch's checklist in their organisation. Marking a
+step not needed, signing a branch off as cut over and reopening it need
+`dataexchange.import.approve` **at that branch** (the Manager at a
+workshop, the Plant Manager at the plant, an administrator anywhere), a
+reason for every mark but the sign-off, and are refused during an assisted
+session. Each is an audit entry, never edited; the sign-off is refused
+while any step is unsettled.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an
