@@ -20,8 +20,8 @@ import { StaleStateError, isUniqueClashOn, numberClashPause } from '@/lib/integr
 import { lagosYear } from '@/lib/utils/format-date';
 import {
   BIN_KIND, binLabel, customerEligibility, jobCardEligibility, orderedSnapshot, parseSnapshot, partEligibility, plainRow, supplierEligibility,
-  purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility, vehicleServiceEligibility, warrantyRecordEligibility, staffAccountEligibility,
-  type BinEntity, type Eligibility, type SnapshotRow,
+  purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility, vehicleServiceEligibility, warrantyRecordEligibility, staffAccountEligibility, plantRecordEligibility, isPlantBinEntity,
+  type BinEntity, type PlantBinEntity, type Eligibility, type SnapshotRow,
 } from './rules';
 
 type Tx = Prisma.TransactionClient;
@@ -82,6 +82,22 @@ export async function binRecord(entity: BinEntity, id: string, db: Db = prisma):
   if (entity === 'User') {
     const u = await db.user.findUnique({ where: { id }, select: { fullName: true, email: true, employeeId: true, organisationId: true, branchId: true, createdAt: true, importJobId: true } });
     return u && u.organisationId ? { entity, id, organisationId: u.organisationId, branchId: u.branchId, createdById: null, createdAt: u.createdAt, reference: u.employeeId || u.email, label: binLabel([u.fullName, u.email, u.employeeId]) } : null;
+  }
+  if (entity === 'PlantShipment') {
+    const s = await db.plantShipment.findUnique({ where: { id }, select: { number: true, supplier: true, billOfLading: true, organisationId: true, branchId: true, createdById: true, createdAt: true } });
+    return s ? { entity, id, organisationId: s.organisationId, branchId: s.branchId, createdById: s.createdById, createdAt: s.createdAt, reference: s.number, label: binLabel([s.number, s.supplier, s.billOfLading]) } : null;
+  }
+  if (entity === 'PlantVehicle') {
+    const v = await db.plantVehicle.findUnique({ where: { id }, select: { vin: true, make: true, modelCode: true, organisationId: true, branchId: true, createdById: true, createdAt: true } });
+    return v ? { entity, id, organisationId: v.organisationId, branchId: v.branchId, createdById: v.createdById, createdAt: v.createdAt, reference: v.vin, label: binLabel([v.vin, `${v.make} ${v.modelCode}`]) } : null;
+  }
+  if (entity === 'PlantKit') {
+    const k = await db.plantKit.findUnique({ where: { id }, select: { number: true, vin: true, modelCode: true, organisationId: true, branchId: true, createdById: true, createdAt: true } });
+    return k ? { entity, id, organisationId: k.organisationId, branchId: k.branchId, createdById: k.createdById, createdAt: k.createdAt, reference: k.number, label: binLabel([k.number, k.vin, k.modelCode]) } : null;
+  }
+  if (entity === 'PlantKitIssue') {
+    const i = await db.plantKitIssue.findUnique({ where: { id }, select: { description: true, kind: true, organisationId: true, raisedById: true, raisedAt: true, kit: { select: { number: true, branchId: true } } } });
+    return i ? { entity, id, organisationId: i.organisationId, branchId: i.kit.branchId, createdById: i.raisedById, createdAt: i.raisedAt, reference: `${i.kit.number} ${i.kind.toLowerCase().replace('_', ' ')}`, label: binLabel([i.kit.number, i.description]) } : null;
   }
   const p = await db.part.findUnique({ where: { id }, select: { name: true, partNumber: true, branchId: true, createdById: true, createdAt: true, branch: { select: { name: true, businessUnit: { select: { organisationId: true } } } } } });
   return p ? { entity, id, organisationId: p.branch.businessUnit.organisationId, branchId: p.branchId, createdById: p.createdById, createdAt: p.createdAt, reference: p.partNumber || p.name, label: binLabel([p.partNumber, p.name, p.branch.name]) } : null;
@@ -231,6 +247,10 @@ export async function eligibilityOf(entity: BinEntity, id: string, db: Db = pris
     case 'Warranty': return (await db.warranty.count({ where: { id } })) ? warrantyRecordEligibility('Warranty') : null;
     case 'WarrantyClaim': return (await db.warrantyClaim.count({ where: { id } })) ? warrantyRecordEligibility('WarrantyClaim') : null;
     case 'User': return (await db.user.count({ where: { id } })) ? staffAccountEligibility() : null;
+    case 'PlantShipment': return (await db.plantShipment.count({ where: { id } })) ? plantRecordEligibility(entity) : null;
+    case 'PlantVehicle': return (await db.plantVehicle.count({ where: { id } })) ? plantRecordEligibility(entity) : null;
+    case 'PlantKit': return (await db.plantKit.count({ where: { id } })) ? plantRecordEligibility(entity) : null;
+    case 'PlantKitIssue': return (await db.plantKitIssue.count({ where: { id } })) ? plantRecordEligibility(entity) : null;
   }
 }
 
@@ -293,6 +313,10 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   if (entity === 'WarrantyClaim') return plain([await tx.warrantyClaim.findUniqueOrThrow({ where: { id } })], 'warrantyClaim');
   // The person and their roles only: never a password, a session or a set-password link.
   if (entity === 'User') return [...plain([await tx.user.findUniqueOrThrow({ where: { id } })], 'user'), ...plain(await tx.userRole.findMany({ where: { userId: id } }), 'userRole')];
+  if (entity === 'PlantShipment') return plain([await tx.plantShipment.findUniqueOrThrow({ where: { id } })], 'plantShipment');
+  if (entity === 'PlantVehicle') return [...plain([await tx.plantVehicle.findUniqueOrThrow({ where: { id } })], 'plantVehicle'), ...plain(await tx.plantStationVisit.findMany({ where: { plantVehicleId: id }, orderBy: { sort: 'asc' } }), 'plantStationVisit')];
+  if (entity === 'PlantKit') return [...plain([await tx.plantKit.findUniqueOrThrow({ where: { id } })], 'plantKit'), ...plain(await tx.plantKitCheck.findMany({ where: { kitId: id }, orderBy: { sort: 'asc' } }), 'plantKitCheck')];
+  if (entity === 'PlantKitIssue') return plain([await tx.plantKitIssue.findUniqueOrThrow({ where: { id } })], 'plantKitIssue');
   const root = await tx.part.findUniqueOrThrow({ where: { id } });
   const [units, stock, fitments] = await Promise.all([
     tx.partUnitOfMeasure.findMany({ where: { partId: id }, orderBy: { unitName: 'asc' } }),
@@ -302,8 +326,9 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   return [...plain([root], 'part'), ...plain(units, 'partUnitOfMeasure'), ...plain(stock ? [stock] : [], 'partStock'), ...plain(fitments, 'partFitment')];
 }
 
-const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part' | 'supplier' | 'warranty' | 'warrantyClaim' | 'user'> = {
+const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part' | 'supplier' | 'warranty' | 'warrantyClaim' | 'user' | 'plantShipment' | 'plantVehicle' | 'plantKit' | 'plantKitIssue'> = {
   JobCard: 'jobCard', VehicleService: 'vehicleService', Customer: 'customer', CustomerVehicle: 'customerVehicle', Part: 'part', Supplier: 'supplier', Warranty: 'warranty', WarrantyClaim: 'warrantyClaim', User: 'user',
+  PlantShipment: 'plantShipment', PlantVehicle: 'plantVehicle', PlantKit: 'plantKit', PlantKitIssue: 'plantKitIssue',
 };
 
 async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> {
@@ -314,6 +339,10 @@ async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> 
   else if (entity === 'Supplier') await tx.supplier.delete({ where: { id } });
   else if (entity === 'Warranty') await tx.warranty.delete({ where: { id } });
   else if (entity === 'WarrantyClaim') await tx.warrantyClaim.delete({ where: { id } });
+  else if (entity === 'PlantShipment') await tx.plantShipment.delete({ where: { id } });
+  else if (entity === 'PlantVehicle') await tx.plantVehicle.delete({ where: { id } });
+  else if (entity === 'PlantKit') await tx.plantKit.delete({ where: { id } });
+  else if (entity === 'PlantKitIssue') await tx.plantKitIssue.delete({ where: { id } });
   else if (entity === 'User') {
     // Its unusable password and any set-password link go with it (never kept in the snapshot).
     await tx.verification.deleteMany({ where: { value: id } });
@@ -462,6 +491,38 @@ export async function moveImportedStaffToBinInTx(tx: Tx, ids: string[], importJo
   return moved;
 }
 
+const PLANT_KIND = { plantShipments: 'PlantShipment', plantVehicles: 'PlantVehicle', plantKits: 'PlantKit', plantKitIssues: 'PlantKitIssue' } as const;
+
+/**
+ * Moves the plant records an import brought in (P8) to the bin inside the
+ * caller's transaction — the undo of that import, and the only way any of
+ * them reaches the bin. The caller has checked that nobody has used them
+ * since and that nothing hangs on them (plant-server.ts,
+ * plantUntouchedSinceImport); checked again here under the lock.
+ */
+export async function moveImportedPlantToBinInTx(tx: Tx, kind: keyof typeof PLANT_KIND, ids: string[], importJobId: string, reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+  if (!ids.length) return [];
+  const entity: PlantBinEntity = PLANT_KIND[kind];
+  await lockExisting(tx, LOCK[entity], ids).catch(() => undefined);
+  const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  const moved: string[] = [];
+  for (const id of ids) {
+    const record = await binRecord(entity, id, tx);
+    const mine = entity === 'PlantShipment' ? (await tx.plantShipment.count({ where: { id, importJobId, kits: { none: {} } } })) === 1
+      : entity === 'PlantVehicle' ? (await tx.plantVehicle.count({ where: { id, importJobId, kits: { none: {} }, pdis: { none: {} }, defects: { none: {} }, qaAudits: { none: {} } } })) === 1
+      : entity === 'PlantKit' ? (await tx.plantKit.count({ where: { id, importJobId, issues: { none: {} } } })) === 1
+      : (await tx.plantKitIssue.count({ where: { id, importJobId } })) === 1;
+    if (!record || !mine) continue;
+    const snapshot = orderedSnapshot(entity, await snapshotRows(tx, entity, id));
+    await tx.recycleBinItem.create({
+      data: { organisationId: record.organisationId, branchId: record.branchId, entityType: entity, entityId: id, reference: record.reference, label: record.label, reason, snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter },
+    });
+    await deleteRoot(tx, entity, id);
+    moved.push(id);
+  }
+  return moved;
+}
+
 const group = <T extends Record<string, unknown>>(rows: T[], key: keyof T) => {
   const m = new Map<string, T[]>();
   for (const r of rows) { const k = String(r[key]); const list = m.get(k); if (list) list.push(r); else m.set(k, [r]); }
@@ -590,7 +651,9 @@ function table(tx: Tx, model: string): Creator {
 
 /** Optional links that may point at something removed since (a part, a part
  * type, a warranty policy). They are cleared rather than blocking the restore. */
-const OPTIONAL_LINKS: { model: string; field: string; target: 'department' | 'part' | 'partType' | 'warranty' | 'warrantyPolicy'; note: string }[] = [
+const OPTIONAL_LINKS: { model: string; field: string; target: 'department' | 'part' | 'partType' | 'warranty' | 'warrantyPolicy' | 'plantVehicle' | 'plantRoute'; note: string }[] = [
+  { model: 'plantKit', field: 'plantVehicleId', target: 'plantVehicle', note: 'The vehicle it was released to is no longer in the plant, so the kit comes back without it.' },
+  { model: 'plantVehicle', field: 'routeId', target: 'plantRoute', note: 'Its route version no longer exists; its stations are kept as they were.' },
   { model: 'jobCard', field: 'departmentId', target: 'department', note: 'Its department no longer exists, so none is set.' },
   { model: 'vehicleService', field: 'departmentId', target: 'department', note: 'Its department no longer exists, so none is set.' },
   { model: 'estimateLineItem', field: 'matchedPartId', target: 'part', note: 'A matched part no longer exists, so Store needs to match that estimate line again.' },
@@ -724,6 +787,21 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
     for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.model === 'userRole' && !alive.has(String(rows[i]!.data.roleId))) { rows.splice(i, 1); notes.push('A role it had no longer exists, so it is left out.'); }
     root.isActive = false;
     notes.push('The account is back switched off: send the invitation from the import, or switch it on and send the welcome email from the Users page.');
+  } else if (isPlantBinEntity(entity)) {
+    await needBranch(root.branchId);
+    const binnedToo = async (type: string, targetId: unknown) => (typeof targetId === 'string' ? Boolean(await tx.recycleBinItem.findFirst({ where: { entityType: type, entityId: targetId, restoredAt: null, purgedAt: null }, select: { id: true } })) : false);
+    if (entity === 'PlantShipment' || entity === 'PlantKit') {
+      const number = String(root.number);
+      const taken = entity === 'PlantShipment' ? await tx.plantShipment.findUnique({ where: { number }, select: { id: true } }) : await tx.plantKit.findUnique({ where: { number }, select: { id: true } });
+      if (taken) fail(`The number ${number} has been given to another ${entity === 'PlantShipment' ? 'shipment' : 'kit'} meanwhile, so this can't be restored as it was.`);
+    }
+    if (entity === 'PlantVehicle' && (await tx.plantVehicle.findFirst({ where: { organisationId, vinKey: String(root.vinKey) }, select: { id: true } }))) fail(`A vehicle with the VIN ${String(root.vin)} is in the plant again meanwhile, so this one can't be restored.`);
+    if (entity === 'PlantKit') {
+      if (!(await tx.plantShipment.findUnique({ where: { id: String(root.shipmentId) }, select: { id: true } }))) fail((await binnedToo('PlantShipment', root.shipmentId)) ? 'The shipment this kit came on is in the Recycle bin too. Restore the shipment first, then this kit.' : 'The shipment this kit came on no longer exists, so it can\'t be restored.');
+      if (await tx.plantKit.findFirst({ where: { organisationId, vinKey: String(root.vinKey), status: { not: 'CANCELLED' } }, select: { id: true } })) fail(`Another kit for the VIN ${String(root.vin)} is in EJO meanwhile, so this one can't be restored.`);
+    }
+    if (entity === 'PlantKitIssue' && !(await tx.plantKit.findUnique({ where: { id: String(root.kitId) }, select: { id: true } }))) fail((await binnedToo('PlantKit', root.kitId)) ? 'The kit this issue is on is in the Recycle bin too. Restore the kit first, then this issue.' : 'The kit this issue was on no longer exists, so it can\'t be restored.');
+    reference = null;
   } else if (entity === 'Supplier') {
     if (typeof root.externalId === 'string' && root.externalId) {
       const clash = await tx.supplier.findFirst({ where: { organisationId, externalSource: (root.externalSource as string | null) ?? null, externalId: root.externalId }, select: { id: true } });

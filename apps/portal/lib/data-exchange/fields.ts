@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'staff' | 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'openServices' | 'warranties' | 'claims' | 'registers';
+export type EntityKey = 'staff' | 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'openServices' | 'warranties' | 'claims' | 'plantShipments' | 'plantVehicles' | 'plantKits' | 'plantKitIssues' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -34,11 +34,11 @@ export type EntityDef = {
   plural: string;
   description: string;
   /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
-  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve' | 'warranty.claim.approve' | 'admin.users.manage';
+  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve' | 'warranty.claim.approve' | 'admin.users.manage' | 'plant.kit.release';
   /** Loads into one branch (its catalogue / stock / sales / workshop), chosen when the import starts. */
   branch?: boolean;
   /** What kind of branch it loads into (lib/branch-types.ts): a store (parts, stock, invoices) or a workshop (job history). */
-  branchArea?: 'store' | 'workshop';
+  branchArea?: 'store' | 'workshop' | 'plant';
   /** Read-only history (v-A3): shown and counted, never edited; undo voids it. */
   history?: boolean;
   /** Finance confirms the totals after loading (opening stock, invoice history). */
@@ -399,6 +399,123 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'remedy', label: 'Remedy', help: 'Optional: Reimbursement, Replacement or Repair. Empty: the policy’s usual remedy.', aliases: ['remedy', 'settlement type', 'resolution type'], example: 'Reimbursement', choices: ['Reimbursement', 'Replacement', 'Repair'] },
       { key: 'partReturnRequired', label: 'Failed part to return', help: 'Optional: Yes when the provider wants the failed part back (Sent and Received are understood too). Empty: when the provider has a part-retention rule.', aliases: ['part return', 'failed part return', 'return part', 'part return required', 'return required'], example: 'Yes', choices: ['Yes', 'No', 'Sent', 'Received'] },
       { key: 'decisionNotes', label: 'Notes', help: 'Optional: the provider’s reasons, or anything to keep with the claim.', aliases: ['notes', 'decision notes', 'remarks', 'comments', 'rejection reason', 'reason'], example: '' },
+    ],
+  },
+  plantShipments: {
+    key: 'plantShipments',
+    label: 'Plant shipments',
+    noun: 'shipment',
+    plural: 'plant shipments',
+    description: 'The kit shipments already at the assembly plant when it starts using EJO: supplier, bill of lading, vessel, containers, arrival, SAP purchase order and inbound delivery. Each becomes an EJO shipment (SHP number), its old reference kept; its kits come in with the kits file.',
+    needs: 'plant.kit.release',
+    approver: 'the Plant Manager',
+    branch: true,
+    branchArea: 'plant',
+    matchOrder: ['shipment reference'],
+    fields: [
+      { key: 'shipmentRef', label: 'Shipment ref', help: 'The shipment’s own reference in SAP or the plant’s register (kept; the kits file names it).', aliases: ['shipment ref', 'shipment reference', 'shipment', 'shipment no', 'shipment number', 'reference'], example: 'SHP1', required: true },
+      { key: 'supplier', label: 'Supplier', help: 'Who shipped the kits.', aliases: ['supplier', 'shipper', 'vendor', 'LIFNR', 'NAME1'], example: 'Isuzu Motors Ltd', required: true },
+      { key: 'origin', label: 'Origin', help: 'Optional: the port or country it came from.', aliases: ['origin', 'from', 'port of loading', 'country'], example: 'Yokohama, Japan' },
+      { key: 'billOfLading', label: 'Bill of lading', help: 'Optional: the B/L number (unique: the same B/L twice is the same shipment).', aliases: ['bill of lading', 'b/l', 'bl', 'bol', 'bl number'], example: 'MAEU620300000' },
+      { key: 'vessel', label: 'Vessel', help: 'Optional.', aliases: ['vessel', 'ship', 'vessel name'], example: 'MV Hoegh Trident' },
+      { key: 'containers', label: 'Containers', help: 'Optional: container numbers, separated by ";".', aliases: ['containers', 'container', 'container numbers'], example: 'MSKU41000000; MSKU41000111' },
+      { key: 'arrivedAt', label: 'Arrived', help: 'When it arrived at the plant, e.g. 15.09.2026 or 2026-09-15 08:30.', aliases: ['arrived', 'arrival', 'arrival date', 'date arrived', 'received', 'date'], example: '2026-09-15 08:30', required: true },
+      { key: 'sapPurchaseOrder', label: 'SAP purchase order', help: 'Optional (EBELN).', aliases: ['EBELN', 'purchase order', 'po', 'po number'], example: '4500018200' },
+      { key: 'sapInboundDelivery', label: 'SAP inbound delivery', help: 'Optional (VBELN).', aliases: ['VBELN', 'inbound delivery', 'delivery'], example: '0180004410' },
+      { key: 'notes', label: 'Notes', help: 'Optional.', aliases: ['notes', 'remarks', 'comments'], example: '' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the assembly plant (or its SAP plant, WERKS). When given it must be the plant chosen for this import.', aliases: ['branch', 'plant', 'branch name', 'WERKS', 'location'], example: 'Afprint Assembly Plant' },
+    ],
+  },
+  plantVehicles: {
+    key: 'plantVehicles',
+    label: 'Plant vehicles (in the plant at the cut-over)',
+    noun: 'plant vehicle',
+    plural: 'plant vehicles',
+    description: 'The vehicles already being built, audited or waiting for PDI or in the yard when the plant starts using EJO: VIN, model, engine number, colour, SAP material, production order and equipment, and the stage they are at. On the line, each takes the plant’s route with the stations before its current one done before EJO; past the gate, the gate is recorded as passed before EJO. Sold vehicles are the workshop’s (the vehicles import), not the plant’s.',
+    needs: 'plant.kit.release',
+    approver: 'the Plant Manager',
+    branch: true,
+    branchArea: 'plant',
+    matchOrder: ['chassis number'],
+    fields: [
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle’s 17-character VIN (VHVIN).', aliases: ['VIN', 'VHVIN', 'chassis', 'chassis number', 'frame number'], example: 'JAANLR85EL7230001', required: true },
+      { key: 'make', label: 'Make', help: 'Optional: worked out from the model.', aliases: ['make', 'brand', 'manufacturer'], example: 'Isuzu' },
+      { key: 'modelCode', label: 'Model', help: 'The model the plant builds: NQR, NPR, QLR, QMR or S07.', aliases: ['model', 'model code', 'variant'], example: 'NQR', required: true },
+      { key: 'modelName', label: 'Model name', help: 'Optional: the model as written in full.', aliases: ['model name', 'description', 'MAKTX'], example: 'Isuzu NQR (medium truck)' },
+      { key: 'engineNumber', label: 'Engine number', help: 'Optional.', aliases: ['engine number', 'engine no', 'engine'], example: '4HK1-640003' },
+      { key: 'colour', label: 'Colour', help: 'Optional.', aliases: ['colour', 'color', 'paint'], example: 'Sapphire Blue' },
+      { key: 'modelYear', label: 'Model year', help: 'Optional.', aliases: ['model year', 'year', 'my'], example: '2026' },
+      { key: 'stage', label: 'Stage', help: 'Where it is: On the line (LINE), Quality audit (QA), Waiting for PDI (PDI) or In the yard (YARD). A kit not yet released is in the kits file; a sold vehicle is the workshop’s.', aliases: ['stage', 'status', 'where'], example: 'LINE', required: true, choices: ['LINE', 'QA', 'PDI', 'YARD'] },
+      { key: 'currentStation', label: 'Current station', help: 'On the line: the station it is at, by its code on the route (e.g. W1, E1, G1). Empty: the first.', aliases: ['current station', 'station', 'at station'], example: 'W1' },
+      { key: 'lineStartedAt', label: 'Line started', help: 'When the build started, e.g. 2026-09-21 07:30.', aliases: ['line started', 'build started', 'started', 'start'], example: '2026-09-21 07:30' },
+      { key: 'gatePassedAt', label: 'Gate passed', help: 'Past the line: when it passed the final quality gate.', aliases: ['gate passed', 'gate', 'passed gate', 'qc passed'], example: '2026-09-21 16:29' },
+      { key: 'sapMaterial', label: 'SAP material', help: 'Optional (MATNR).', aliases: ['MATNR', 'material', 'sap material'], example: 'ISZ-NQR75L-CKD' },
+      { key: 'sapProductionOrder', label: 'SAP production order', help: 'Optional (AUFNR).', aliases: ['AUFNR', 'production order', 'order'], example: '000001000421' },
+      { key: 'sapEquipment', label: 'SAP equipment', help: 'Optional (EQUNR).', aliases: ['EQUNR', 'equipment', 'equipment number'], example: '100000030001' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the assembly plant (or its SAP plant, WERKS). When given it must be the plant chosen for this import.', aliases: ['branch', 'plant', 'branch name', 'WERKS', 'location'], example: 'Afprint Assembly Plant' },
+    ],
+  },
+  plantKits: {
+    key: 'plantKits',
+    label: 'Plant kits (packing lists)',
+    noun: 'kit',
+    plural: 'plant kits',
+    description: 'The kits of the shipments already at the plant, as on the packing lists: VIN, engine number, model, lot, cases, and where each stands — arrived, being inspected, waiting for release, on hold, released (with its vehicle in the plant) or rejected. Each takes its model’s arrival checklist; one decided before EJO has its checks recorded as done before EJO.',
+    needs: 'plant.kit.release',
+    approver: 'the Plant Manager',
+    branch: true,
+    branchArea: 'plant',
+    matchOrder: ['chassis number'],
+    after: 'plantShipments',
+    fields: [
+      { key: 'shipmentRef', label: 'Shipment ref', help: 'The shipment it came on: its reference in the shipments file, or its EJO SHP number.', aliases: ['shipment ref', 'shipment reference', 'shipment', 'shipment no'], example: 'SHP1', required: true },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The kit’s frame number on the packing list.', aliases: ['VIN', 'VHVIN', 'frame number', 'chassis', 'chassis number'], example: 'JAANLR85EL7230001', required: true },
+      { key: 'engineNumber', label: 'Engine number', help: 'Optional.', aliases: ['engine number', 'engine no', 'engine'], example: '4HK1-640003' },
+      { key: 'modelCode', label: 'Model', help: 'NQR, NPR, QLR, QMR or S07.', aliases: ['model', 'model code'], example: 'NQR', required: true },
+      { key: 'lotNumber', label: 'Lot', help: 'Optional: the lot on the case markings.', aliases: ['lot', 'lot number', 'lot no'], example: 'LOT-2601-01' },
+      { key: 'kitType', label: 'Kit type', help: 'CKD or SKD. Empty: the model’s usual.', aliases: ['kit type', 'type', 'ckd/skd'], example: 'CKD', choices: ['CKD', 'SKD'] },
+      { key: 'casesExpected', label: 'Cases expected', help: 'Optional: as on the packing list.', aliases: ['cases expected', 'cases', 'case count', 'expected cases'], example: '14' },
+      { key: 'casesReceived', label: 'Cases received', help: 'Optional: as counted.', aliases: ['cases received', 'received cases', 'cases counted'], example: '14' },
+      { key: 'status', label: 'Status', help: 'Arrived (the default), Inspecting, Submitted (waiting for release), On hold, Released or Rejected.', aliases: ['status', 'stage', 'state'], example: 'RELEASED', choices: ['ARRIVED', 'INSPECTING', 'SUBMITTED', 'ON_HOLD', 'RELEASED', 'REJECTED'] },
+      { key: 'inspector', label: 'Inspector', help: 'Optional: who checked it, by employee ID (or name).', aliases: ['inspector', 'checked by', 'inspected by'], example: 'EMP-0101' },
+      { key: 'startedAt', label: 'Started', help: 'Optional: when the check started.', aliases: ['started', 'check started', 'inspection started'], example: '2026-09-16 07:31' },
+      { key: 'submittedAt', label: 'Submitted', help: 'Optional: when the check was finished and sent for release.', aliases: ['submitted', 'finished', 'check finished'], example: '2026-09-16 10:12' },
+      { key: 'decidedBy', label: 'Decided by', help: 'Optional: who released, held or rejected it, by employee ID (or name).', aliases: ['decided by', 'released by', 'approved by'], example: 'EMP-0008' },
+      { key: 'decidedAt', label: 'Decided', help: 'Optional: when.', aliases: ['decided', 'decided on', 'released on', 'decision date'], example: '2026-09-16 11:44' },
+      { key: 'sapUsageDecision', label: 'Usage decision', help: 'Optional: SAP’s usage decision (A accepted, R rejected).', aliases: ['usage decision', 'ud', 'VCODE'], example: 'A' },
+      { key: 'releasedWithShortages', label: 'Released with shortages', help: 'Optional: Yes when released with shortages still open.', aliases: ['released with shortages', 'with shortages', 'concession'], example: 'No', choices: ['Yes', 'No'] },
+      { key: 'sapInspectionLot', label: 'SAP inspection lot', help: 'Optional (PRUEFLOS).', aliases: ['PRUEFLOS', 'inspection lot'], example: '010000000013' },
+      { key: 'sapMaterialDocument', label: 'SAP material document', help: 'Optional (MBLNR).', aliases: ['MBLNR', 'material document', 'goods receipt'], example: '5000221001' },
+      { key: 'decisionNote', label: 'Decision note', help: 'Optional: the reason for a hold, a rejection or a concession.', aliases: ['decision note', 'note', 'notes', 'reason'], example: '' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the assembly plant (or its SAP plant, WERKS). When given it must be the plant chosen for this import.', aliases: ['branch', 'plant', 'branch name', 'WERKS', 'location'], example: 'Afprint Assembly Plant' },
+    ],
+  },
+  plantKitIssues: {
+    key: 'plantKitIssues',
+    label: 'Plant kit issues (shortages and damage)',
+    noun: 'kit issue',
+    plural: 'plant kit issues',
+    description: 'The shortages, damage, wrong parts and excess raised against the kits before EJO, open, claimed from the supplier or resolved: each comes onto its kit as it stood, so the line knows what is still missing.',
+    needs: 'plant.kit.release',
+    approver: 'the Plant Manager',
+    branch: true,
+    branchArea: 'plant',
+    matchOrder: ['kit, kind, part and case'],
+    after: 'plantKits',
+    fields: [
+      { key: 'kitVin', label: 'Kit VIN', help: 'The kit it is raised against, by its VIN (the kit must be in EJO: load the kits file first).', aliases: ['kit vin', 'vin', 'kit', 'chassis number', 'frame number'], example: 'JAANLR85EL7230004', required: true },
+      { key: 'kind', label: 'Kind', help: 'Shortage, Damage, Wrong part or Excess.', aliases: ['kind', 'type', 'issue', 'issue type'], example: 'SHORTAGE', required: true, choices: ['SHORTAGE', 'DAMAGE', 'WRONG_PART', 'EXCESS'] },
+      { key: 'partNumber', label: 'Part number', help: 'Optional.', aliases: ['part number', 'part no', 'MATNR', 'part'], example: '8-98156-321-0' },
+      { key: 'description', label: 'Description', help: 'What is wrong.', aliases: ['description', 'what', 'details', 'problem'], example: 'Door glass regulator, right not in the case', required: true },
+      { key: 'caseNumber', label: 'Case', help: 'Optional: the case number.', aliases: ['case', 'case number', 'case no', 'box'], example: 'C09' },
+      { key: 'quantity', label: 'Quantity', help: 'Optional: 1 when empty.', aliases: ['quantity', 'qty', 'count'], example: '1' },
+      { key: 'stopsLine', label: 'Stops the line', help: 'Yes when the vehicle cannot be built without it.', aliases: ['stops the line', 'stops line', 'line stopper', 'critical'], example: 'Yes', choices: ['Yes', 'No'] },
+      { key: 'status', label: 'Status', help: 'Open (the default), Claimed (from the supplier) or Resolved.', aliases: ['status', 'state'], example: 'CLAIMED', choices: ['OPEN', 'CLAIMED', 'RESOLVED'] },
+      { key: 'claimReference', label: 'Claim reference', help: 'Optional: the supplier claim’s reference.', aliases: ['claim reference', 'claim', 'claim no', 'claim number'], example: 'Q2-300124' },
+      { key: 'resolution', label: 'Resolution', help: 'For a resolved issue: how it was put right.', aliases: ['resolution', 'resolved how', 'outcome'], example: 'Arrived by air freight' },
+      { key: 'raisedBy', label: 'Raised by', help: 'Optional: who raised it, by employee ID (or name). Empty: the person who runs the import.', aliases: ['raised by', 'reported by', 'inspector'], example: 'EMP-0101' },
+      { key: 'raisedAt', label: 'Raised', help: 'Optional: when.', aliases: ['raised', 'raised on', 'date', 'reported'], example: '2026-09-16 13:44' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the assembly plant (or its SAP plant, WERKS). When given it must be the plant chosen for this import.', aliases: ['branch', 'plant', 'branch name', 'WERKS', 'location'], example: 'Afprint Assembly Plant' },
     ],
   },
   registers: {

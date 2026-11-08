@@ -20,6 +20,10 @@ const LIST: Record<BinEntity, string> = {
   Warranty: '/warranty',
   WarrantyClaim: '/warranty/claims',
   User: '/users',
+  PlantShipment: '/plant/shipments',
+  PlantVehicle: '/plant/vehicles',
+  PlantKit: '/plant/kits',
+  PlantKitIssue: '/plant/kits',
 };
 
 export async function moveToRecycleBinFormAction(formData: FormData) {

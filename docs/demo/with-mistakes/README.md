@@ -84,6 +84,39 @@ and invoices, the parts catalogue before opening stock).
 | 16 | A model the plant does not build (D-MAX) | Line 16: choose the model (NQR, NPR, QLR, QMR, S07). | Rejected (not loaded) | the check (this row alone) |
 | 17 | 900 cases for one kit | Line 17: 900 cases is not a likely number for one kit. | Rejected (not loaded) | the check (this row alone) |
 
+## 10_plant_shipments_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 9 | No supplier | Say who shipped the kits (the supplier). | Rejected (not loaded) | the check (this row alone) |
+| 10 | Shipment SHP1 twice | Same shipment reference as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 11 | Arrival in the future (2027) | Arrived 2027-01-15 is in the future. | Rejected (not loaded) | the check (this row alone) |
+
+## 11_plant_kits_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 82 | A cancelled kit | A cancelled kit never came: leave it out. | Rejected (not loaded) | the check (this row alone) |
+| 83 | VIN JAANLR85EL7230001 twice | Same chassis number as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 84 | A shipment that is not in the shipments file (SHP77) | Shipment “SHP77” is not at this plant in EJO. Import the shipments file first, or give the kit’s SHP number. | Rejected (not loaded) | the check (against what EJO already holds) |
+
+## 12_plant_kit_issues_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 16 | A kind EJO does not know (Lost) | “Lost” is not a kind EJO knows: Shortage, Damage, Wrong part or Excess. | Rejected (not loaded) | the check (this row alone) |
+| 17 | No description | Say what is wrong (the description is required). | Rejected (not loaded) | the check (this row alone) |
+| 18 | A kit that is not in EJO | This VIN has no kit at this plant in EJO. Import the kits file first, or check the VIN. | Rejected (not loaded) | the check (against what EJO already holds) |
+
+## 13_plant_vehicles_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 67 | A vehicle already sold | A sold vehicle is the customer’s: bring it in with the vehicles file (and its warranty), not the plant’s. | Rejected (not loaded) | the check (this row alone) |
+| 68 | VIN JAANLR85EL7230001 twice | Same chassis number as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 69 | Waiting for PDI with no gate date | Past the line, the day it passed the final quality gate is required (Gate passed). | Rejected (not loaded) | the check (this row alone) |
+| 70 | A model the plant does not build (D-MAX) | “D-MAX” is not a model the plant builds: NQR, NPR, QLR, QMR or S07. | Rejected (not loaded) | the check (this row alone) |
+
 ## 14_SAP_job_card_history_demo.csv
 
 | Row | What is wrong | EJO says | Outcome | Caught by |

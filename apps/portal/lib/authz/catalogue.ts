@@ -208,6 +208,8 @@ export const ROLE_GRANTS: Record<string, Partial<Record<PermissionKey, Scope>>> 
     'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'plant.pdi.approve': B, 'vehicles.label.print': B,
     'plant.kit.receive': B, 'plant.kit.release': B, 'plant.line.operate': B, 'plant.quality.gate': B, 'plant.qa.audit': B, 'plant.route.manage': B,
     'warranty.view': B, 'security.pass.approve': 'DEPARTMENT', 'dataexchange.export.run': B, 'schedule.view': 'OWN',
+    // Approves the plant's records brought in at the cut-over (P8): shipments, vehicles, kits and kit issues.
+    'dataexchange.import.approve': B,
   },
   // Leads the PDI bay: inspects, and approves colleagues' inspections (never their own).
   'pdi-supervisor': { 'plant.view': B, 'plant.vehicle.register': B, 'plant.pdi.perform': B, 'plant.pdi.approve': B, 'vehicles.label.print': B, 'schedule.view': 'OWN' },
@@ -409,7 +411,7 @@ export const ROLE_DESCRIPTIONS: Record<string, string> = {
   'customer-care': 'The support department. Works the Support centre for their branch: customers\' emails, website and portal hand-overs, complaints and colleagues\' Get help requests — answers, uses Enyo\'s drafts, hands over and resolves. Can look up customers, jobs and warranties to answer, but changes nothing there and cannot open the Support centre\'s set-up.',
   'customer-care-lead': 'Heads customer care for the whole organisation: every branch\'s support requests and complaints, the Support centre\'s numbers, and keeping customer records right. Authorises exit passes for the customer care team. Not the Support centre\'s set-up.',
   executive: 'A director or general manager. Sees how the whole business is doing — every module and all analytics, read-only — with a daily brief of what needs attention. Branch decisions stay with the managers who own them; the Executive approves what is escalated (IT and administrator passes) and their own passes on the spot. Sends broadcasts (notices) to staff and customers. Authorises exit passes for their own department.',
-  'plant-manager': 'Runs the assembly plant: every vehicle in it from kit to yard, registers vehicles with their SAP numbers, releases arriving kits to the line and approves pre-delivery inspections (never one they checked). Prints vehicle labels and PDI certificates.',
+  'plant-manager': 'Runs the assembly plant: every vehicle in it from kit to yard, registers vehicles with their SAP numbers, releases arriving kits to the line and approves pre-delivery inspections (never one they checked). Prints vehicle labels and PDI certificates. Approves the plant’s records brought in from SAP at the cut-over (and only those imports).',
   'quality-supervisor': 'Leads quality at the plant: checks arriving kits and releases colleagues\' kits to the line, holds them or rejects them (never one they checked), and follows shortages and damage to their supplier claims.',
   'production-supervisor': 'Runs the line: every vehicle at its station, each station’s checks and times, the defects and their rework; edits the routes (stations, checks, standard times). Does not pass the gate — quality does.',
   'line-operator': 'Builds at a station on the line: records its checks (pass/fail and measurements against limits) and times, raises defects and records the rework done.',

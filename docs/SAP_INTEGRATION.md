@@ -228,6 +228,24 @@ for a record made in EJO, the import's name and the record's number there
 for an imported one, and `EJO-DEMO` for the demo. SAP reconciliation and the
 plant records import key on them; nothing else in SAP changes.
 
+### The plant's records at the cut-over (P8)
+
+Four imports bring in what is at the plant on the day it starts using EJO
+([DATA_MIGRATION.md §7b2](DATA_MIGRATION.md)), each recognising SAP's
+field names as column headers:
+
+| File | SAP names it reads | Kept as |
+| --- | --- | --- |
+| Plant shipments | EBELN (purchase order), VBELN (inbound delivery), LIFNR / NAME1 (supplier), WERKS | `externalId` = the shipment's reference; EJO gives its own SHP number |
+| Plant vehicles | VHVIN (VIN), MATNR (material), AUFNR (production order), EQUNR (equipment), MAKTX, WERKS | `externalId` = the VIN |
+| Plant kits | PRUEFLOS (inspection lot), MBLNR (goods receipt), VCODE (usage decision A / R), WERKS | `externalId` = the VIN; EJO gives its own KIT number |
+| Plant kit issues | MATNR (part) | on its kit |
+
+`importJobId` on each record names the import that brought it in (undo
+moves only that import's records). Usage decisions taken in SAP before the
+cut-over are kept as they were (A for released, R for rejected; none for a
+kit on hold).
+
 ## 3. The daily files *(coming in C1)*
 
 C1 adds, through Data Exchange, without new infrastructure:

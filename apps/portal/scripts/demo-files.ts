@@ -491,20 +491,45 @@ const kitMistakes: Mistake[] = [
 
 // ── 10–13: the plant's records (the same six weeks `npm run demo:reset` loads, as files) ──
 // Written from the plan as of a fixed Friday afternoon so the files are the same every run. These are the layouts the plant
-// records import (vehicles, shipments and kits, open kit issues) reads and the exports write; correct/ only until that import lands.
+// records import reads (P8) — load them in the order 10, 13, 11, 12 (shipments, vehicles, kits, kit issues) — and the exports write.
 {
   const plan = planPlantDemo(new Date('2026-10-30T15:00:00Z'));
   const PLANT = 'Afprint Assembly Plant';
   const who = (key: string | null) => (key ? DEMO_PEOPLE.find((p) => p.key === key)?.employeeId ?? '' : '');
   const when = (d: Date | null) => (d ? new Date(d.getTime() + 3_600_000).toISOString().slice(0, 16).replace('T', ' ') : ''); // Lagos clock (UTC+1)
   const shipHeader = ['Branch', 'Shipment ref', 'Supplier', 'Origin', 'Bill of lading', 'Vessel', 'Containers', 'Arrived', 'EBELN', 'VBELN', 'Notes'];
-  writeFileSync(join(CORRECT, '10_plant_shipments_demo.csv'), toCsv(shipHeader, plan.shipments.map((sh) => [PLANT, sh.key.toUpperCase(), sh.supplier, sh.origin, sh.billOfLading, sh.vessel, sh.containers.join('; '), when(sh.arrivedAt), sh.sapPurchaseOrder, sh.sapInboundDelivery, sh.notes])));
-  const kitHeader = ['Branch', 'Shipment ref', 'VIN', 'Engine number', 'Model', 'Lot', 'Kit type', 'Cases expected', 'Cases received', 'Status', 'Inspector', 'Started', 'Submitted', 'Decided by', 'Decided', 'Usage decision', 'Released with shortages', 'PRUEFLOS', 'MBLNR', 'Decision note'];
-  writeFileSync(join(CORRECT, '11_plant_kits_demo.csv'), toCsv(kitHeader, plan.shipments.flatMap((sh) => sh.kits.map((k) => [PLANT, sh.key.toUpperCase(), k.vin, k.engineNumber, k.modelCode, k.lotNumber, k.kitType, String(k.casesExpected), k.casesReceived === null ? '' : String(k.casesReceived), k.status, who(k.inspector), when(k.startedAt), when(k.submittedAt), who(k.decidedBy), when(k.decidedAt), k.sapUsageDecision ?? '', k.releasedWithShortages ? 'Yes' : 'No', k.sapInspectionLot, k.sapMaterialDocument, k.decisionNote ?? '']))));
-  const issueHeader = ['Branch', 'Kit VIN', 'Kind', 'Part number', 'Description', 'Case', 'Quantity', 'Stops the line', 'Status', 'Claim reference', 'Resolution', 'Raised by', 'Raised'];
-  writeFileSync(join(CORRECT, '12_plant_kit_issues_demo.csv'), toCsv(issueHeader, plan.shipments.flatMap((sh) => sh.kits.flatMap((k) => k.issues.map((i) => [PLANT, k.vin, i.kind, i.partNumber ?? '', i.description, i.caseNumber ?? '', String(i.quantity), i.stopsLine ? 'Yes' : 'No', i.status, i.claimReference ?? '', i.resolution ?? '', who(i.raisedBy), when(i.raisedAt)])))));
+  const ships = plan.shipments.map((sh) => [PLANT, sh.key.toUpperCase(), sh.supplier, sh.origin, sh.billOfLading, sh.vessel, sh.containers.join('; '), when(sh.arrivedAt), sh.sapPurchaseOrder, sh.sapInboundDelivery, sh.notes]);
+  const s1 = ships[0]!;
+  emit('10_plant_shipments_demo.csv', 'plantShipments', shipHeader, ships, [
+    { cells: [PLANT, 'SHP90', '', 'Yokohama, Japan', 'MAEU620399001', 'MV Hoegh Trident', 'MSKU41099001', '2026-10-20 08:30', '4500018290', '0180004490', ''], what: 'No supplier', expect: 'rejected', by: 'check', says: 'Say who shipped the kits (the supplier).' },
+    { cells: [...s1], what: `Shipment ${s1[1]} twice`, expect: 'duplicate', by: 'file', says: 'Same shipment reference as row 2 of the file; only the first is loaded.' },
+    { cells: [PLANT, 'SHP91', 'Isuzu Motors Ltd', 'Yokohama, Japan', 'MAEU620399002', 'MV Hoegh Trident', 'MSKU41099002', '2027-01-15 08:00', '4500018291', '0180004491', ''], what: 'Arrival in the future (2027)', expect: 'rejected', by: 'check', says: 'Arrived 2027-01-15 is in the future.' },
+  ]);
   const vehHeader = ['Branch', 'VIN', 'Make', 'Model', 'Model name', 'Engine number', 'Colour', 'Model year', 'Stage', 'Current station', 'Line started', 'Gate passed', 'WERKS', 'MATNR', 'AUFNR', 'EQUNR'];
-  writeFileSync(join(CORRECT, '13_plant_vehicles_demo.csv'), toCsv(vehHeader, plan.vehicles.map((v) => [PLANT, v.vin, v.make, v.modelCode, v.modelName, v.engineNumber, v.colour, String(v.modelYear), v.stage, v.currentStation ?? '', when(v.lineStartedAt), when(v.gatePassedAt), '1100', v.sapMaterial, v.sapProductionOrder, v.sapEquipment ?? ''])));
+  const vehs = plan.vehicles.map((v) => [PLANT, v.vin, v.make, v.modelCode, v.modelName, v.engineNumber, v.colour, String(v.modelYear), v.stage, v.currentStation ?? '', when(v.lineStartedAt), when(v.gatePassedAt), '1100', v.sapMaterial, v.sapProductionOrder, v.sapEquipment ?? '']);
+  const v1 = vehs[0]!;
+  emit('13_plant_vehicles_demo.csv', 'plantVehicles', vehHeader, vehs, [
+    { cells: [PLANT, 'JAANLR85EL7299001', 'Isuzu', 'NQR', 'Isuzu NQR (medium truck)', '4HK1-699001', 'White', '2026', 'SOLD', '', '2026-09-01 07:30', '2026-09-01 16:10', '1100', 'ISZ-NQR75L-CKD', '000001099001', ''], what: 'A vehicle already sold', expect: 'rejected', by: 'check', says: 'A sold vehicle is the customer’s: bring it in with the vehicles file (and its warranty), not the plant’s.' },
+    { cells: [...v1], what: `VIN ${v1[1]} twice`, expect: 'duplicate', by: 'file', says: 'Same chassis number as row 2 of the file; only the first is loaded.' },
+    { cells: [PLANT, 'JAANLR85EL7299002', 'Isuzu', 'NPR', 'Isuzu NPR (light truck)', '4HK1-699002', 'White', '2026', 'PDI', '', '2026-10-28 07:30', '', '1100', 'ISZ-NPR75L-CKD', '000001099002', ''], what: 'Waiting for PDI with no gate date', expect: 'rejected', by: 'check', says: 'Past the line, the day it passed the final quality gate is required (Gate passed).' },
+    { cells: [PLANT, 'JAANLR85EL7299003', 'Isuzu', 'D-MAX', '', '4JJ1-699003', 'Silver', '2026', 'LINE', 'W1', '2026-10-30 07:30', '', '1100', '', '000001099003', ''], what: 'A model the plant does not build (D-MAX)', expect: 'rejected', by: 'check', says: '“D-MAX” is not a model the plant builds: NQR, NPR, QLR, QMR or S07.' },
+  ]);
+  const kitHeader = ['Branch', 'Shipment ref', 'VIN', 'Engine number', 'Model', 'Lot', 'Kit type', 'Cases expected', 'Cases received', 'Status', 'Inspector', 'Started', 'Submitted', 'Decided by', 'Decided', 'Usage decision', 'Released with shortages', 'PRUEFLOS', 'MBLNR', 'Decision note'];
+  const kits = plan.shipments.flatMap((sh) => sh.kits.map((k) => [PLANT, sh.key.toUpperCase(), k.vin, k.engineNumber, k.modelCode, k.lotNumber, k.kitType, String(k.casesExpected), k.casesReceived === null ? '' : String(k.casesReceived), k.status, who(k.inspector), when(k.startedAt), when(k.submittedAt), who(k.decidedBy), when(k.decidedAt), k.sapUsageDecision ?? '', k.releasedWithShortages ? 'Yes' : 'No', k.sapInspectionLot, k.sapMaterialDocument, k.decisionNote ?? '']));
+  const k1 = kits[0]!;
+  emit('11_plant_kits_demo.csv', 'plantKits', kitHeader, kits, [
+    { cells: [PLANT, k1[1]!, 'JAANLR85EL7298001', '4HK1-698001', 'NQR', 'LOT-2610-98', 'CKD', '14', '', 'CANCELLED', '', '', '', '', '', '', 'No', '', '', 'Entered twice by mistake'], what: 'A cancelled kit', expect: 'rejected', by: 'check', says: 'A cancelled kit never came: leave it out.' },
+    { cells: [...k1], what: `VIN ${k1[2]} twice`, expect: 'duplicate', by: 'file', says: 'Same chassis number as row 2 of the file; only the first is loaded.' },
+    { cells: [PLANT, 'SHP77', 'JAANLR85EL7298002', '4HK1-698002', 'NQR', 'LOT-2610-99', 'CKD', '14', '14', 'ARRIVED', '', '', '', '', '', '', 'No', '', '', ''], what: 'A shipment that is not in the shipments file (SHP77)', expect: 'rejected', by: 'database', says: 'Shipment “SHP77” is not at this plant in EJO. Import the shipments file first, or give the kit’s SHP number.' },
+  ]);
+  const issueHeader = ['Branch', 'Kit VIN', 'Kind', 'Part number', 'Description', 'Case', 'Quantity', 'Stops the line', 'Status', 'Claim reference', 'Resolution', 'Raised by', 'Raised'];
+  const issues = plan.shipments.flatMap((sh) => sh.kits.flatMap((k) => k.issues.map((i) => [PLANT, k.vin, i.kind, i.partNumber ?? '', i.description, i.caseNumber ?? '', String(i.quantity), i.stopsLine ? 'Yes' : 'No', i.status, i.claimReference ?? '', i.resolution ?? '', who(i.raisedBy), when(i.raisedAt)])));
+  const kv = String(k1[2]);
+  emit('12_plant_kit_issues_demo.csv', 'plantKitIssues', issueHeader, issues, [
+    { cells: [PLANT, kv, 'Lost', '8-98156-399-0', 'Wiper arm, left', 'C03', '1', 'No', 'OPEN', '', '', '', '2026-10-20 10:00'], what: 'A kind EJO does not know (Lost)', expect: 'rejected', by: 'check', says: '“Lost” is not a kind EJO knows: Shortage, Damage, Wrong part or Excess.' },
+    { cells: [PLANT, kv, 'SHORTAGE', '8-98156-398-0', '', 'C04', '1', 'No', 'OPEN', '', '', '', '2026-10-20 10:05'], what: 'No description', expect: 'rejected', by: 'check', says: 'Say what is wrong (the description is required).' },
+    { cells: [PLANT, 'JAANLR85EL7298003', 'DAMAGE', '', 'Bonnet dented in transit', 'C01', '1', 'Yes', 'OPEN', '', '', '', '2026-10-20 10:10'], what: 'A kit that is not in EJO', expect: 'rejected', by: 'database', says: 'This VIN has no kit at this plant in EJO. Import the kits file first, or check the VIN.' },
+  ]);
 }
 
 // The 800,000-row file for the measured speed run (not committed): PERF_PARTS=800000 PERF_OUT=/some/dir
@@ -551,7 +576,11 @@ this order (later files refer to earlier ones):
 6d. \`17_SAP_open_claims_demo.csv\` — Open warranty claims at the cut-over: eight claims on the warranties of 16 still in force, one at every open stage, from a draft to one accepted and one rejected; they become live EJO claims
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers
 8. \`09_kit_packing_list_demo.csv\` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
-9. \`10_plant_shipments_demo.csv\`, \`11_plant_kits_demo.csv\`, \`12_plant_kit_issues_demo.csv\`, \`13_plant_vehicles_demo.csv\` — the plant's six demo weeks as files (the same records \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.
+9. The plant's records, into **Afprint Assembly Plant** (staff from 19 first: the inspectors and deciders are named by employee ID), in this order — the same six demo weeks \`npm run demo:reset\` loads straight into the plant, as of a fixed Friday (use one or the other, not both):
+   1. \`10_plant_shipments_demo.csv\` — Plant shipments: each becomes an EJO shipment (SHP number), its old reference kept
+   2. \`13_plant_vehicles_demo.csv\` — Plant vehicles: on the line (with their current station), in quality audit, waiting for PDI and in the yard
+   3. \`11_plant_kits_demo.csv\` — Plant kits: on their shipments, from arrived to released (linked to their vehicle from 13) or rejected
+   4. \`12_plant_kit_issues_demo.csv\` — Plant kit issues: shortages and damage, open, claimed from the supplier or resolved
 
 Real events are part of the story and load as they are: a PDI that failed and
 was re-inspected, a QC rework, credit notes (G2). The same files with planted

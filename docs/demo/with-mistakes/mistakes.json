@@ -574,5 +574,122 @@
     "expect": "rejected",
     "by": "check",
     "says": "Line 17: 900 cases is not a likely number for one kit."
+  },
+  {
+    "file": "10_plant_shipments_demo.csv",
+    "row": 9,
+    "entity": "plantShipments",
+    "what": "No supplier",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Say who shipped the kits (the supplier)."
+  },
+  {
+    "file": "10_plant_shipments_demo.csv",
+    "row": 10,
+    "entity": "plantShipments",
+    "what": "Shipment SHP1 twice",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same shipment reference as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "10_plant_shipments_demo.csv",
+    "row": 11,
+    "entity": "plantShipments",
+    "what": "Arrival in the future (2027)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Arrived 2027-01-15 is in the future."
+  },
+  {
+    "file": "13_plant_vehicles_demo.csv",
+    "row": 67,
+    "entity": "plantVehicles",
+    "what": "A vehicle already sold",
+    "expect": "rejected",
+    "by": "check",
+    "says": "A sold vehicle is the customer’s: bring it in with the vehicles file (and its warranty), not the plant’s."
+  },
+  {
+    "file": "13_plant_vehicles_demo.csv",
+    "row": 68,
+    "entity": "plantVehicles",
+    "what": "VIN JAANLR85EL7230001 twice",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same chassis number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "13_plant_vehicles_demo.csv",
+    "row": 69,
+    "entity": "plantVehicles",
+    "what": "Waiting for PDI with no gate date",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Past the line, the day it passed the final quality gate is required (Gate passed)."
+  },
+  {
+    "file": "13_plant_vehicles_demo.csv",
+    "row": 70,
+    "entity": "plantVehicles",
+    "what": "A model the plant does not build (D-MAX)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“D-MAX” is not a model the plant builds: NQR, NPR, QLR, QMR or S07."
+  },
+  {
+    "file": "11_plant_kits_demo.csv",
+    "row": 82,
+    "entity": "plantKits",
+    "what": "A cancelled kit",
+    "expect": "rejected",
+    "by": "check",
+    "says": "A cancelled kit never came: leave it out."
+  },
+  {
+    "file": "11_plant_kits_demo.csv",
+    "row": 83,
+    "entity": "plantKits",
+    "what": "VIN JAANLR85EL7230001 twice",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same chassis number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "11_plant_kits_demo.csv",
+    "row": 84,
+    "entity": "plantKits",
+    "what": "A shipment that is not in the shipments file (SHP77)",
+    "expect": "rejected",
+    "by": "database",
+    "says": "Shipment “SHP77” is not at this plant in EJO. Import the shipments file first, or give the kit’s SHP number."
+  },
+  {
+    "file": "12_plant_kit_issues_demo.csv",
+    "row": 16,
+    "entity": "plantKitIssues",
+    "what": "A kind EJO does not know (Lost)",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“Lost” is not a kind EJO knows: Shortage, Damage, Wrong part or Excess."
+  },
+  {
+    "file": "12_plant_kit_issues_demo.csv",
+    "row": 17,
+    "entity": "plantKitIssues",
+    "what": "No description",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Say what is wrong (the description is required)."
+  },
+  {
+    "file": "12_plant_kit_issues_demo.csv",
+    "row": 18,
+    "entity": "plantKitIssues",
+    "what": "A kit that is not in EJO",
+    "expect": "rejected",
+    "by": "database",
+    "says": "This VIN has no kit at this plant in EJO. Import the kits file first, or check the VIN."
   }
 ]

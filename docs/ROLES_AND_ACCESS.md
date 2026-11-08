@@ -159,6 +159,23 @@ way a warranty or a claim reaches the Recycle bin (governance inventory:
 `recycleBin: 'IMPORT_UNDO'`), and restoring needs the Recycle bin right as
 for anything else.
 
+### The plant's records at the cut-over (P8)
+
+Approval is **the Plant Manager or an administrator** (`plant.kit.release`
+on top of `dataexchange.import.approve`, which the Plant Manager now holds
+for exactly this, scoped to the plant branch: no other import needs a right
+the Plant Manager has). The four imports — shipments, plant vehicles, kits,
+kit issues — load only into an **assembly plant** branch, and read only that
+plant's shipments and kits and the organisation's own plant vehicles and
+people. Checks done before EJO name nobody in EJO (no inspector is recorded
+as having answered them, and no one as passing the gate), so the desk's
+separation of duties starts clean from the first decision taken in EJO.
+Nothing is emailed or notified. Undo (the same two rights) bins only what
+nobody has used since and nothing hangs on; it is the only way a plant
+record reaches the Recycle bin (governance inventory: `recycleBin:
+'IMPORT_UNDO'`), and restoring needs the Recycle bin right as for anything
+else.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an

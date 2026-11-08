@@ -8,8 +8,11 @@
  */
 import { pluralize } from '../utils/pluralize';
 
-export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier' | 'Warranty' | 'WarrantyClaim' | 'User';
-export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier', 'Warranty', 'WarrantyClaim', 'User'];
+export type PlantBinEntity = 'PlantShipment' | 'PlantVehicle' | 'PlantKit' | 'PlantKitIssue';
+export const PLANT_BIN_ENTITIES: PlantBinEntity[] = ['PlantShipment', 'PlantVehicle', 'PlantKit', 'PlantKitIssue'];
+export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier' | 'Warranty' | 'WarrantyClaim' | 'User' | PlantBinEntity;
+export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier', 'Warranty', 'WarrantyClaim', 'User', ...PLANT_BIN_ENTITIES];
+export const isPlantBinEntity = (e: string): e is PlantBinEntity => (PLANT_BIN_ENTITIES as string[]).includes(e);
 
 /** How each kind is named to people, and the verb prefix of its audit entries. */
 export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: string; icon: string }> = {
@@ -24,6 +27,11 @@ export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: 
   WarrantyClaim: { noun: 'Warranty claim', plural: 'Warranty claims', audit: 'warranty_claim', icon: 'shield' },
   // Only an undone staff import (P7), for accounts never invited or used: a person is otherwise switched off, never deleted from here.
   User: { noun: 'Staff account', plural: 'Staff accounts', audit: 'user', icon: 'user' },
+  // Only an undone plant import (P8), for records nobody has used since: on the desk a kit or shipment is cancelled, never deleted.
+  PlantShipment: { noun: 'Plant shipment', plural: 'Plant shipments', audit: 'plant_shipment', icon: 'truck' },
+  PlantVehicle: { noun: 'Plant vehicle', plural: 'Plant vehicles', audit: 'plant_vehicle', icon: 'car' },
+  PlantKit: { noun: 'Kit', plural: 'Kits', audit: 'plant_kit', icon: 'package' },
+  PlantKitIssue: { noun: 'Kit issue', plural: 'Kit issues', audit: 'plant_kit_issue', icon: 'alert' },
 };
 
 /** The record's own page. */
@@ -38,6 +46,10 @@ export function binHref(entity: BinEntity, id: string): string {
     case 'Warranty': return `/warranty/${id}`;
     case 'WarrantyClaim': return `/warranty/claims/${id}`;
     case 'User': return `/users?q=${encodeURIComponent(id)}`;
+    case 'PlantShipment': return `/plant/shipments/${id}`;
+    case 'PlantVehicle': return `/plant/line/${id}`;
+    case 'PlantKit': return `/plant/kits/${id}`;
+    case 'PlantKitIssue': return '/plant/kits';
   }
 }
 
@@ -249,6 +261,12 @@ export function staffAccountEligibility(): Eligibility {
   return verdict('staff account', ['is a person’s account'], 'Switch it off on the Users page instead.');
 }
 
+/** The plant's records are cancelled or kept on the desk, never put in the bin by hand: only undoing the import that brought them in (P8). */
+export function plantRecordEligibility(entity: PlantBinEntity): Eligibility {
+  const noun = { PlantShipment: 'plant shipment', PlantVehicle: 'plant vehicle', PlantKit: 'kit', PlantKitIssue: 'kit issue' }[entity];
+  return verdict(noun, [`is the plant’s record`], entity === 'PlantKit' ? 'Cancel it, with a reason, instead.' : entity === 'PlantKitIssue' ? 'Resolve it instead.' : 'It stays as the plant’s record.');
+}
+
 /** A supplier goes only while no goods receipt names it (receipts are the Store's record). */
 export function supplierEligibility(f: { receipts: number }): Eligibility {
   const b: string[] = [];
@@ -312,6 +330,11 @@ export const SNAPSHOT_ORDER: Record<BinEntity, string[]> = {
   WarrantyClaim: ['warrantyClaim'],
   // No password, session or set-password link is ever kept: a restored account gets a new unusable password and stays switched off.
   User: ['user', 'userRole'],
+  // The plant (P8): a vehicle with its station visits, a kit with its checklist; a shipment or an issue alone.
+  PlantShipment: ['plantShipment'],
+  PlantVehicle: ['plantVehicle', 'plantStationVisit'],
+  PlantKit: ['plantKit', 'plantKitCheck'],
+  PlantKitIssue: ['plantKitIssue'],
 };
 
 export type SnapshotRow = { model: string; data: Record<string, unknown> };
