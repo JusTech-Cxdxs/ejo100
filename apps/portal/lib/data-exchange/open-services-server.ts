@@ -22,6 +22,7 @@ import { checkOpenServiceRow, type OpenServiceValues } from './check-open-servic
 import type { Issue } from './check';
 import type { Mapping } from './fields';
 import { findCustomers } from './lookup-server';
+import { STAFF_AWAITING_INVITATION } from './check-staff';
 import { newId, writeLoadResults, type LoadRow, type Result, type RowUpdate } from './rows-server';
 import { highestSequence } from '../recycle-bin/numbers';
 import { lagosYear } from '../utils/format-date';
@@ -65,7 +66,7 @@ async function lookups(db: Db, job: OpenServicesJob, vals: OpenServiceValues[]):
       SELECT v.id, v."customerId", v."vehicleType"::text AS "vehicleType", upper(regexp_replace(coalesce(v."plateNumber", ''), '[\\s-]', '', 'g')) AS k FROM customer_vehicles v JOIN customers c ON c.id = v."customerId"
        WHERE c."organisationId" = ${job.organisationId} AND upper(regexp_replace(coalesce(v."plateNumber", ''), '[\\s-]', '', 'g')) = ANY(${plates}::text[])` : [],
     job.branchId ? db.vehicleService.findMany({ where: { branchId: job.branchId, externalSource: src(job.sourceSystem), externalId: { in: vals.map((v) => v.serviceNumber) } }, select: { id: true, externalId: true, serviceNumber: true } }) : [],
-    staffKeys.length ? db.user.findMany({ where: { organisationId: job.organisationId, isActive: true, OR: [{ employeeId: { in: staffKeys } }, { fullName: { in: staffKeys, mode: 'insensitive' } }] }, select: { id: true, employeeId: true, fullName: true } }) : [],
+    staffKeys.length ? db.user.findMany({ where: { organisationId: job.organisationId, AND: [{ OR: [{ isActive: true }, STAFF_AWAITING_INVITATION] }, { OR: [{ employeeId: { in: staffKeys } }, { fullName: { in: staffKeys, mode: 'insensitive' } }] }] }, select: { id: true, employeeId: true, fullName: true } }) : [],
     job.branchId ? db.department.findMany({ where: { branchId: job.branchId, slug: { in: ['workshop-passenger', 'workshop-commercial'] } }, select: { id: true, slug: true } }) : [],
     job.branchId ? db.branch.findUnique({ where: { id: job.branchId }, select: { name: true, sapPlant: true } }) : null,
   ]);

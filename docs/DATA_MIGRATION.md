@@ -54,6 +54,56 @@ and invoice history have a second signature: after they load, someone in
 **Finance** (not the person who prepared or approved it) confirms the totals.
 Finance opens those two kinds of import only — never a customers file.
 
+## 2b. Staff (P7) — load first
+
+The organisation's people from SAP HR (or a staff list) come in before
+everything else, so the open job cards and services of the cut-over find
+their technicians and supervisors by employee ID. **Staff** turns each row
+into an EJO account:
+
+- **Name, the person's own work email** (they sign in with it and their
+  invitation goes to it — a shared mailbox gets a note), phone.
+- **Branch** (its name, code or SAP plant) and **department** (as on the
+  Structure page; must be in that branch).
+- **Roles** by name, separated by `;` — by the role's own name, its slug, or
+  the name EJO shows it under (*Front Desk* for the receptionist, *Manager*
+  for the workshop manager). Roles must exist (Roles page). **The
+  organisation's administrators are never brought in by a file**: an
+  Administrator or Branch Administrator role is refused, whatever it is
+  called; they are added by hand on the Users page.
+- **Employee ID** from HR when given (it must be free); otherwise EJO issues
+  the branch's next (ORG-BRANCH-NNNN). The SAP personnel number (PERNR) is
+  kept and searchable.
+
+**Switched off until invited.** Every account comes in switched off, with an
+unusable password, and **nobody is emailed**. After loading, an
+administrator of the whole organisation (the Organisation or IT
+Administrator — never a Branch Administrator: the file reaches every
+branch) presses **Send the invitations** on the import: each waiting
+account is switched on and the person is emailed the same welcome as
+someone added on the Users page — employee ID, roles, branch, what they may
+do — with a one-time link to set their own password. Each person is invited
+once (audited `user.invited`); the page shows the progress. One person at a
+time: switch them on and send the welcome from the Users page. Until they are
+invited, the cut-over's open job cards and services may still name them.
+
+Approval: an **Organisation Administrator**. Refused: no name, no or a
+malformed email, an email that has an account in another organisation, no
+branch, a branch, department or role the organisation does not have, an
+administrator role, an employee ID in use by someone else or with spaces and
+signs. An email already in this organisation is left as it is (change their
+roles on the Users page). The same email twice in a file is a duplicate.
+
+**Undo** moves to the Recycle bin only the accounts never invited, never
+signed in, with nothing done by or about them since; the bin keeps the person
+and their roles, never a password or a link. A restored account comes back
+switched off, with a new unusable password, ready for its invitation.
+
+Demo: `docs/demo/correct/19_SAP_staff_demo.csv` (twelve invented colleagues
+at Isolo and Afprint, on a domain nobody receives mail for);
+`with-mistakes/` adds no email, an administrator role, an unknown branch, the
+same email twice, a malformed employee ID and an unknown role.
+
 ## 3. Customers
 
 **Template:** Data Exchange → Customers → *Excel template* (with an

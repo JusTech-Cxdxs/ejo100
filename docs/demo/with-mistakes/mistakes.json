@@ -297,6 +297,60 @@
     "says": "The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate."
   },
   {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 14,
+    "entity": "staff",
+    "what": "No work email",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Work email is required: the person signs in with it and their invitation goes to it."
+  },
+  {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 15,
+    "entity": "staff",
+    "what": "An administrator role in a file",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“Administrator”: the organisation’s administrators are added by hand on the Users page, never by a file."
+  },
+  {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 16,
+    "entity": "staff",
+    "what": "A branch the organisation does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "There is no branch “Lekki Branch” in this organisation. Use the branch’s name, code or SAP plant as on the Structure page."
+  },
+  {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 17,
+    "entity": "staff",
+    "what": "emeka.okoro@staff.example.com a second time (row 2 has it)",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same email as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 18,
+    "entity": "staff",
+    "what": "An employee ID with spaces and signs",
+    "expect": "rejected",
+    "by": "check",
+    "says": "“EMP 99!” is not an employee ID (letters, digits and dashes)."
+  },
+  {
+    "file": "19_SAP_staff_demo.csv",
+    "row": 19,
+    "entity": "staff",
+    "what": "A role EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "There is no role “Chief Cook” in this organisation. Use the role’s name as on the Roles page."
+  },
+  {
     "file": "18_SAP_open_services_and_bookings_demo.csv",
     "row": 13,
     "entity": "openServices",

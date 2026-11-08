@@ -82,7 +82,7 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   Team: { tenancy: 'DEPARTMENT', owner: 'departmentId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Life of the contract', ai: 'AUTHORISED_USER' },
 
   // ── People, identity and access ────────────────────────────────────
-  User: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'ARCHIVE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER' },
+  User: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'ARCHIVE', retention: PERSONAL_RETENTION, ai: 'AUTHORISED_USER', recycleBin: 'IMPORT_UNDO' },
   EmployeeProfile: { tenancy: 'VIA_PARENT', owner: 'userId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'AGGREGATE_ONLY' },
   EmployeeDocument: { tenancy: 'VIA_PARENT', owner: 'employeeProfileId', classification: ['PERSONAL'], lifecycle: 'CASCADE', retention: PERSONAL_RETENTION, ai: 'NEVER' },
   Role: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'EDITABLE', retention: 'Configuration', ai: 'AUTHORISED_USER' },

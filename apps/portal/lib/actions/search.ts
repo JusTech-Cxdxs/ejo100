@@ -296,7 +296,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   // Old-system numbers can look like the start of an EJO reference ("W-2024-0412" after WR-, "C-2026-0184" after CTR-): only a
   // bare prefix ("WR") or a complete EJO reference (WR-2026-000031) skips them.
   const sapFits = plan.kind !== 'prefix' && !(plan.kind === 'reference' && plan.textScope === 'none');
-  const sap = !sapFits ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), canWarranty: allowed('warranty.view'), opens });
+  const sap = !sapFits ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), canWarranty: allowed('warranty.view'), canUsers: allowed('admin.users.manage'), opens });
   if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
   // A VIN typed or scanned (a handheld scanner types it): that vehicle first — also before it is sold (plant registers only).
   const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view']));
@@ -334,13 +334,13 @@ async function vinHits(q: string, mineOrg: Where, mayOpen: boolean): Promise<Sea
  * reach as the other results. SAP reuses document numbers across company
  * codes and fiscal years: every match is listed; "125262 2026" narrows to one year.
  */
-async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; canWorkshop: boolean; canCrm: boolean; canCustomers: boolean; storeReach: Where | null; canSuppliers: boolean; canWarranty: boolean; opens: (keys: PermissionKey[], branchId: string | null | undefined) => boolean }): Promise<SearchHit[]> {
+async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; canWorkshop: boolean; canCrm: boolean; canCustomers: boolean; storeReach: Where | null; canSuppliers: boolean; canWarranty: boolean; canUsers: boolean; opens: (keys: PermissionKey[], branchId: string | null | undefined) => boolean }): Promise<SearchHit[]> {
   const n = sapNumberQuery(q);
   if (!n) return [];
   const ext = { in: n.forms };
   const label = (src: string | null) => (src && src.startsWith('LEGACY') ? 'Old system' : 'SAP');
   const take = 6;
-  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs, warranties, claims, openServices] = await Promise.all([
+  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs, warranties, claims, openServices, people] = await Promise.all([
     ctx.canCustomers ? prisma.customer.findMany({ where: { AND: [ctx.mineOrg as Prisma.CustomerWhereInput, { externalId: ext }] }, take, select: { id: true, fullName: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canWorkshop ? prisma.customerVehicle.findMany({ where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, take, select: { id: true, make: true, model: true, plateNumber: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canSuppliers ? prisma.supplier.findMany({ where: { ...(ctx.sameOrg as Prisma.SupplierWhereInput), externalId: ext }, take, select: { id: true, name: true, externalId: true, externalSource: true } }).catch(() => []) : [],
@@ -376,6 +376,8 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, orderBy: { createdAt: 'desc' }, take,
       select: { id: true, serviceNumber: true, externalId: true, externalSource: true, status: true, branchId: true, bookedFor: true, vehicle: { select: { plateNumber: true, make: true, model: true } } },
     }).catch(() => []) : [],
+    // Colleagues brought in from SAP HR (P7), by their personnel number — for those who manage people.
+    ctx.canUsers ? prisma.user.findMany({ where: { ...(ctx.sameOrg as Prisma.UserWhereInput), externalId: ext }, take, select: { id: true, fullName: true, email: true, employeeId: true, externalId: true, externalSource: true } }).catch(() => []) : [],
   ]);
   const names = invoices.length || pastJobs.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set([...invoices.map((i) => i.customerId), ...pastJobs.map((j) => j.customerId)])] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
   const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
@@ -401,6 +403,7 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       sub: dot(x.status === 'SCHEDULED' && x.bookedFor ? `booked ${day(x.bookedFor)}` : x.status.toLowerCase().replace(/_/g, ' '), [x.vehicle.make, x.vehicle.model].filter(Boolean).join(' '), x.vehicle.plateNumber),
       href: `/workshop/vehicle-service/${x.id}`,
     })),
+    ...people.map((u) => ({ label: `${label(u.externalSource)} personnel number ${u.externalId}`, sub: dot(u.fullName, u.employeeId), href: `/users?q=${encodeURIComponent(u.email)}` })),
     ...warranties.map((w) => ({ label: `${label(w.externalSource)} warranty ${w.externalId} → ${w.warrantyNumber}`, sub: dot(w.subjectDescription, w.customer.fullName), href: `/warranty/${w.id}` })),
     ...claims.map((c) => ({ label: `${label(c.externalSource)} claim ${c.externalId} → ${c.claimNumber}`, sub: dot(c.status.toLowerCase().replace(/_/g, ' '), c.causalPart, c.warranty.warrantyNumber), href: `/warranty/claims/${c.id}` })),
     ...pastJobs.map((j) => ({

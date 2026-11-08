@@ -40,6 +40,16 @@ point in SAP (its store's LGORT lives under it).
 | Branch of kind Workshop / Warehouse | WERKS (a stock point) + LGORT | Parts, opening stock and invoice history load only into these |
 | Plant departments | Work centres (ARBPL), loosely | Kit receiving, the line, quality, PDI, yard; EJO's stations (D3) map to work centres |
 
+### Staff — SAP HR (PA0001, PA0002, PA0105)
+
+The staff file reads the personnel number (PERNR, kept and searchable), the
+name (ENAME), the work email (communication type 0010 in PA0105,
+USRID_LONG), the plant or personnel area as the branch (WERKS/BTRTL) and the
+organisational unit as the department (ORGEH, matched to EJO's department
+name). EJO roles are given by name in the file; SAP authorisations are not
+read (P7, DATA_MIGRATION.md §2b). Accounts come in switched off until the
+invitations are sent.
+
 ### Customers — SAP business partner / customer master (KNA1, BUT000)
 
 | EJO field | SAP field | Notes |

@@ -310,6 +310,35 @@ emit('15_SAP_open_job_cards_demo.csv', 'openJobs', OPEN_HEADER, openRows, [
   { cells: ['483295', '0009999999', 'JAANLR85EL7999999', 'XYZ 999 ZZ', sapDate(addDays(CUTOVER, -2)), 'REL', '', 'Vehicle not in EJO', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate.' },
 ]);
 
+// ── 19: the organisation's people from SAP HR (load first: accounts switched off until invited) ───
+// Twelve invented colleagues at Isolo and Afprint, on a reserved domain nobody receives mail for; employee IDs from HR for
+// some (the open job cards' technicians find them by it), EJO's own for the rest; roles by the names EJO shows.
+const STAFF_HEADER = ['PERNR', 'ENAME', 'Work email', 'Phone', 'Employee ID', 'Branch', 'Department', 'Roles'];
+const STAFF: [string, string, string, string, string][] = [
+  // name, branch, department, roles, employee ID
+  ['Emeka Okoro', 'Isolo Branch', 'Commercial Vehicle Workshop', 'Technician', 'EMP-0042'],
+  ['Bola Musa', 'Isolo Branch', 'Commercial Vehicle Workshop', 'Technician', 'EMP-0043'],
+  ['Tunde Adesanya', 'Isolo Branch', 'Passenger Vehicle Workshop', 'Technician', 'EMP-0044'],
+  ['Kemi Nwachukwu', 'Isolo Branch', 'Commercial Vehicle Workshop', 'Technician', ''],
+  ['Sade Lawal', 'Isolo Branch', 'Passenger Vehicle Workshop', 'Workshop Supervisor', 'EMP-0007'],
+  ['Ifeoma Eze', 'Isolo Branch', '', 'Front Desk', ''],
+  ['Yusuf Bello', 'Isolo Branch', 'Store', 'Store Officer', ''],
+  ['Grace Adeyemi', 'Isolo Branch', '', 'Finance Officer', ''],
+  ['Chidi Okafor', 'Afprint Assembly Plant', '', 'Line Operator', ''],
+  ['Amina Ibrahim', 'Afprint Assembly Plant', '', 'QC Inspector', ''],
+  ['Segun Balogun', 'Afprint Assembly Plant', '', 'Kit Inspector; Line Operator', ''],
+  ['Ngozi Abubakar', 'Isolo Branch', '', 'Customer Care', ''],
+];
+const staffEmail = (name: string) => `${name.toLowerCase().replace(/[^a-z]+/g, '.')}@staff.example.com`;
+emit('19_SAP_staff_demo.csv', 'staff', STAFF_HEADER, STAFF.map(([name, branch, dept, roles, emp], k) => [String(10200 + k).padStart(8, '0'), name, staffEmail(name), `0803 ${String(400 + k)} ${String(7100 + k * 13).slice(-4)}`, emp, branch, dept, roles]), [
+  { cells: ['00010290', 'Musa Danjuma', '', '', '', 'Isolo Branch', '', 'Technician'], what: 'No work email', expect: 'rejected', by: 'check', says: 'Work email is required: the person signs in with it and their invitation goes to it.' },
+  { cells: ['00010291', 'Halima Sule', 'halima.sule@staff.example.com', '', '', 'Isolo Branch', '', 'Administrator'], what: 'An administrator role in a file', expect: 'rejected', by: 'check', says: '“Administrator”: the organisation’s administrators are added by hand on the Users page, never by a file.' },
+  { cells: ['00010292', 'Kunle Ade', 'kunle.ade@staff.example.com', '', '', 'Lekki Branch', '', 'Technician'], what: 'A branch the organisation does not have', expect: 'rejected', by: 'database', says: 'There is no branch “Lekki Branch” in this organisation. Use the branch’s name, code or SAP plant as on the Structure page.' },
+  { cells: ['00010293', 'Emeka Okoro (again)', staffEmail('Emeka Okoro'), '', '', 'Isolo Branch', '', 'Technician'], what: `${staffEmail('Emeka Okoro')} a second time (row 2 has it)`, expect: 'duplicate', by: 'file', says: 'Same email as row 2 of the file; only the first is loaded.' },
+  { cells: ['00010294', 'Ruth Obi', 'ruth.obi@staff.example.com', '', 'EMP 99!', 'Isolo Branch', '', 'Technician'], what: 'An employee ID with spaces and signs', expect: 'rejected', by: 'check', says: '“EMP 99!” is not an employee ID (letters, digits and dashes).' },
+  { cells: ['00010295', 'Peter Okon', 'peter.okon@staff.example.com', '', '', 'Isolo Branch', '', 'Chief Cook'], what: 'A role EJO does not have', expect: 'rejected', by: 'database', says: 'There is no role “Chief Cook” in this organisation. Use the role’s name as on the Roles page.' },
+]);
+
 // ── 18: the services open on the cut-over day, and the bookings already in the diary ───
 // Eight customers from 01 booked their routine service for the days after the cut-over (vehicles 13–20, between 08:00 and
 // 15:30); three more vehicles are already in the workshop for a service (checked in, in service, ready for collection).
@@ -508,6 +537,7 @@ Every file here loads cleanly: no row is rejected or a duplicate. The only notes
 the check shows are on the four credit notes (“kept as a credit note”). Load them in
 this order (later files refer to earlier ones):
 
+0. \`19_SAP_staff_demo.csv\` — Staff (SAP HR): twelve invented colleagues at Isolo and Afprint, on a domain nobody receives mail for; accounts come in switched off until an Organisation Administrator sends the invitations (load first: the open job cards find their technicians by employee ID)
 1. \`01_SAP_customers_demo.csv\` — Customers (SAP)
 2. \`02_vehicles_demo.xlsx\` — Vehicles
 3. \`05_SAP_suppliers_demo.csv\` — Suppliers (SAP)

@@ -8,8 +8,8 @@
  */
 import { pluralize } from '../utils/pluralize';
 
-export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier' | 'Warranty' | 'WarrantyClaim';
-export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier', 'Warranty', 'WarrantyClaim'];
+export type BinEntity = 'JobCard' | 'VehicleService' | 'Customer' | 'CustomerVehicle' | 'Part' | 'Supplier' | 'Warranty' | 'WarrantyClaim' | 'User';
+export const BIN_ENTITIES: BinEntity[] = ['JobCard', 'VehicleService', 'Customer', 'CustomerVehicle', 'Part', 'Supplier', 'Warranty', 'WarrantyClaim', 'User'];
 
 /** How each kind is named to people, and the verb prefix of its audit entries. */
 export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: string; icon: string }> = {
@@ -22,6 +22,8 @@ export const BIN_KIND: Record<BinEntity, { noun: string; plural: string; audit: 
   // Only an undone import puts these in the bin (P6): an issued warranty or a claim is voided or cancelled, never deleted.
   Warranty: { noun: 'Warranty', plural: 'Warranties', audit: 'warranty', icon: 'shield-check' },
   WarrantyClaim: { noun: 'Warranty claim', plural: 'Warranty claims', audit: 'warranty_claim', icon: 'shield' },
+  // Only an undone staff import (P7), for accounts never invited or used: a person is otherwise switched off, never deleted from here.
+  User: { noun: 'Staff account', plural: 'Staff accounts', audit: 'user', icon: 'user' },
 };
 
 /** The record's own page. */
@@ -35,6 +37,7 @@ export function binHref(entity: BinEntity, id: string): string {
     case 'Supplier': return `/inventory/suppliers?q=${encodeURIComponent(id)}`;
     case 'Warranty': return `/warranty/${id}`;
     case 'WarrantyClaim': return `/warranty/claims/${id}`;
+    case 'User': return `/users?q=${encodeURIComponent(id)}`;
   }
 }
 
@@ -241,6 +244,11 @@ export function warrantyRecordEligibility(entity: 'Warranty' | 'WarrantyClaim'):
     : verdict('warranty claim', ['is a warranty claim'], 'Cancel it, with a reason, instead.');
 }
 
+/** A staff account is switched off on the Users page, never put in the bin by hand: only undoing the import that brought it in, before anyone was invited (P7). */
+export function staffAccountEligibility(): Eligibility {
+  return verdict('staff account', ['is a person’s account'], 'Switch it off on the Users page instead.');
+}
+
 /** A supplier goes only while no goods receipt names it (receipts are the Store's record). */
 export function supplierEligibility(f: { receipts: number }): Eligibility {
   const b: string[] = [];
@@ -302,6 +310,8 @@ export const SNAPSHOT_ORDER: Record<BinEntity, string[]> = {
   Supplier: ['supplier'],
   Warranty: ['warranty'],
   WarrantyClaim: ['warrantyClaim'],
+  // No password, session or set-password link is ever kept: a restored account gets a new unusable password and stays switched off.
+  User: ['user', 'userRole'],
 };
 
 export type SnapshotRow = { model: string; data: Record<string, unknown> };
