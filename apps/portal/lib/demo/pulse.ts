@@ -185,8 +185,9 @@ export async function runDemoPulse(organisationId: string, now: Date = new Date(
         const ageDays = (now.getTime() - j.createdAt.getTime()) / DAY;
         const at = happenedAt(day.dayKey, now, 0, 3);
         if (ageDays >= PULSE_AGE_OUT_DAYS && (!j.estimate || ['DRAFT', 'SUBMITTED', 'APPROVED'].includes(j.estimate.status))) {
+          // Compare-and-set: only a job card still checked in is cancelled (someone may have moved it today).
+          if ((await tx.jobCard.updateMany({ where: { id: j.id, status: 'CHECKED_IN' }, data: { status: 'CANCELLED' } })).count !== 1) continue;
           await tx.cancellationRequest.create({ data: { id: reg('CancellationRequest', randomUUID()), jobCardId: j.id, reason: 'The customer did not come back to approve the work within the week.', requestedById: frontdesk, requestedAt: at, status: 'APPROVED', decidedById: manager, decidedAt: new Date(at.getTime() + 20 * 60_000), decisionNotes: 'Closed off; the customer can book again.', createdAt: at } });
-          await tx.jobCard.update({ where: { id: j.id }, data: { status: 'CANCELLED' } });
           audit(frontdesk, 'cancellation.requested', 'JobCard', j.id, at); audit(manager, 'cancellation.approved', 'JobCard', j.id, new Date(at.getTime() + 20 * 60_000));
           add('cancelled');
           continue;
@@ -194,8 +195,9 @@ export async function runDemoPulse(organisationId: string, now: Date = new Date(
         if (j.technicianAcceptanceStatus !== 'ACCEPTED' && j.assignedTechnicianId) {
           const kind = j.vehicle.vehicleType === 'COMMERCIAL' ? COMMERCIAL_COMPLAINTS[Math.floor(rnd() * 10)]! : PASSENGER_COMPLAINTS[Math.floor(rnd() * 10)]!;
           const lines = JOB_LINES[kind[2]] ?? JOB_LINES.service!;
+          const accepted = await tx.jobCard.updateMany({ where: { id: j.id, status: 'CHECKED_IN', technicianAcceptanceStatus: { not: 'ACCEPTED' }, estimate: null }, data: { technicianAcceptanceStatus: 'ACCEPTED', technicianRespondedAt: at, diagnosis: kind[1], approvalStatus: 'APPROVED', approvedById: j.supervisorId, approvedAt: j.createdAt } });
+          if (accepted.count !== 1) continue;
           const estimateId = reg('Estimate', randomUUID());
-          await tx.jobCard.update({ where: { id: j.id }, data: { technicianAcceptanceStatus: 'ACCEPTED', technicianRespondedAt: at, diagnosis: kind[1], approvalStatus: 'APPROVED', approvedById: j.supervisorId, approvedAt: j.createdAt } });
           await tx.estimate.create({ data: {
             id: estimateId, jobCardId: j.id, status: 'SUBMITTED', submittedAt: new Date(at.getTime() + 60 * 60_000), createdById: j.assignedTechnicianId, createdAt: at,
             lineItems: { create: lines.map((l) => ({ id: reg('EstimateLineItem', randomUUID()), type: l.type, description: l.description, quantity: l.qty ?? 1, unitPrice: l.price, amount: (l.qty ?? 1) * l.price, enteredById: j.assignedTechnicianId!, createdAt: at })) },
@@ -203,18 +205,18 @@ export async function runDemoPulse(organisationId: string, now: Date = new Date(
           audit(j.assignedTechnicianId, 'assignment.accepted', 'JobCard', j.id, at); audit(j.assignedTechnicianId, 'estimate.submitted', 'JobCard', j.id, new Date(at.getTime() + 60 * 60_000));
           add('estimatesWritten');
         } else if (j.estimate?.status === 'SUBMITTED' && ageDays >= 2 && j.supervisorId) {
-          await tx.estimate.update({ where: { id: j.estimate.id }, data: { status: 'APPROVED', approvedAt: at, approvedById: j.supervisorId } });
+          if ((await tx.estimate.updateMany({ where: { id: j.estimate.id, status: 'SUBMITTED' }, data: { status: 'APPROVED', approvedAt: at, approvedById: j.supervisorId } })).count !== 1) continue;
           audit(j.supervisorId, 'estimate.approved', 'JobCard', j.id, at);
           add('estimatesApproved');
         }
       }
       // ── Services: a booking whose day has come is checked in; one nobody moved for a week is cancelled ──
       for (const s of oldServices) {
-        if (s.status === 'SCHEDULED' && s.createdAt <= now) { await tx.vehicleService.update({ where: { id: s.id }, data: { status: 'CHECKED_IN', checkedInAt: s.createdAt } }); add('servicesCheckedIn'); continue; }
+        if (s.status === 'SCHEDULED' && s.createdAt <= now) { if ((await tx.vehicleService.updateMany({ where: { id: s.id, status: 'SCHEDULED' }, data: { status: 'CHECKED_IN', checkedInAt: s.createdAt } })).count === 1) add('servicesCheckedIn'); continue; }
         if (s.status === 'CHECKED_IN' && s.checkedInAt && (now.getTime() - s.checkedInAt.getTime()) / DAY >= PULSE_AGE_OUT_DAYS) {
           const at = happenedAt(day.dayKey, now, 1, 3);
+          if ((await tx.vehicleService.updateMany({ where: { id: s.id, status: 'CHECKED_IN' }, data: { status: 'CANCELLED', cancelledAt: new Date(at.getTime() + 15 * 60_000) } })).count !== 1) continue;
           await tx.vehicleServiceCancellationRequest.create({ data: { id: reg('VehicleServiceCancellationRequest', randomUUID()), vehicleServiceId: s.id, reason: 'The customer asked to rebook the service.', requestedById: frontdesk, requestedAt: at, status: 'APPROVED', decidedById: manager, decidedAt: new Date(at.getTime() + 15 * 60_000), createdAt: at } });
-          await tx.vehicleService.update({ where: { id: s.id }, data: { status: 'CANCELLED', cancelledAt: new Date(at.getTime() + 15 * 60_000) } });
           add('servicesCancelled');
         }
       }
@@ -234,8 +236,8 @@ export async function runDemoPulse(organisationId: string, now: Date = new Date(
       }
       for (const v of oldVisits) {
         const inAt = v.checkedInAt ?? new Date(v.expectedAt!.getTime() + 5 * 60_000);
-        await tx.visit.update({ where: { id: v.id }, data: { status: 'CHECKED_OUT', passNumber: v.passNumber ?? passNumbers.get(v.id) ?? null, receivedAt: inAt, receivedById: gate, checkedInAt: inAt, checkedInById: gate, checkedOutAt: new Date(inAt.getTime() + v.expectedDurationMinutes * 60_000), checkedOutById: gate } });
-        add('visitorsOut');
+        const out = await tx.visit.updateMany({ where: { id: v.id, status: v.status }, data: { status: 'CHECKED_OUT', passNumber: v.passNumber ?? passNumbers.get(v.id) ?? null, receivedAt: inAt, receivedById: gate, checkedInAt: inAt, checkedInById: gate, checkedOutAt: new Date(inAt.getTime() + v.expectedDurationMinutes * 60_000), checkedOutById: gate } });
+        if (out.count === 1) add('visitorsOut');
       }
 
       // ── Schedule ──
@@ -264,10 +266,10 @@ export async function runDemoPulse(organisationId: string, now: Date = new Date(
       }
       for (const t of oldTickets) {
         const at = happenedAt(day.dayKey, now, 2, 3);
-        if ((now.getTime() - t.createdAt.getTime()) / DAY >= PULSE_AGE_OUT_DAYS) { await tx.supportTicket.update({ where: { id: t.id }, data: { status: 'RESOLVED', resolvedAt: at } }); add('ticketsResolved'); continue; }
+        if ((now.getTime() - t.createdAt.getTime()) / DAY >= PULSE_AGE_OUT_DAYS) { if ((await tx.supportTicket.updateMany({ where: { id: t.id, status: t.status }, data: { status: 'RESOLVED', resolvedAt: at } })).count === 1) add('ticketsResolved'); continue; }
         if (t.status === 'OPEN' && !t.firstResponseAt) {
+          if ((await tx.supportTicket.updateMany({ where: { id: t.id, status: 'OPEN', firstResponseAt: null }, data: { status: 'WAITING_ON_CUSTOMER', firstResponseAt: at, lastAgentAt: at, assignedToId: care, pendingSince: at } })).count !== 1) continue;
           await tx.supportReply.create({ data: { id: reg('SupportReply', randomUUID()), ticketId: t.id, authorUserId: care, body: PULSE_AGENT_REPLY, kind: 'AGENT', createdAt: at } });
-          await tx.supportTicket.update({ where: { id: t.id }, data: { status: 'WAITING_ON_CUSTOMER', firstResponseAt: at, lastAgentAt: at, assignedToId: care, pendingSince: at } });
           add('ticketsAnswered');
         }
       }
