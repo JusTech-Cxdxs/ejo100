@@ -147,6 +147,9 @@ test('wired in: old numbers kept, the import’s two people register and verify,
   assert.match(server, /hodApprovedAt: atOrPast\(s, 'PENDING_MANAGER'\) \? failure : null/);
   assert.doesNotMatch(server, /hodApprovedById|managerApprovedById|submittedById|decidedById/, 'no EJO person is named for a step taken before EJO');
   assert.doesNotMatch(server, /sendEmail|notify|mailer/i, 'nobody is emailed');
+  // Undo: any audited step since the load keeps a record out of the bin, however soon after (no grace minute).
+  for (const e of ['Warranty', 'WarrantyClaim']) assert.match(server, new RegExp(`db\\.auditLog\\.count\\(\\{ where: \\{ entityType: '${e}', entityId: id \\} \\}\\)`));
+  assert.doesNotMatch(server, /60_000/);
   assert.match(server, /recycleBinItem\.findFirst\(\{ where: \{ entityType: kind === 'WR' \? 'Warranty' : 'WarrantyClaim'/, 'numbers held in the bin are never given out again');
   const dx = read('lib/actions/data-exchange.ts');
   assert.match(dx, /moveImportedWarrantyRecordsToBinInTx\(tx, entity === 'warranties' \? 'Warranty' : 'WarrantyClaim', quiet, job\.id/);
