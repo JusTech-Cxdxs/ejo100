@@ -659,6 +659,21 @@ the button.
    IT Administrator and an organisation's own Administrator never see the
    card.
 
+## 17. The role tour: who to sign in as, and what they cannot do (D4)
+
+*The question: "show me it's really locked down — role by role."*
+
+[KEWALRAM_DEMO.md](KEWALRAM_DEMO.md) opens with **the 15-minute tour for
+the directors** — ten sign-ins in order, from the Executive's daily brief
+through the front desk, a technician, the Manager's approvals, the store,
+warranty, the line at Afprint, the security desk and the customer portal,
+ending with the Administrator's audit trail — and then lists every one of
+the 41 demo people with what they see first, three clicks that show their
+job and the pages they **must not** open. Try any of those: the portal
+answers *Access denied*. Every line is checked against the authorization
+catalogue by a unit test and in the browser by an e2e test that signs in
+as each person.
+
 ---
 
 *Coming in the next releases (each adds a section here):* the yard, sale and

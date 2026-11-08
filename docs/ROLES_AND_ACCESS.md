@@ -157,6 +157,20 @@ are audited (`demo.workshop_loaded`); the demo's own audit entries are
 removed with it under the trail's recorded maintenance switch, in one
 transaction, so a reload never doubles a history.
 
+### The role tour and its proofs (D4)
+
+`docs/KEWALRAM_DEMO.md` gives each demo sign-in a first view, three clicks
+and what it **must not** do; it is generated from
+`apps/portal/lib/demo/tour.ts` (`npm run demo:tour-doc`). The promises are
+checked twice: `tests/demo-tour.test.ts` runs each against the
+authorization catalogue (a must-not page is refused by the person's roles, a
+protected click is granted — using the same page list as the role matrix,
+`lib/authz/page-areas.ts`), and `e2e/demo-tour.spec.ts` signs in as all 41
+people and proves it in the browser, plus the branch fences on real demo
+records (the plant's store officer cannot open an Isolo job card; a
+technician cannot open a colleague's; Headquarters' Finance can) and the
+reset refusing a hosted database.
+
 ### The demo every day, and the console (D3)
 
 - **The daily pulse** writes as the demo people, only into an organisation

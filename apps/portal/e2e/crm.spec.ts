@@ -201,7 +201,8 @@ test.describe('Ada, a long-standing customer', () => {
 
     await page.goto(`${adaUrl}?tab=activity`);
     await expect(page.getByText('Details updated').first()).toBeVisible();
-    await expect(page.getByText(/Second phone: empty → 0809 555 0101/)).toBeVisible();
+    // .first(): a retried run records the same change again.
+    await expect(page.getByText(/Second phone: empty → 0809 555 0101/).first()).toBeVisible();
     await expect(page.getByText('Note added').first()).toBeVisible();
   });
 
