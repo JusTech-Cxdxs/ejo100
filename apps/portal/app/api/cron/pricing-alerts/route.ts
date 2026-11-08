@@ -17,6 +17,7 @@ import { purgeOldReminders } from '@/lib/reminders';
 import { resolveDurations } from '@/lib/enyo/ml/models';
 import { harvestPublicConversations } from '@/lib/enyo/conversations';
 import { prisma } from '@ejo/database';
+import { runDemoPulseForAll } from '@/lib/demo/pulse';
 
 /**
  * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
@@ -113,6 +114,9 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     logFailure('Enyo chat learning failed', err);
   }
+  // The demo organisation's working day (only an organisation marked as a demo; DEMO_DAILY_ACTIVITY=off stops it; never emails).
+  const pulses = await runDemoPulseForAll().catch((err) => { logFailure('Demo daily pulse failed', err); return null; });
+  if (pulses !== null && pulses.length) await recordJobRun('demo-pulse', { organisations: pulses.length, added: pulses.filter((x) => x.ran).length, reasons: pulses.map((x) => x.reason).join(',') });
   return NextResponse.json({
     branchesWithOpenAlerts: groups.length,
     emailsSent,

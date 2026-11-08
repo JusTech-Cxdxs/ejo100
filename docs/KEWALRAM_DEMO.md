@@ -134,3 +134,12 @@ story again from now, removing exactly the demo's own records. The four
 customers above each have their story: Adaora's S07 in service today, the
 fleet's trucks (one open job card, one ready for collection), the warranty
 customer's submitted claim, the Afprint-built NQR with its passport.
+
+## Every day after
+
+The demo does not go stale: each Lagos day adds its own working day —
+check-ins this morning, yesterday's estimates written and approved and
+waiting for the Manager, visitors, the morning meeting, new support
+requests (DEMO_WALKTHROUGH §16). `DEMO_DAILY_ACTIVITY=off` stops it. The
+platform team reloads the whole story from **IT control room → Demo
+organisation**, or from a terminal with `npm run demo:reset`.

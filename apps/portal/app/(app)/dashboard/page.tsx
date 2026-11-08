@@ -1,4 +1,6 @@
 import { redirect } from 'next/navigation';
+import { after } from 'next/server';
+import { ensureDemoPulse } from '@/lib/demo/pulse';
 import { prisma } from '@ejo/database';
 import { allows, getPrincipal } from '@/lib/authz/server';
 import { OrgTrail } from '@/components/OrgTrail';
@@ -85,6 +87,8 @@ export default async function DashboardPage() {
   const approver = approverFlags.some(Boolean);
   // Managers and others may look at support for their branch; logging calls is the support team's work.
   const principal = await getPrincipal();
+  // A demo organisation gets today's working day the first time anyone looks (after the page is sent; never in its way).
+  after(() => ensureDemoPulse(principal.organisationId));
   const doesSupport = principal.isSuperAdmin || ['customer-care', 'customer-care-lead'].some((s) => principal.roleSlugs.includes(s));
   const overviews = await overviewsFor();
   const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs, waiting] = await Promise.all([

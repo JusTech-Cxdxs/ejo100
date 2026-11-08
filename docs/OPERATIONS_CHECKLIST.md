@@ -45,6 +45,7 @@ Names only. Values never go into the repository, chat, or tickets.
 | `DEMO_CUSTOMER_PASSWORD` | optional | The four customer-portal demo sign-ins' password; the staff password when not set. |
 | `RESET_DEMO_PASSWORDS` | optional | `yes` sets every demo password again on the next build (and signs those accounts out). Set it for one deploy, then remove it. |
 | `DEMO_ORG_SLUG` | optional | Which organisation is the demo when none is marked yet (default `kewalram-nigeria`, the seed's own). Only a marked organisation (`organisations.isDemo`) ever gets demo people. |
+| `DEMO_DAILY_ACTIVITY` | optional | `off` stops the demo organisation's daily working day (check-ins, visitors, requests…). On by default; never touches a real organisation and never emails. |
 | `DEMO_LOAD` | optional | `off` stops the build loading the demo records (plant and workshop) into the demo organisation the first time. |
 | `DEMO_STRICT` | optional | `1` makes a demo-people problem stop the build (by default it is reported and the app still deploys). |
 

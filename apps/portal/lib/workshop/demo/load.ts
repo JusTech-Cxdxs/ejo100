@@ -19,9 +19,10 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, prisma } from '@ejo/database';
 import { DEMO_STAFF } from '../../demo/people';
 import { normaliseVin } from '../../vin';
-import { lagosYear } from '../../utils/format-date';
+import { lagosDayKey, lagosYear } from '../../utils/format-date';
 import { highestBinnedReference, highestSequence } from '../../recycle-bin/numbers';
 import { CATEGORIES } from './catalogue';
+import { PULSE_MODEL, pulseDayId } from '../../demo/pulse-core';
 import { DEMO_SOURCE, planWorkshopDemo, type DemoEstimate, type DemoSlip } from './plan';
 
 export type WorkshopDemoLoadResult = { branchName: string; removed: number; made: Record<string, number>; figures: Record<string, number> };
@@ -72,7 +73,7 @@ export async function removeWorkshopDemo(organisationId: string): Promise<number
 }
 
 /** The next free PREFIX-YEAR-NNNNNN numbers, continuing from what the database holds (and the Recycle bin, for job cards and services). */
-class Numbers {
+export class Numbers {
   private next = new Map<string, number>();
   constructor(private readonly reader: (prefix: string) => Promise<number>) {}
   async take(prefix: 'JC' | 'SV' | 'RF' | 'PRS' | 'GRN' | 'WR' | 'WC' | 'VIS' | 'VP' | 'EP' | 'VX' | 'RT' | 'INC' | 'DLV' | 'CTR' | 'APT' | 'BC' | 'SUP' | 'IMP' | 'EXP', at: Date): Promise<string> {
@@ -88,7 +89,7 @@ const NUMBER_FIELDS: Record<string, [string, string]> = {
   VIS: ['visit', 'visitNumber'], VP: ['visit', 'passNumber'], EP: ['exitPass', 'passNumber'], VX: ['vehicleGateExit', 'exitNumber'], RT: ['roadTestPermit', 'permitNumber'], INC: ['securityIncident', 'incidentNumber'], DLV: ['gateDelivery', 'deliveryNumber'], CTR: ['contractorPass', 'passNumber'],
   APT: ['appointment', 'appointmentNumber'], BC: ['broadcast', 'broadcastNumber'], SUP: ['supportTicket', 'number'], IMP: ['importJob', 'number'], EXP: ['exportJob', 'number'],
 };
-async function highestInUse(start: string): Promise<number> {
+export async function highestInUse(start: string): Promise<number> {
   const prefix = start.slice(0, start.indexOf('-'));
   const [model, field] = NUMBER_FIELDS[prefix]!;
   const delegate = (prisma as unknown as Record<string, { findFirst: (args: unknown) => Promise<Record<string, string | null> | null> }>)[model]!;
@@ -378,5 +379,7 @@ export async function loadWorkshopDemo(organisationId: string, anchor: Date = ne
   auditRows.push({ id: reg('AuditLog', id()), organisationId, userId: admin, action: 'demo.workshop_loaded', entityType: 'Branch', entityId: isolo.id, metadata: json({ removed, figures: plan.figures }), createdAt: anchor });
   await inChunks(auditRows.sort((a, b) => (a.createdAt as Date).getTime() - (b.createdAt as Date).getTime()), (rows) => prisma.auditLog.createMany({ data: rows }));
   await inChunks(registry, (rows) => prisma.demoRecord.createMany({ data: rows.map((x) => ({ organisationId, model: x.model, recordId: x.recordId })) }));
+  // Today is in the story already: the daily pulse (lib/demo/pulse.ts) adds nothing more today.
+  await prisma.demoRecord.createMany({ skipDuplicates: true, data: [{ organisationId, model: PULSE_MODEL, recordId: pulseDayId(organisationId, lagosDayKey(anchor)) }] });
   return { branchName: isolo.name, removed, made, figures: plan.figures };
 }

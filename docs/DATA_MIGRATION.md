@@ -419,7 +419,9 @@ no real person or vehicle in it).
   then the workshop demo (`-- --org <slug>` marks that organisation as the
   demo; `-- --remove` takes the records out). `npm run demo:ensure` loads
   both demos only when the demo organisation has none yet (the production
-  build runs it). Against a
+  build runs it), and otherwise adds the day's working day; `npm run
+  demo:pulse` adds the day's working day by hand. The platform team does
+  the same from IT control room → Demo organisation. Against a
   hosted database (Supabase, Render, Neon, RDS, or `NODE_ENV=production`)
   it refuses unless `DEMO_RESET_CONFIRM="replace the demo records"` is set.
 - Every demo record carries `externalSource = EJO-DEMO`; a reload or a

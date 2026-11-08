@@ -620,6 +620,45 @@ People: everyone at Isolo (§14); the Administrator loads it.
    the kit to that service. The four portal customers each have their story
    (§14).
 
+## 16. A new working day every day, and the platform team's button (D3)
+
+*The question: "if I open the demo next Tuesday, is it still today?"*
+
+People: anyone in the demo; the **Master Administrator** (platform team) for
+the button.
+
+1. Every day the demo gets a working day of its own, dated today (Lagos):
+   three vehicles checked in this morning at Isolo (one on Saturday, none
+   on Sunday), a service checked in and one booked for the next working
+   day, two visitors expected (one already in), the morning workshop
+   meeting, two new support requests with Enyo's acknowledgement, and on
+   Mondays a notice to Isolo, *This week in the workshop* — never emailed.
+2. The days before move on by themselves, one safe step a day: yesterday's
+   check-ins are accepted by their technician with an estimate written; two
+   days later the supervisor approves it — and then it **waits for the demo
+   Manager**, so `manager@demo.kewalram.local` always has real approvals to
+   give. Yesterday's visitors are signed out, yesterday's requests answered;
+   a check-in nobody moved for a week is cancelled (the customer did not
+   come back), a week-old request resolved. The pulse never touches money,
+   stock, parts slips, warranty or the plant.
+3. It runs at most once a Lagos day, whichever comes first: the daily
+   07:00 UTC job, the first dashboard opened that day (after the page is
+   shown, never in its way), or a deploy. A fresh load counts as the day.
+   `DEMO_DAILY_ACTIVITY=off` stops it. `npm run demo:pulse` runs it by hand
+   (`-- --at <date>` to rehearse another day). Only an organisation marked
+   as a demo is ever touched.
+4. As the **Master Administrator**: **IT control room → Demo organisation**.
+   Each organisation is listed as *Demo* or *Real organisation*. For the
+   demo: its record counts, sign-ins, when it was loaded and its last
+   working day; type **refresh the demo** and press **Load / refresh the
+   demo now** to load it all again as of this minute (people → plant →
+   workshop; a few minutes on a hosted database), **remove the demo** to
+   take its records out, or the organisation's short name to unmark it (its
+   demo sign-ins are switched off on the spot). To make another
+   organisation the demo, type its short name. Everything is audited; the
+   IT Administrator and an organisation's own Administrator never see the
+   card.
+
 ---
 
 *Coming in the next releases (each adds a section here):* the yard, sale and
