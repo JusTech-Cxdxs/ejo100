@@ -1037,9 +1037,8 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         moved = new Set(await moveImportedStaffToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
       } else if (entity === 'openServices') {
         // Services and bookings: to the bin whole, only those nobody has worked on since the import.
-        const loadedAt = job.completedAt ?? new Date(0);
         const quiet: string[] = [];
-        for (const id of mine) if (await serviceUntouchedSinceImport(tx, id, job.id, loadedAt)) quiet.push(id);
+        for (const id of mine) if (await serviceUntouchedSinceImport(tx, id, job.id)) quiet.push(id);
         moved = new Set(await moveImportedServicesToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
       } else if (entity === 'warranties' || entity === 'claims') {
         // Warranties and claims: to the bin, each restorable on its own, only those nobody has used since the import

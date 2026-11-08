@@ -268,7 +268,9 @@ export async function loadWarrantyRows(tx: Tx, job: WarrantyImportJob, mapping: 
 export async function warrantyUntouchedSinceImport(db: Db, id: string, jobId: string, loadedAt: Date): Promise<boolean> {
   const w = await db.warranty.findFirst({ where: { id, importJobId: jobId }, select: { updatedAt: true, _count: { select: { claims: true, coveredEstimateLines: true } } } });
   if (!w || w._count.claims || w._count.coveredEstimateLines) return false;
-  return w.updatedAt.getTime() <= loadedAt.getTime() + 60_000;
+  // The load writes no history on it: any audited step (verified, suspended, a claim opened, an email sent) is use — however soon after.
+  if (await db.auditLog.count({ where: { entityType: 'Warranty', entityId: id } })) return false;
+  return w.updatedAt.getTime() <= loadedAt.getTime();
 }
 
 // ══ Open claims ═══════════════════════════════════════════════════════
@@ -442,5 +444,8 @@ export async function loadClaimRows(tx: Tx, job: WarrantyImportJob, mapping: Map
 /** An imported claim nobody has moved since the import: its stage, amounts and notes as the import left them. */
 export async function claimUntouchedSinceImport(db: Db, id: string, jobId: string, loadedAt: Date): Promise<boolean> {
   const c = await db.warrantyClaim.findFirst({ where: { id, importJobId: jobId }, select: { updatedAt: true } });
-  return Boolean(c) && c!.updatedAt.getTime() <= loadedAt.getTime() + 60_000;
+  if (!c) return false;
+  // The load writes no history on it: any audited step (approved, sent back, submitted, decided) is use — however soon after.
+  if (await db.auditLog.count({ where: { entityType: 'WarrantyClaim', entityId: id } })) return false;
+  return c.updatedAt.getTime() <= loadedAt.getTime();
 }

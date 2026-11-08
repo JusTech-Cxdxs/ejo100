@@ -82,7 +82,7 @@ test('wired in: live services and bookings in the chosen workshop, old number ke
   assert.match(server, /approvalStatus: inWorkshop \? 'APPROVED' : 'PENDING'/);
   assert.match(server, /a vehicle has one open job card or service at a time/);
   assert.doesNotMatch(server, /sendEmail|notify|mailer/i, 'nobody is emailed');
-  assert.match(server, /db\.auditLog\.count\(\{ where: \{ entityType: 'VehicleService', entityId: id, createdAt: \{ gt:/, 'a step taken since (audited) keeps it out of the bin');
+  assert.match(server, /db\.auditLog\.count\(\{ where: \{ entityType: 'VehicleService', entityId: id \} \}\)\) === 0/, 'any audited step since the load keeps it out of the bin, however soon after');
   const dx = read('lib/actions/data-exchange.ts');
   assert.match(dx, /moveImportedServicesToBinInTx\(tx, quiet, job\.id/);
   assert.match(dx, /openServices: \['svc', 'vin', 'plate'\]/);

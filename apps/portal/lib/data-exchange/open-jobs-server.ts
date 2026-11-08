@@ -293,8 +293,8 @@ export async function untouchedSinceImport(db: Db, id: string, jobId: string, lo
   const c = j._count;
   if (c.partRequestSlips || c.externalProcurementRequests || c.warranties || c.warrantyClaims || c.roadTestPermits || c.closeRequests || c.cancellationRequests || c.refunds || j.gateExit) return false;
   if (j.payments.some((p) => !p.idempotencyKey?.startsWith(`import:${jobId}:`))) return false;
-  const slack = 60_000;
-  if (j.updatedAt.getTime() > loadedAt.getTime() + slack) return false;
-  if (j.estimate && (j.estimate.updatedAt.getTime() > loadedAt.getTime() + slack || j.estimate.lineItems.some((l) => l.createdAt.getTime() > loadedAt.getTime() + slack))) return false;
-  return true;
+  if (j.updatedAt.getTime() > loadedAt.getTime()) return false;
+  if (j.estimate && (j.estimate.updatedAt.getTime() > loadedAt.getTime() || j.estimate.lineItems.some((l) => l.createdAt.getTime() > loadedAt.getTime()))) return false;
+  // The load writes no history on it: any audited step (assigned, approved, a status) is work — however soon after.
+  return (await db.auditLog.count({ where: { entityType: 'JobCard', entityId: id } })) === 0;
 }
