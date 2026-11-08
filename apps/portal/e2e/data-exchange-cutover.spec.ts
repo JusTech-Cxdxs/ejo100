@@ -56,6 +56,6 @@ test('someone who only prepares files sees the checklist but cannot mark it; a b
   await expect(page.getByTestId('cutover-step')).toHaveCount(5);
   await expect(page.getByRole('button', { name: 'Not needed here' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Sign off/ })).toHaveCount(0);
-  const res = await page.goto('/data-exchange/cutover/not-a-branch');
-  expect(res?.status()).toBe(404);
+  await page.goto('/data-exchange/cutover/not-a-branch');
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
 });
