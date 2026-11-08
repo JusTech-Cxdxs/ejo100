@@ -45,7 +45,7 @@ test('the staff file: refusals and the totals; the Organisation Administrator ap
     [`0001${D}4`, `Ada Again ${T}`, mail(1), '', branch.name, '', 'Technician'],
     [`0001${D}5`, `Existing ${T}`, who('workshop-manager').email, '', branch.name, '', 'Technician'],
     [`0001${D}6`, `Admin Try ${T}`, mail(6), '', branch.name, '', 'Administrator'],
-    [`0001${D}7`, `Nowhere ${T}`, mail(7), '', 'Lekki Branch', '', 'Technician'],
+    [`0001${D}7`, `Nowhere ${T}`, mail(7), '', `Nowhere Branch ${T}`, '', 'Technician'],
     [`0001${D}8`, `No Dept ${T}`, mail(8), '', branch.name, 'Canteen', 'Technician'],
     [`0001${D}9`, `No Role ${T}`, mail(9), '', branch.name, '', 'Chief Cook'],
   ]));
@@ -58,7 +58,7 @@ test('the staff file: refusals and the totals; the Organisation Administrator ap
     const r = await db().importRow.findFirstOrThrow({ where: { jobId, rowNumber: n }, select: { status: true, issues: true } });
     return `${r.status}: ${((r.issues as { message: string }[] | null) ?? []).map((i) => i.message).join(' | ')}`;
   };
-  expect(await rowIssues(8)).toMatch(/^REJECTED: .*There is no branch “Lekki Branch” in this organisation/);
+  expect(await rowIssues(8)).toMatch(new RegExp(`^REJECTED: .*There is no branch “Nowhere Branch ${T}” in this organisation`));
   expect(await rowIssues(9)).toMatch(new RegExp(`^REJECTED: .*${branch.name} has no department “Canteen”`));
   expect(await rowIssues(10)).toMatch(/^REJECTED: .*There is no role “Chief Cook” in this organisation/);
   await expect(page.getByText(/There is no role “Chief Cook” in this organisation/)).toBeVisible();
