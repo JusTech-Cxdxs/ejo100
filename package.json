@@ -19,6 +19,7 @@
     "demo:people": "npx tsx apps/portal/scripts/demo-people.ts",
     "demo:ensure": "npx tsx apps/portal/scripts/demo-ensure.ts",
     "demo:pulse": "npx tsx apps/portal/scripts/demo-pulse.ts",
+    "demo:tour-doc": "npx tsx apps/portal/scripts/demo-tour-doc.ts",
     "brand:sync": "cp packages/enyo/src/brand.ts apps/portal/lib/brand.ts && cp packages/enyo/src/brand.ts apps/website/lib/brand.ts"
   },
   "devDependencies": {
