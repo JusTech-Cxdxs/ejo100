@@ -19,7 +19,9 @@ import { renderTourDoc } from '../lib/demo/tour-doc';
 const ROOT = join(__dirname, '..', '..', '..', '..');
 const principal = (roles: string[]): Principal => ({ userId: 'x', isSuperAdmin: false, roleSlugs: roles, branchId: 'b', departmentId: null });
 const opens = (roles: string[], href: string) => {
-  const area = AREAS.find((a) => a.url === href);
+  // The page's own area, or the nearest one above it (/organisation/people is guarded by /organisation's layout).
+  const path = href.split('?')[0]!;
+  const area = AREAS.filter((a) => path === a.url || path.startsWith(`${a.url}/`)).sort((x, y) => y.url.length - x.url.length)[0];
   return area ? area.needs.some((k) => decide(principal(roles), k).allowed) : null; // null: not a guarded area (checked in the browser)
 };
 

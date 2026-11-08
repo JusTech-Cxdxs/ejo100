@@ -58,6 +58,7 @@ test('branch fences on real demo records: the plant’s store officer cannot ope
   const commercialTech = await db().user.findUniqueOrThrow({ where: { email: demoPerson('technician', 'ISOLO').email.replace('tech.passenger', 'tech.commercial') }, select: { id: true } });
   const job = await demoJob({ assignedTechnicianId: commercialTech.id, status: { in: ['IN_PROGRESS', 'READY_FOR_COLLECTION', 'CHECKED_OUT'] } });
   const refused = async (who: string) => {
+    await page.context().clearCookies(); // the next person signs in afresh
     await signIn(page, who, DEMO_E2E_PASSWORD);
     await gotoSettled(page, `/workshop/job-cards/${job.id}`);
     await expect(page.getByText(job.jobNumber)).toHaveCount(0);
@@ -66,6 +67,7 @@ test('branch fences on real demo records: the plant’s store officer cannot ope
   };
   await refused(DEMO_STAFF.find((s) => s.email.startsWith('kit.store@'))!.email); // Afprint: another branch
   await refused(DEMO_STAFF.find((s) => s.email.startsWith('tech.passenger@'))!.email); // Isolo, but not his job
+  await page.context().clearCookies();
   await signIn(page, DEMO_STAFF.find((s) => s.email.startsWith('finance.hq@'))!.email, DEMO_E2E_PASSWORD);
   await gotoSettled(page, `/workshop/job-cards/${job.id}`);
   await expect(page.getByText(job.jobNumber).first()).toBeVisible();
