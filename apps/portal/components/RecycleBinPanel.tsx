@@ -17,6 +17,7 @@ const MISTAKE: Record<BinEntity, string> = {
   Supplier: 'a supplier added',
   Warranty: 'a warranty brought in',
   WarrantyClaim: 'a warranty claim brought in',
+  User: 'a staff account brought in',
 };
 
 /**

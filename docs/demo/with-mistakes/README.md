@@ -138,3 +138,14 @@ and invoices, the parts catalogue before opening stock).
 | 17 | Vehicle JAANLR85EL7100013 a second time (row 2 has it): one open visit per vehicle | Same chassis number as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
 | 18 | In the workshop since a day in the future | Checked in on 2027-03-15, which is in the future: a vehicle in the workshop came in already. | Rejected (not loaded) | the check (this row alone) |
 
+## 19_SAP_staff_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 14 | No work email | Work email is required: the person signs in with it and their invitation goes to it. | Rejected (not loaded) | the check (this row alone) |
+| 15 | An administrator role in a file | “Administrator”: the organisation’s administrators are added by hand on the Users page, never by a file. | Rejected (not loaded) | the check (this row alone) |
+| 16 | A branch the organisation does not have | There is no branch “Lekki Branch” in this organisation. Use the branch’s name, code or SAP plant as on the Structure page. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 17 | emeka.okoro@staff.example.com a second time (row 2 has it) | Same email as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 18 | An employee ID with spaces and signs | “EMP 99!” is not an employee ID (letters, digits and dashes). | Rejected (not loaded) | the check (this row alone) |
+| 19 | A role EJO does not have | There is no role “Chief Cook” in this organisation. Use the role’s name as on the Roles page. | Rejected (not loaded) | the check (against what EJO already holds) |
+

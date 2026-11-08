@@ -11,6 +11,8 @@
  * transaction, under the record's original id (so its audit trail joins up).
  */
 import { prisma, Prisma } from '@ejo/database';
+import { hashPassword } from 'better-auth/crypto';
+import { randomBytes } from 'node:crypto';
 import { lockExisting } from '@/lib/integrity';
 import { highestSequence } from '@/lib/recycle-bin/numbers';
 import { writeAuditLog } from '@/lib/workshop-core';
@@ -18,7 +20,7 @@ import { StaleStateError, isUniqueClashOn, numberClashPause } from '@/lib/integr
 import { lagosYear } from '@/lib/utils/format-date';
 import {
   BIN_KIND, binLabel, customerEligibility, jobCardEligibility, orderedSnapshot, parseSnapshot, partEligibility, plainRow, supplierEligibility,
-  purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility, vehicleServiceEligibility, warrantyRecordEligibility,
+  purgeAfterFrom, restoredReference, retentionDays, vehicleEligibility, vehicleServiceEligibility, warrantyRecordEligibility, staffAccountEligibility,
   type BinEntity, type Eligibility, type SnapshotRow,
 } from './rules';
 
@@ -76,6 +78,10 @@ export async function binRecord(entity: BinEntity, id: string, db: Db = prisma):
   if (entity === 'WarrantyClaim') {
     const c = await db.warrantyClaim.findUnique({ where: { id }, select: { claimNumber: true, causalPart: true, createdById: true, createdAt: true, warranty: { select: { warrantyNumber: true } }, customer: { select: { fullName: true, organisationId: true } } } });
     return c ? { entity, id, organisationId: c.customer.organisationId, branchId: null, createdById: c.createdById, createdAt: c.createdAt, reference: c.claimNumber, label: binLabel([c.claimNumber, c.warranty.warrantyNumber, c.causalPart, c.customer.fullName]) } : null;
+  }
+  if (entity === 'User') {
+    const u = await db.user.findUnique({ where: { id }, select: { fullName: true, email: true, employeeId: true, organisationId: true, branchId: true, createdAt: true, importJobId: true } });
+    return u && u.organisationId ? { entity, id, organisationId: u.organisationId, branchId: u.branchId, createdById: null, createdAt: u.createdAt, reference: u.employeeId || u.email, label: binLabel([u.fullName, u.email, u.employeeId]) } : null;
   }
   const p = await db.part.findUnique({ where: { id }, select: { name: true, partNumber: true, branchId: true, createdById: true, createdAt: true, branch: { select: { name: true, businessUnit: { select: { organisationId: true } } } } } });
   return p ? { entity, id, organisationId: p.branch.businessUnit.organisationId, branchId: p.branchId, createdById: p.createdById, createdAt: p.createdAt, reference: p.partNumber || p.name, label: binLabel([p.partNumber, p.name, p.branch.name]) } : null;
@@ -224,6 +230,7 @@ export async function eligibilityOf(entity: BinEntity, id: string, db: Db = pris
     }
     case 'Warranty': return (await db.warranty.count({ where: { id } })) ? warrantyRecordEligibility('Warranty') : null;
     case 'WarrantyClaim': return (await db.warrantyClaim.count({ where: { id } })) ? warrantyRecordEligibility('WarrantyClaim') : null;
+    case 'User': return (await db.user.count({ where: { id } })) ? staffAccountEligibility() : null;
   }
 }
 
@@ -284,6 +291,8 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   if (entity === 'Supplier') return plain([await tx.supplier.findUniqueOrThrow({ where: { id } })], 'supplier');
   if (entity === 'Warranty') return plain([await tx.warranty.findUniqueOrThrow({ where: { id } })], 'warranty');
   if (entity === 'WarrantyClaim') return plain([await tx.warrantyClaim.findUniqueOrThrow({ where: { id } })], 'warrantyClaim');
+  // The person and their roles only: never a password, a session or a set-password link.
+  if (entity === 'User') return [...plain([await tx.user.findUniqueOrThrow({ where: { id } })], 'user'), ...plain(await tx.userRole.findMany({ where: { userId: id } }), 'userRole')];
   const root = await tx.part.findUniqueOrThrow({ where: { id } });
   const [units, stock, fitments] = await Promise.all([
     tx.partUnitOfMeasure.findMany({ where: { partId: id }, orderBy: { unitName: 'asc' } }),
@@ -293,8 +302,8 @@ async function snapshotRows(tx: Tx, entity: BinEntity, id: string): Promise<Snap
   return [...plain([root], 'part'), ...plain(units, 'partUnitOfMeasure'), ...plain(stock ? [stock] : [], 'partStock'), ...plain(fitments, 'partFitment')];
 }
 
-const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part' | 'supplier' | 'warranty' | 'warrantyClaim'> = {
-  JobCard: 'jobCard', VehicleService: 'vehicleService', Customer: 'customer', CustomerVehicle: 'customerVehicle', Part: 'part', Supplier: 'supplier', Warranty: 'warranty', WarrantyClaim: 'warrantyClaim',
+const LOCK: Record<BinEntity, 'jobCard' | 'vehicleService' | 'customer' | 'customerVehicle' | 'part' | 'supplier' | 'warranty' | 'warrantyClaim' | 'user'> = {
+  JobCard: 'jobCard', VehicleService: 'vehicleService', Customer: 'customer', CustomerVehicle: 'customerVehicle', Part: 'part', Supplier: 'supplier', Warranty: 'warranty', WarrantyClaim: 'warrantyClaim', User: 'user',
 };
 
 async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> {
@@ -305,6 +314,11 @@ async function deleteRoot(tx: Tx, entity: BinEntity, id: string): Promise<void> 
   else if (entity === 'Supplier') await tx.supplier.delete({ where: { id } });
   else if (entity === 'Warranty') await tx.warranty.delete({ where: { id } });
   else if (entity === 'WarrantyClaim') await tx.warrantyClaim.delete({ where: { id } });
+  else if (entity === 'User') {
+    // Its unusable password and any set-password link go with it (never kept in the snapshot).
+    await tx.verification.deleteMany({ where: { value: id } });
+    await tx.user.delete({ where: { id } });
+  }
   else {
     // Set-password links carry the customer id in `value`, without a foreign key.
     await tx.customerVerification.deleteMany({ where: { value: id } });
@@ -418,6 +432,31 @@ export async function moveImportedWarrantyRecordsToBinInTx(tx: Tx, entity: 'Warr
       data: { organisationId: record.organisationId, branchId: null, entityType: entity, entityId: id, reference: record.reference, label: record.label, reason, snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter },
     });
     await deleteRoot(tx, entity, id);
+    moved.push(id);
+  }
+  return moved;
+}
+
+/**
+ * Moves the accounts a staff import made (P7) to the bin inside the caller's
+ * transaction — the undo of that import, and the only way an account ever
+ * reaches the bin. The caller has checked that nobody invited, used or
+ * worked with them (staff-server.ts, staffUntouchedSinceImport).
+ */
+export async function moveImportedStaffToBinInTx(tx: Tx, ids: string[], importJobId: string, reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+  if (!ids.length) return [];
+  await lockExisting(tx, 'user', ids).catch(() => undefined);
+  const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  const moved: string[] = [];
+  for (const id of ids) {
+    const record = await binRecord('User', id, tx);
+    const mine = (await tx.user.count({ where: { id, importJobId, invitedAt: null, lastLoginAt: null, isActive: false } })) === 1;
+    if (!record || !mine) continue;
+    const snapshot = orderedSnapshot('User', await snapshotRows(tx, 'User', id));
+    await tx.recycleBinItem.create({
+      data: { organisationId: record.organisationId, branchId: record.branchId, entityType: 'User', entityId: id, reference: record.reference, label: record.label, reason, snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter },
+    });
+    await deleteRoot(tx, 'User', id);
     moved.push(id);
   }
   return moved;
@@ -675,6 +714,16 @@ async function prepareRestore(tx: Tx, entity: BinEntity, organisationId: string,
     root[field] = next.reference;
     reference = next.reference;
     if (next.changed) notes.push(`Its old number ${original} had been given to another ${what}, so it is back as ${next.reference}.`);
+  } else if (entity === 'User') {
+    if (typeof root.email === 'string' && (await tx.user.findUnique({ where: { email: root.email }, select: { id: true } }))) fail(`Someone now uses the email address ${root.email}. Change theirs first, then restore this account.`);
+    if (typeof root.employeeId === 'string' && root.employeeId && (await tx.user.findUnique({ where: { employeeId: root.employeeId }, select: { id: true } }))) fail(`Employee ID ${root.employeeId} has been given to someone else meanwhile, so this account can't be restored as it was.`);
+    if (typeof root.branchId === 'string') await needBranch(root.branchId);
+    // Roles removed since are left out; the account comes back switched off, as the import left it.
+    const roleIds = rows.filter((r) => r.model === 'userRole').map((r) => String(r.data.roleId));
+    const alive = new Set((await tx.role.findMany({ where: { id: { in: roleIds } }, select: { id: true } })).map((r) => r.id));
+    for (let i = rows.length - 1; i >= 0; i--) if (rows[i]!.model === 'userRole' && !alive.has(String(rows[i]!.data.roleId))) { rows.splice(i, 1); notes.push('A role it had no longer exists, so it is left out.'); }
+    root.isActive = false;
+    notes.push('The account is back switched off: send the invitation from the import, or switch it on and send the welcome email from the Users page.');
   } else if (entity === 'Supplier') {
     if (typeof root.externalId === 'string' && root.externalId) {
       const clash = await tx.supplier.findFirst({ where: { organisationId, externalSource: (root.externalSource as string | null) ?? null, externalId: root.externalId }, select: { id: true } });
@@ -708,6 +757,8 @@ export async function restoreFromBin(itemId: string, actorId: string, now: Date 
     if (!snapshot || snapshot.entity !== item.entityType || String(snapshot.rows[0]!.data.id) !== item.entityId) throw new RecycleBinError('This item can\'t be restored because its saved copy is incomplete. Ask the platform team for help.');
     const { reference, notes } = await prepareRestore(tx, snapshot.entity, item.organisationId, snapshot.rows);
     for (const row of snapshot.rows) await table(tx, row.model).createMany({ data: [row.data] });
+    // A restored account gets a new unusable password (none is ever kept): it is set from the next invitation.
+    if (snapshot.entity === 'User') await tx.account.create({ data: { userId: item.entityId, accountId: item.entityId, providerId: 'credential', password: await hashPassword(randomBytes(32).toString('hex')) } });
     const finalReference = reference ?? item.reference;
     await tx.recycleBinItem.update({ where: { id: itemId }, data: { snapshot: Prisma.DbNull, restoredReference: finalReference !== item.reference ? finalReference : null } });
     return { entity: snapshot.entity, entityId: item.entityId, reference: finalReference, originalReference: item.reference, changed: finalReference !== item.reference, notes, organisationId: item.organisationId };
@@ -733,8 +784,8 @@ export async function restoreFromBin(itemId: string, actorId: string, now: Date 
 // ── Purge ─────────────────────────────────────────────────────────────
 
 function tombstone(it: { entityType: string; reference: string }): { label: string; reference: string } {
-  if (it.entityType === 'Customer' || it.entityType === 'CustomerVehicle') {
-    const noun = it.entityType === 'Customer' ? 'Customer' : 'Vehicle';
+  if (it.entityType === 'Customer' || it.entityType === 'CustomerVehicle' || it.entityType === 'User') {
+    const noun = it.entityType === 'Customer' ? 'Customer' : it.entityType === 'User' ? 'Staff account' : 'Vehicle';
     return { label: `${noun} (details removed)`, reference: `${noun} (details removed)` };
   }
   return { label: it.reference, reference: it.reference };

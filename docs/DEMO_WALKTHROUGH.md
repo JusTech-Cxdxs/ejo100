@@ -26,6 +26,21 @@ window, so both can be signed in at once.
 
 ---
 
+## 0. The people first (P7)
+
+1. **IT Administrator** → Data Exchange → *Staff* → drop
+   `docs/demo/with-mistakes/19_SAP_staff_demo.csv`. The check shows **how
+   many people in how many branches** and refuses an administrator role
+   (*added by hand on the Users page, never by a file*), an unknown branch
+   and role, a malformed employee ID, no email, the same email twice.
+2. **Organisation Administrator** approves and loads: twelve accounts,
+   **switched off**, nobody emailed — open **Users**: they are there, off.
+3. **Send the invitations** on the import: each is switched on and gets the
+   welcome with a link to set a password (the addresses are on a domain
+   nobody receives mail for: in a real cut-over, their own work addresses).
+4. Undo a staff import before inviting: the accounts go to the Recycle bin
+   and restore switched off.
+
 ## 1. Existing customers from SAP, without retyping (A1)
 
 *The question: "How do years of customers come in?"*

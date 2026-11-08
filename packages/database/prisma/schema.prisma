@@ -346,6 +346,14 @@ model User {
 
   isActive      Boolean     @default(true)
   lastLoginAt   DateTime?
+  // Brought in from another system (P7): where from (SAP HR, LEGACY), the
+  // personnel number there (kept and searchable), the import, and when the
+  // set-password invitation was sent (an imported account stays switched off
+  // until an administrator sends it).
+  externalSource String?
+  externalId     String?
+  importJobId    String?
+  invitedAt      DateTime?
 
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -414,6 +422,8 @@ model User {
 
   @@index([organisationId])
   @@index([branchId])
+  @@index([importJobId])
+  @@index([organisationId, externalSource, externalId])
   @@map("users")
   warrantyProvidersCreated WarrantyProvider[] @relation("WarrantyProviderCreatedBy")
   warrantyPoliciesCreated WarrantyPolicy[] @relation("WarrantyPolicyCreatedBy")

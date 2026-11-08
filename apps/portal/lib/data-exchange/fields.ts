@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'openServices' | 'warranties' | 'claims' | 'registers';
+export type EntityKey = 'staff' | 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'openServices' | 'warranties' | 'claims' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -34,7 +34,7 @@ export type EntityDef = {
   plural: string;
   description: string;
   /** Who may approve it (on top of the Data Exchange approval permission): the department that owns these records. */
-  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve' | 'warranty.claim.approve';
+  needs: 'crm.manage' | 'store.parts.manage' | 'workshop.close.approve' | 'warranty.claim.approve' | 'admin.users.manage';
   /** Loads into one branch (its catalogue / stock / sales / workshop), chosen when the import starts. */
   branch?: boolean;
   /** What kind of branch it loads into (lib/branch-types.ts): a store (parts, stock, invoices) or a workshop (job history). */
@@ -53,6 +53,26 @@ export type EntityDef = {
 };
 
 export const ENTITIES: Record<EntityKey, EntityDef> = {
+  staff: {
+    key: 'staff',
+    label: 'Staff',
+    noun: 'staff member',
+    plural: 'staff',
+    description: 'The organisation’s people from SAP HR or a staff list: each becomes an EJO account in their branch and department, with their roles, switched off until an administrator of the whole organisation sends them their invitation to set a password. Load staff first: open job cards and services find their technicians and supervisors by employee ID. Administrators are never brought in by a file.',
+    needs: 'admin.users.manage',
+    approver: 'an Organisation Administrator',
+    matchOrder: ['work email', 'employee ID'],
+    fields: [
+      { key: 'fullName', label: 'Full name', help: 'As it should appear in EJO (SAP ENAME, or first and last name together).', aliases: ['ENAME', 'full name', 'name', 'employee name', 'staff name', 'employee'], example: 'Ngozi Okafor', required: true },
+      { key: 'email', label: 'Work email', help: 'The person’s own work address: they sign in with it and their invitation goes to it. Never a shared mailbox.', aliases: ['work email', 'email', 'e-mail', 'email address', 'USRID_LONG', 'official email'], example: 'ngozi.okafor@kewalram.com', required: true },
+      { key: 'phone', label: 'Phone', help: 'Optional: work phone.', aliases: ['phone', 'mobile', 'telephone', 'phone number', 'TELNR'], example: '0803 123 4567' },
+      { key: 'employeeId', label: 'Employee ID', help: 'Optional: the staff number EJO should use (the HR number). Empty: EJO issues one for the branch (ORG-BRANCH-NNNN). Open job cards and services find people by it.', aliases: ['employee id', 'employee number', 'employee no', 'staff id', 'staff number', 'staff no', 'emp id'], example: 'EMP-0042' },
+      { key: 'personnelNumber', label: 'SAP personnel number', help: 'Optional: the SAP HR personnel number (PERNR). Kept and searchable.', aliases: ['PERNR', 'personnel number', 'personnel no', 'sap number', 'hr number'], example: '00012345' },
+      { key: 'branch', label: 'Branch', help: 'The branch they work at: its name, its code, or its SAP plant (WERKS).', aliases: ['branch', 'branch name', 'location', 'site', 'WERKS', 'plant', 'BTRTL', 'work location'], example: 'Isolo Branch', required: true },
+      { key: 'department', label: 'Department', help: 'Optional: their department in that branch, by name (as on the Structure page).', aliases: ['department', 'dept', 'unit', 'section', 'ORGEH', 'org unit'], example: 'Workshop — Commercial' },
+      { key: 'roles', label: 'Roles', help: 'Optional: their EJO roles by name, separated by ";" — e.g. "Technician; Front Desk". They must exist (Roles). Administrator roles are given by hand, never by a file. Empty: no role yet (they see only their own account).', aliases: ['roles', 'role', 'ejo role', 'ejo roles', 'access', 'position', 'job role'], example: 'Technician' },
+    ],
+  },
   customers: {
     key: 'customers',
     label: 'Customers',

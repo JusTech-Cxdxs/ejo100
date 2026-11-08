@@ -19,6 +19,7 @@ const LIST: Record<BinEntity, string> = {
   Supplier: '/inventory/suppliers',
   Warranty: '/warranty',
   WarrantyClaim: '/warranty/claims',
+  User: '/users',
 };
 
 export async function moveToRecycleBinFormAction(formData: FormData) {

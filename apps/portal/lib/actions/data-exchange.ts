@@ -22,7 +22,7 @@
  * person's own organisation (myImportJob / exchangeOrg).
  */
 import { prisma, Prisma } from '@ejo/database';
-import { allows, authorize, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
+import { allows, authorize, getPrincipal, myOrganisationId, refuse, refuseDuringAssist } from '@/lib/authz/server';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { requireUser } from '@/lib/actions/workshop';
 import { lagosYear } from '@/lib/utils/format-date';
@@ -38,7 +38,10 @@ import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space 
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, jobTotalsOfRows, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { checkOpenJobRows, loadOpenJobRows, openJobTotalsLoaded, openJobTotalsOfRows, untouchedSinceImport, type OpenJobsJob } from '@/lib/data-exchange/open-jobs-server';
-import { moveImportedJobCardsToBinInTx, moveImportedServicesToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
+import { moveImportedJobCardsToBinInTx, moveImportedServicesToBinInTx, moveImportedStaffToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
+import { checkStaffRows, loadStaffRows, staffTotalsLoaded, staffTotalsOfRows, staffUntouchedSinceImport } from '@/lib/data-exchange/staff-server';
+import { sendStaffAccessEmail } from '@/lib/staff-onboarding';
+import { scopeFor } from '@/lib/authz/catalogue';
 import { checkOpenServiceRows, loadOpenServiceRows, openServiceTotalsLoaded, openServiceTotalsOfRows, serviceUntouchedSinceImport } from '@/lib/data-exchange/open-services-server';
 import { checkClaimRows, checkWarrantyRows, claimTotalsLoaded, claimTotalsOfRows, claimUntouchedSinceImport, loadClaimRows, loadWarrantyRows, warrantyTotalsLoaded, warrantyTotalsOfRows, warrantyUntouchedSinceImport, type WarrantyImportJob } from '@/lib/data-exchange/warranties-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
@@ -204,11 +207,13 @@ export type ImportJobDetail = ImportJobRow & {
   sameFileBefore: { id: string; number: string; status: string } | null;
   branch: { id: string; name: string } | null;
   asOf: Date | null;
-  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; bookings?: number; inWorkshop?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
+  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; bookings?: number; inWorkshop?: number; noRole?: number; branches?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
   signedOff: { by: string; at: Date } | null;
+  /** A staff import (P7): its accounts now, and how many have been invited. */
+  staffAccounts: { accounts: number; invited: number } | null;
   /** The staged copy of the file: its size, whether it was released (by whom), and when it will be. */
   staged: { bytes: number | null; releasedAt: Date | null; releasedBy: string | null; releasable: boolean; why: string | null; dueAt: Date | null; days: number };
-  me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean };
+  me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean; canInvite: boolean };
   /** Whether what is left to load fits in the database's plan (checked before sending, approving, loading and resuming). */
   room: { ok: boolean; message: string | null };
 };
@@ -264,8 +269,9 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
     asOf: job.asOf,
     totals: (job.totals as ImportJobDetail['totals']) ?? null,
     signedOff: job.signedOffAt ? { by: signer?.fullName ?? 'Finance', at: job.signedOffAt } : null,
+    staffAccounts: job.entity === 'staff' && job.status === 'COMPLETED' ? await staffAccountsOf(job.id) : null,
     staged: { bytes: stagedBytes, releasedAt: job.rowsReleasedAt, releasedBy: job.rowsReleasedAt ? releaser?.fullName ?? 'the daily clean-up' : null, releasable: rel.releasable, why: rel.why, dueAt: rel.dueAt, days },
-    me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff },
+    me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff, canInvite: entity === 'staff' && (await getPrincipal().then((pr) => pr.isSuperAdmin || scopeFor(pr, 'admin.users.manage') === 'ALL')) },
     room: ['VALIDATED', 'AWAITING_APPROVAL', 'APPROVED', 'PAUSED'].includes(job.status) ? roomFor(job, await readDatabaseSpace({ fresh: true })) : { ok: true, message: null },
   };
 }
@@ -452,6 +458,8 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       updates.push(...(await checkHistoryRows(entity, histJob(job), mapping, rows)));
     } else if (entity === 'openJobs') {
       updates.push(...(await checkOpenJobRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'staff') {
+      updates.push(...(await checkStaffRows(warrantyJob(job), mapping, rows)));
     } else if (entity === 'openServices') {
       updates.push(...(await checkOpenServiceRows(openJobsJob(job), mapping, rows)));
     } else if (entity === 'warranties') {
@@ -533,7 +541,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
 
   // The whole file is checked: the second copy of the same customer or vehicle in the file is a duplicate (the first one loads).
   await prisma.$transaction(async (tx) => {
-    const strong = { customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'] }[entity];
+    const strong = { staff: ['email', 'emp'], customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'] }[entity];
     const dups = await tx.$queryRaw<{ id: string; first: number; key: string }[]>`
       WITH k AS (
         SELECT r.id, r."rowNumber", unnest(r.keys) AS key FROM import_rows r WHERE r."jobId" = ${job.id} AND r.status IN ('GOOD', 'WARNING')
@@ -542,7 +550,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       )
       SELECT DISTINCT ON (k.id) k.id, f.first, k.key FROM k JOIN f ON f.key = k.key WHERE k."rowNumber" > f.first ORDER BY k.id, f.first`;
     if (dups.length) {
-      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number' };
+      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', emp: 'employee ID', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number' };
       const existing = await tx.importRow.findMany({ where: { id: { in: dups.map((d) => d.id) } }, select: { id: true, issues: true, keys: true, matchedId: true, matchedBy: true } });
       const byId = new Map(existing.map((e) => [e.id, e]));
       await writeRowResults(tx, dups.map((d) => {
@@ -572,6 +580,10 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
   }
   // Warranties: how many, on vehicles and parts, still in force. Open claims: how many, the amount claimed and accepted.
+  if (entity === 'staff') {
+    const check = await staffTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
+    await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
+  }
   if (entity === 'openServices') {
     const check = await openServiceTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
@@ -613,6 +625,7 @@ export async function approveImport(jobId: string): Promise<void> {
   await authorize('dataexchange.import.approve', undefined, 'approveImport', 'Only a manager or administrator can approve an import.');
   const job = await myImportJob(jobId);
   await authorize(ENTITIES[asEntity(job.entity)].needs, undefined, 'approveImport', `Only ${ENTITIES[asEntity(job.entity)].approver} can approve this import.`);
+  if (job.entity === 'staff') await requireOrganisationWideUsers('approveImport');
   const { userId } = await exchangeOrg();
   if (job.status !== 'AWAITING_APPROVAL') throw new DataExchangeError('This import is not waiting for approval.');
   if (job.createdById === userId && !(await secondSignatureAsMaster(userId, job.id))) {
@@ -704,6 +717,7 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
         last = rows[rows.length - 1]!.rowNumber;
         if (isHistoryEntity(entity)) await loadHistoryRows(tx, entity, histJob(job), mapping, rows);
         else if (entity === 'openJobs') await loadOpenJobRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'staff') await loadStaffRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'openServices') await loadOpenServiceRows(tx, openJobsJob(job), mapping, rows);
         else if (entity === 'warranties') await loadWarrantyRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'claims') await loadClaimRows(tx, warrantyJob(job), mapping, rows);
@@ -740,6 +754,7 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   }
   if (entity === 'invoices') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await invoiceTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'openJobs') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openJobTotalsLoaded(job.id) } as Prisma.InputJsonValue;
+  if (entity === 'staff') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await staffTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'openServices') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openServiceTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'warranties') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await warrantyTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'claims') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await claimTotalsLoaded(job.id) } as Prisma.InputJsonValue;
@@ -924,7 +939,7 @@ async function undoBlockers(jobId: string, entity: EntityKey): Promise<{ label: 
   // History is read-only and nothing is built on it: undoing voids it (kept, restored by loading the file again).
   if (isHistoryEntity(entity)) return [];
   // Open job cards, warranties and claims: the undo itself keeps (and reports) any that have been worked on since.
-  if (entity === 'openJobs' || entity === 'openServices' || entity === 'warranties' || entity === 'claims') return [];
+  if (entity === 'staff' || entity === 'openJobs' || entity === 'openServices' || entity === 'warranties' || entity === 'claims') return [];
   if (entity === 'parts') {
     const busy = await prisma.part.findMany({
       where: { importJobId: jobId, OR: [{ goodsReceiptLines: { some: {} } }, { batches: { some: {} } }, { serials: { some: {} } }, { quantityConsumptions: { some: {} } }, { requestSlipLines: { some: {} } }, { matchedOnEstimateLines: { some: {} } }, { matchedOnServiceEstimateLines: { some: {} } }, { warranties: { some: {} } }] },
@@ -967,6 +982,7 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
   const { userId } = await exchangeOrg();
   const entity = asEntity(job.entity);
   await authorize(ENTITIES[entity].needs, undefined, 'undoImportBatch', `Only ${ENTITIES[entity].approver} can undo this import.`);
+  if (entity === 'staff') await requireOrganisationWideUsers('undoImportBatch');
   if (!['COMPLETED', 'UNDOING'].includes(job.status)) throw new DataExchangeError('Only a finished import can be undone.');
   if (job.status === 'COMPLETED') {
     const blockers = await undoBlockers(job.id, entity);
@@ -1001,6 +1017,7 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         if (entity === 'parts') return tx.part.findMany({ where, select: { id: true } });
         if (entity === 'openJobs') return tx.jobCard.findMany({ where, select: { id: true } });
         if (entity === 'openServices') return tx.vehicleService.findMany({ where, select: { id: true } });
+        if (entity === 'staff') return tx.user.findMany({ where, select: { id: true } });
         if (entity === 'warranties') return tx.warranty.findMany({ where, select: { id: true } });
         if (entity === 'claims') return tx.warrantyClaim.findMany({ where, select: { id: true } });
         return tx.supplier.findMany({ where, select: { id: true } });
@@ -1013,6 +1030,11 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         const quiet: string[] = [];
         for (const id of createdIds) if (await untouchedSinceImport(tx, id, job.id, loadedAt)) quiet.push(id);
         moved = new Set(await moveImportedJobCardsToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
+      } else if (entity === 'staff') {
+        // People: to the bin only those never invited, never signed in and with nothing done by or about them since.
+        const quiet: string[] = [];
+        for (const id of mine) if (await staffUntouchedSinceImport(tx, id, job.id)) quiet.push(id);
+        moved = new Set(await moveImportedStaffToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
       } else if (entity === 'openServices') {
         // Services and bookings: to the bin whole, only those nobody has worked on since the import.
         const loadedAt = job.completedAt ?? new Date(0);
@@ -1173,6 +1195,46 @@ export async function listImportBranches(area: 'store' | 'workshop' = 'store'): 
   await authorize('dataexchange.import.run', undefined, 'listImportBranches', 'Only the people who bring records into the system can start an import.');
   const { organisationId } = await exchangeOrg();
   return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area === 'workshop' ? 'workshop' : 'store'] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+}
+
+async function staffAccountsOf(jobId: string): Promise<{ accounts: number; invited: number }> {
+  const t = await staffTotalsLoaded(jobId);
+  return { accounts: t.lines, invited: t.quantity };
+}
+
+/** A staff file reaches every branch: only someone who manages the people of the whole organisation (the Organisation or IT Administrator) approves it, undoes it or sends its invitations — never a Branch Administrator. */
+async function requireOrganisationWideUsers(where: string): Promise<void> {
+  const p = await getPrincipal();
+  if (!p.isSuperAdmin && scopeFor(p, 'admin.users.manage') !== 'ALL') await refuse('admin.users.manage', where, 'Only someone who manages the people of the whole organisation can do this for a staff import: it reaches every branch.');
+}
+
+/**
+ * The invitations of a staff import: each account the import made that is
+ * still switched off and not yet invited is switched on and emailed its
+ * welcome, with a one-time link to set its own password (the same email as a
+ * person added on the Users page). In steps (a few dozen a call), so the
+ * page shows the progress; each person is invited once (compare-and-set on
+ * invitedAt) and audited. Returns how many were invited now and how many wait.
+ */
+export async function sendStaffInvitations(jobId: string): Promise<{ invited: number; failed: number; left: number }> {
+  await refuseDuringAssist('sendStaffInvitations');
+  await authorize('admin.users.manage', undefined, 'sendStaffInvitations', 'Only an administrator who manages the organisation’s people can send the invitations.');
+  await requireOrganisationWideUsers('sendStaffInvitations');
+  const job = await myImportJob(jobId);
+  const { userId } = await exchangeOrg();
+  if (job.entity !== 'staff') throw new DataExchangeError('Only a staff import sends invitations.');
+  if (job.status !== 'COMPLETED') throw new DataExchangeError('The invitations are sent once the import has loaded.');
+  const batch = await prisma.user.findMany({ where: { importJobId: job.id, organisationId: job.organisationId, invitedAt: null, isActive: false, lastLoginAt: null }, orderBy: { createdAt: 'asc' }, take: 25, select: { id: true, fullName: true, email: true } });
+  let invited = 0; let failed = 0;
+  for (const u of batch) {
+    const claimed = await prisma.user.updateMany({ where: { id: u.id, invitedAt: null, isActive: false }, data: { invitedAt: new Date(), isActive: true } });
+    if (claimed.count !== 1) continue;
+    const sent = await sendStaffAccessEmail(u.id, 'welcome');
+    if (sent) invited += 1; else failed += 1;
+    await writeAuditLog({ userId, action: 'user.invited', entityType: 'User', entityId: u.id, metadata: { person: u.fullName, email: u.email, import: job.number, sent } });
+  }
+  const left = await prisma.user.count({ where: { importJobId: job.id, organisationId: job.organisationId, invitedAt: null, isActive: false, lastLoginAt: null } });
+  return { invited, failed, left };
 }
 
 /** Where a record brought in by an import came from, for a banner on its page: the import's number and when it loaded (the person's own organisation only). */

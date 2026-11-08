@@ -4,6 +4,7 @@ Every file here loads cleanly: no row is rejected or a duplicate. The only notes
 the check shows are on the four credit notes (“kept as a credit note”). Load them in
 this order (later files refer to earlier ones):
 
+0. `19_SAP_staff_demo.csv` — Staff (SAP HR): twelve invented colleagues at Isolo and Afprint, on a domain nobody receives mail for; accounts come in switched off until an Organisation Administrator sends the invitations (load first: the open job cards find their technicians by employee ID)
 1. `01_SAP_customers_demo.csv` — Customers (SAP)
 2. `02_vehicles_demo.xlsx` — Vehicles
 3. `05_SAP_suppliers_demo.csv` — Suppliers (SAP)

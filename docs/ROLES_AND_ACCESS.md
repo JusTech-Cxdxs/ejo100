@@ -111,6 +111,25 @@ when the payment came in with the import and nothing has been recorded on
 the job card since — the desk's own delete still refuses any job card with a
 payment.
 
+### Staff from SAP HR (P7)
+
+The file is run by the IT Administrator (`dataexchange.import.run`) and
+approved by an **Organisation Administrator** (`dataexchange.import.approve`
+with `admin.users.manage` for the **whole organisation** — a Branch
+Administrator, who manages one branch's people, can neither approve, undo
+nor send the invitations of a file that reaches every branch; the server
+refuses and the button is not shown). **No administrator role is ever given
+by a file** — by name or by slug — nor any platform role. The accounts come
+in switched off with an unusable password; nothing is emailed at load.
+**Send the invitations** (an administrator of the whole organisation:
+Organisation or IT Administrator) switches each waiting account on and sends
+the welcome with a one-time set-password link — no password is ever sent or
+seen; each person once, compare-and-set, audited `user.invited`. An address
+with an account in another organisation is refused (never taken over).
+Undo bins only accounts never invited or used; the bin never holds a
+password, a session or a link (governance inventory: `recycleBin:
+'IMPORT_UNDO'`).
+
 ### Open services and bookings at the cut-over (P6b)
 
 Approval is a **Workshop manager or an administrator**, as for the open job

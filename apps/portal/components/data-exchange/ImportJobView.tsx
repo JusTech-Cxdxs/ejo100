@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  approveImport, cancelImport, checkImportBatch, releaseImportRows, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, signOffImportTotals, submitImportForApproval, undoImportBatch,
+  approveImport, cancelImport, checkImportBatch, releaseImportRows, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, sendStaffInvitations, signOffImportTotals, submitImportForApproval, undoImportBatch,
   type ImportJobDetail,
 } from '@/lib/actions/data-exchange';
 import { ENTITIES, mappingFromProfile, type Mapping } from '@/lib/data-exchange/fields';
@@ -122,6 +122,24 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
     });
   };
 
+  // A staff import's invitations: sent in steps until none is left, with the progress shown.
+  const [inviting, setInviting] = useState<string | null>(null);
+  const sendInvitations = () => {
+    setError(null);
+    startTransition(async () => {
+      try {
+        let invited = 0; let failed = 0;
+        for (;;) {
+          const r = await sendStaffInvitations(job.id);
+          invited += r.invited; failed += r.failed;
+          setInviting(`Invited ${nf(invited)}${failed ? ` · ${nf(failed)} not accepted by the mail server` : ''}${r.left ? ` · ${nf(r.left)} to go…` : ''}`);
+          if (!r.left || (!r.invited && !r.failed)) break;
+        }
+        router.refresh();
+      } catch (err) { setError(err instanceof Error ? err.message : 'Something went wrong. Try again.'); }
+    });
+  };
+
   // The connection dropped for a moment: say so, keep the bar where it was, and carry on.
   const reconnecting = useCallback((attempt: number) => {
     setProgress((p) => (p ? { ...p, label: `${p.label.replace(/ · reconnecting.*$/, '')} · reconnecting (attempt ${attempt} of ${RETRY_DELAYS_MS.length})…` } : p));
@@ -235,6 +253,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes a live job card at its stage, with its old number kept, its estimate marked approved before EJO and its deposit as an opening payment that Finance confirms after the load. Nobody is emailed. Compare the count with the workshop’s open orders in SAP (IW38) before sending it for approval.</p>
             </div>
           ) : null}
+          {job.entity === 'staff' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="staff-import-totals">
+              <p className="font-medium">To bring in: {nf(job.totals.check.lines)} {job.totals.check.lines === 1 ? 'person' : 'people'} in {nf(job.totals.check.branches ?? 0)} {(job.totals.check.branches ?? 0) === 1 ? 'branch' : 'branches'}{job.totals.check.noRole ? ` · ${nf(job.totals.check.noRole)} with no role yet` : ''}</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes an EJO account in their branch and department, with their roles — switched off, and nobody is emailed. After loading, an administrator of the whole organisation (the Organisation or IT Administrator) sends the invitations: each person gets their welcome and a one-time link to set their own password. Administrators are never brought in by a file.</p>
+            </div>
+          ) : null}
           {job.entity === 'openServices' && job.totals?.check ? (
             <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="service-import-totals">
               <p className="font-medium">To bring into {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.bookings ?? 0)} {(job.totals.check.bookings ?? 0) === 1 ? 'booking' : 'bookings'}{job.totals.check.from && job.totals.check.to ? ` (${day(job.totals.check.from)} to ${day(job.totals.check.to)})` : ''} · {nf(job.totals.check.inWorkshop ?? 0)} {(job.totals.check.inWorkshop ?? 0) === 1 ? 'service' : 'services'} already in the workshop</p>
@@ -330,6 +354,14 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
             <Tile label="Not added" value={job.skippedRows} hint="Already there, or a possible duplicate" />
             <Tile label="Rejected in the check" value={job.rejectedRows + job.duplicateRows} tone="text-[var(--ejo-error)]" />
           </div>
+          {job.staffAccounts ? (
+            <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm" data-testid="staff-invitations">
+              <p className="font-medium text-[var(--ejo-text)]">{nf(job.staffAccounts.accounts)} {job.staffAccounts.accounts === 1 ? 'account' : 'accounts'} from this import · {nf(job.staffAccounts.invited)} invited · {nf(Math.max(0, job.staffAccounts.accounts - job.staffAccounts.invited))} waiting for their invitation (switched off until then)</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">Sending switches each waiting account on and emails the person their welcome — their employee ID, roles, branch and what they may do — with a one-time link to set their own password. No password is ever sent or seen. One person at a time: switch them on and send the welcome email from the Users page.</p>
+              {inviting ? <p className="text-xs text-[var(--ejo-text)]" role="status">{inviting}</p> : null}
+              {job.staffAccounts.accounts > job.staffAccounts.invited ? !job.me.canInvite ? <p className="text-xs text-[var(--ejo-warning)]">Waiting for an administrator of the whole organisation to send the invitations.</p> : <button type="button" className={primary} disabled={pending} onClick={sendInvitations}><Icon name="mail" size={14} /> Send the invitations</button> : <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Everyone from this import has been invited.</p>}
+            </div>
+          ) : null}
           {def.financeSignOff && job.totals?.loaded ? (
             <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm">
               {job.entity === 'openJobs' ? (
