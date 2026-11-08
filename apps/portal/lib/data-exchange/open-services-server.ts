@@ -242,7 +242,7 @@ export async function loadOpenServiceRows(tx: Tx, job: OpenServicesJob, mapping:
 
 /** An imported service nobody has worked on since the import: nothing recorded on it, and no step in its history
  * since (a service has no updatedAt: every step it takes — check-in, a technician, a status — is audited). */
-export async function serviceUntouchedSinceImport(db: Db, id: string, jobId: string, loadedAt: Date): Promise<boolean> {
+export async function serviceUntouchedSinceImport(db: Db, id: string, jobId: string): Promise<boolean> {
   const s = await db.vehicleService.findFirst({
     where: { id, importJobId: jobId },
     select: {
@@ -255,6 +255,6 @@ export async function serviceUntouchedSinceImport(db: Db, id: string, jobId: str
   const c = s._count;
   if (c.partRequestSlips || c.payments || c.refunds || c.closeRequests || c.cancellationRequests || c.warranties || c.warrantyClaims || c.roadTestPermits) return false;
   if (s.escalatedToJobCardId || s.inspection || s.serviceEstimate || s.gateExit) return false;
-  const since = await db.auditLog.count({ where: { entityType: 'VehicleService', entityId: id, createdAt: { gt: new Date(loadedAt.getTime() + 60_000) } } });
-  return since === 0;
+  // The load writes no history on it: any audited step (checked in, a technician, a status) is work — however soon after.
+  return (await db.auditLog.count({ where: { entityType: 'VehicleService', entityId: id } })) === 0;
 }
