@@ -337,7 +337,7 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
   const ext = { in: n.forms };
   const label = (src: string | null) => (src && src.startsWith('LEGACY') ? 'Old system' : 'SAP');
   const take = 6;
-  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs, warranties, claims] = await Promise.all([
+  const [customers, vehicles, suppliers, parts, invoices, pastJobs, openJobs, warranties, claims, openServices] = await Promise.all([
     ctx.canCustomers ? prisma.customer.findMany({ where: { AND: [ctx.mineOrg as Prisma.CustomerWhereInput, { externalId: ext }] }, take, select: { id: true, fullName: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canWorkshop ? prisma.customerVehicle.findMany({ where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, take, select: { id: true, make: true, model: true, plateNumber: true, externalId: true, externalSource: true } }).catch(() => []) : [],
     ctx.canSuppliers ? prisma.supplier.findMany({ where: { ...(ctx.sameOrg as Prisma.SupplierWhereInput), externalId: ext }, take, select: { id: true, name: true, externalId: true, externalSource: true } }).catch(() => []) : [],
@@ -368,6 +368,11 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, orderBy: { failureDate: 'desc' }, take,
       select: { id: true, claimNumber: true, externalId: true, externalSource: true, status: true, causalPart: true, warranty: { select: { warrantyNumber: true } } },
     }).catch(() => []) : [],
+    // Services and bookings brought in at the cut-over (P6b), by their old number.
+    ctx.canWorkshop ? prisma.vehicleService.findMany({
+      where: { customer: ctx.mineOrg as Prisma.CustomerWhereInput, externalId: ext }, orderBy: { createdAt: 'desc' }, take,
+      select: { id: true, serviceNumber: true, externalId: true, externalSource: true, status: true, branchId: true, bookedFor: true, vehicle: { select: { plateNumber: true, make: true, model: true } } },
+    }).catch(() => []) : [],
   ]);
   const names = invoices.length || pastJobs.length ? new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set([...invoices.map((i) => i.customerId), ...pastJobs.map((j) => j.customerId)])] } }, select: { id: true, fullName: true } })).map((c) => [c.id, c.fullName])) : new Map<string, string>();
   const naira = (v: unknown) => `₦${Number(v ?? 0).toLocaleString('en-NG', { maximumFractionDigits: 2 })}`;
@@ -387,6 +392,11 @@ async function sapNumberHits(q: string, ctx: { mineOrg: Where; sameOrg: Where; c
       label: `${label(j.externalSource)} job card ${j.externalId} → ${j.jobNumber}`,
       sub: dot(j.status.toLowerCase().replace(/_/g, ' '), [j.vehicle.make, j.vehicle.model].filter(Boolean).join(' '), j.vehicle.plateNumber),
       href: `/workshop/job-cards/${j.id}`,
+    })),
+    ...openServices.filter((x) => ctx.opens(['workshop.job_card.view'], x.branchId)).map((x) => ({
+      label: `${label(x.externalSource)} ${x.status === 'SCHEDULED' ? 'booking' : 'service'} ${x.externalId} → ${x.serviceNumber}`,
+      sub: dot(x.status === 'SCHEDULED' && x.bookedFor ? `booked ${day(x.bookedFor)}` : x.status.toLowerCase().replace(/_/g, ' '), [x.vehicle.make, x.vehicle.model].filter(Boolean).join(' '), x.vehicle.plateNumber),
+      href: `/workshop/vehicle-service/${x.id}`,
     })),
     ...warranties.map((w) => ({ label: `${label(w.externalSource)} warranty ${w.externalId} → ${w.warrantyNumber}`, sub: dot(w.subjectDescription, w.customer.fullName), href: `/warranty/${w.id}` })),
     ...claims.map((c) => ({ label: `${label(c.externalSource)} claim ${c.externalId} → ${c.claimNumber}`, sub: dot(c.status.toLowerCase().replace(/_/g, ' '), c.causalPart, c.warranty.warrantyNumber), href: `/warranty/claims/${c.id}` })),

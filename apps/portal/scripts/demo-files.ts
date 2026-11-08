@@ -310,6 +310,30 @@ emit('15_SAP_open_job_cards_demo.csv', 'openJobs', OPEN_HEADER, openRows, [
   { cells: ['483295', '0009999999', 'JAANLR85EL7999999', 'XYZ 999 ZZ', sapDate(addDays(CUTOVER, -2)), 'REL', '', 'Vehicle not in EJO', '', '', '', '', '', '', '', '', '', '', '', '', 'Isolo Branch'], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate.' },
 ]);
 
+// ── 18: the services open on the cut-over day, and the bookings already in the diary ───
+// Eight customers from 01 booked their routine service for the days after the cut-over (vehicles 13–20, between 08:00 and
+// 15:30); three more vehicles are already in the workshop for a service (checked in, in service, ready for collection).
+const SVC_HEADER = ['Booking number', 'KUNUM', 'VHVIN', 'LICENSE_NUM', 'Stage', 'Booked for', 'Time', 'Checked in on', 'RECDV', 'Work requested', 'Supervisor', 'Technician', 'Notes', 'Branch'];
+const TIMES = ['08:00', '08:30', '09:30', '10:00', '11:30', '13:00', '14:00', '15:30'];
+const svcRows: string[][] = [];
+for (let k = 0; k < 8; k += 1) {
+  const i = 13 + k;
+  const day = addDays(CUTOVER, 1 + k + (k >= 4 ? 2 : 0)); // the weekend skipped after the fourth
+  const km = (lastServiceKm.get(vin(i)) ?? 5000) + 10_000;
+  svcRows.push([`BK-2026-${String(600 + k).padStart(4, '0')}`, kunnr(i), vin(i), plateOf(i), 'Booked', sapDate(day), TIMES[k]!, '', '', `Service ${km.toLocaleString('en-US')} km${k % 3 === 0 ? '; check the brakes' : ''}`, '', '', k === 2 ? 'Customer will wait; prefers an early slot' : '', 'Isolo Branch']);
+}
+([[21, 'Checked in', 1, 'Service; wheel alignment'], [22, 'In service', 2, 'Service; replace the wiper blades'], [23, 'Ready for collection', 3, 'Service; A/C filter']] as const).forEach(([i, stage, days, work], k) => {
+  svcRows.push([`SV-OLD-${String(7100 + k)}`, kunnr(i), vin(i), plateOf(i), stage, '', '', sapDate(addDays(CUTOVER, -days)), String((lastServiceKm.get(vin(i)) ?? 5000) + 9_800), work, '', '', '', 'Isolo Branch']);
+});
+emit('18_SAP_open_services_and_bookings_demo.csv', 'openServices', SVC_HEADER, svcRows, [
+  { cells: ['', kunnr(24), vin(24), plateOf(24), 'Booked', sapDate(addDays(CUTOVER, 3)), '10:00', '', '', 'Service', '', '', '', 'Isolo Branch'], what: 'No booking number', expect: 'rejected', by: 'check', says: 'Booking or service number is required (SAP AUFNR or QMNUM, or the diary’s booking reference).' },
+  { cells: ['BK-2026-0690', kunnr(25), vin(25), plateOf(25), 'Collected', '', '', sapDate(addDays(CUTOVER, -9)), '', 'Service', '', '', '', 'Isolo Branch'], what: 'A service already collected: it is history', expect: 'rejected', by: 'check', says: 'Stage “Collected”: a closed, collected or cancelled service is history (load it with the job card history), not an open one.' },
+  { cells: ['BK-2026-0691', kunnr(26), vin(26), plateOf(26), 'Booked', '', '', '', '', 'Service', '', '', '', 'Isolo Branch'], what: 'A booking without its day', expect: 'rejected', by: 'check', says: 'A booking needs its day (Booked for): when is the customer expected?' },
+  { cells: ['BK-2026-0692', '0009999999', 'JAANLR85EL7999999', 'XYZ 999 ZZ', 'Booked', sapDate(addDays(CUTOVER, 4)), '09:00', '', '', 'Service', '', '', '', 'Isolo Branch'], what: 'A vehicle EJO does not have', expect: 'rejected', by: 'database', says: 'The vehicle is not in EJO. Import the vehicles file first (a service or a booking is for a vehicle in EJO), or check the chassis number or plate.' },
+  { cells: ['BK-2026-0693', kunnr(13), vin(13), plateOf(13), 'Booked', sapDate(addDays(CUTOVER, 12)), '09:00', '', '', 'A second booking for the same vehicle', '', '', '', 'Isolo Branch'], what: `Vehicle ${vin(13)} a second time (row 2 has it): one open visit per vehicle`, expect: 'duplicate', by: 'file', says: 'Same chassis number as row 2 of the file; only the first is loaded.' },
+  { cells: ['SV-OLD-7199', kunnr(27), vin(27), plateOf(27), 'In service', '', '', '15.03.2027', '', 'Service', '', '', '', 'Isolo Branch'], what: 'In the workshop since a day in the future', expect: 'rejected', by: 'check', says: 'Checked in on 2027-03-15, which is in the future: a vehicle in the workshop came in already.' },
+]);
+
 // ── 16: the warranties sold before EJO (become EJO warranties under the demo policies) ───
 // Fourteen vehicles from 02, each delivered a few days after its PDI with 25 km on the clock, under the Isuzu or Soueast
 // policy of the workshop demo (DEMO-ISZ-3Y, DEMO-SEM-5Y): most name the policy, two leave it to be found from the months,
@@ -492,6 +516,7 @@ this order (later files refer to earlier ones):
 6. \`06_SAP_invoice_history_demo.csv\` — Invoice history (SAP)
 6a. \`14_SAP_job_card_history_demo.csv\` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
 6b. \`15_SAP_open_job_cards_demo.csv\` — Open job cards at the cut-over (into Isolo Branch): eight vehicles from 02 in the workshop at every stage, with estimates, parts issued and deposits; they become live EJO job cards
+6b2. \`18_SAP_open_services_and_bookings_demo.csv\` — Open services and bookings at the cut-over (into Isolo Branch): eight bookings for the days after (vehicles 13–20, with their times) and three services already in the workshop; a booking waits for its customer, a service carries on at its stage
 6c. \`16_SAP_warranties_demo.csv\` — Warranties sold before EJO (the workshop demo’s policies must be in EJO): fourteen vehicles from 02 under the Isuzu and Soueast policies (two found from their months and km; most have ended and are kept for their history), four batteries and two sets of brake pads fitted before EJO, one suspended warranty; they become EJO warranties, active from the day they started
 6d. \`17_SAP_open_claims_demo.csv\` — Open warranty claims at the cut-over: eight claims on the warranties of 16 still in force, one at every open stage, from a draft to one accepted and one rejected; they become live EJO claims
 7. \`07_PDI_register_demo.xlsx\` and \`08_production_QC_register_demo.csv\` — Registers

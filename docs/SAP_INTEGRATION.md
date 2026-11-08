@@ -109,6 +109,15 @@ order's costs as the approved estimate, issued components (RESB/MSEG) as
 payments Finance confirms. Closed orders (CLSD/TECO with billing done and the
 vehicle collected) go to the history import instead.
 
+### Open services and the diary — service orders and appointments
+
+Open routine services (the same IW38 list, PM activity type for services)
+and the workshop's appointment diary — whether SAP (the order's basic start
+date and time, GSTRP/GSUZP) or a spreadsheet — load as EJO Vehicle Services
+(P6b, DATA_MIGRATION.md §7a3b): a booking waits for its customer on its day
+and time, a service in the workshop carries on at its stage. AUFNR, QMNUM or
+the diary's reference is kept as the old number.
+
 ### Warranties and open claims — SAP warranty (WTY) or PM/QM
 
 The **warranties** file reads the master warranty (MGANR) or the warranty

@@ -9,7 +9,7 @@
  * Matching ignores case, spaces, dots, dashes and underscores.
  */
 
-export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'warranties' | 'claims' | 'registers';
+export type EntityKey = 'customers' | 'vehicles' | 'suppliers' | 'parts' | 'stock' | 'invoices' | 'jobs' | 'openJobs' | 'openServices' | 'warranties' | 'claims' | 'registers';
 
 export type FieldDef = {
   key: string;
@@ -281,6 +281,37 @@ export const ENTITIES: Record<EntityKey, EntityDef> = {
       { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS) the job card is in. When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
     ],
   },
+  openServices: {
+    key: 'openServices',
+    label: 'Open services and bookings (at the cut-over)',
+    noun: 'open service or booking',
+    plural: 'open services and bookings',
+    description: 'The routine services still in the workshop on the day EJO takes over, and the bookings already in the diary for the days after: each becomes an EJO Vehicle Service — a booking waits for the customer on its day and time, a service in the workshop carries on at its stage — old number kept, on the customer and vehicle already in EJO. No emails are sent.',
+    needs: 'workshop.close.approve',
+    approver: 'a Workshop manager or an administrator',
+    branch: true,
+    branchArea: 'workshop',
+    matchOrder: ['booking or service number'],
+    after: 'vehicles',
+    fields: [
+      { key: 'serviceNumber', label: 'Booking or service number', help: 'The number in SAP (the service order AUFNR, or the notification QMNUM) or the old diary’s booking reference. Kept on the EJO Vehicle Service and searchable; EJO gives it its own SV number.', aliases: ['AUFNR', 'QMNUM', 'booking number', 'booking no', 'booking', 'booking reference', 'appointment', 'appointment number', 'service number', 'service no', 'order', 'order number', 'reference'], example: 'BK-2026-0612', required: true },
+      { key: 'customerExternalId', label: 'Customer number (SAP)', help: 'Whose vehicle it is (KUNUM / KUNNR), or give the phone or email. When the vehicle is in EJO, its owner is used.', aliases: ['KUNUM', 'KUNNR', 'customer SAP number', 'customer number', 'customer no', 'customer', 'account number'], example: '1000123' },
+      { key: 'customerPhone', label: 'Customer phone', help: 'Alternative way to find the customer.', aliases: ['customer phone', 'phone', 'telephone', 'mobile'], example: '' },
+      { key: 'customerEmail', label: 'Customer email', help: 'Alternative way to find the customer.', aliases: ['customer email', 'email', 'e-mail'], example: '' },
+      { key: 'vin', label: 'Chassis number (VIN)', help: 'The vehicle (VHVIN). It must already be in EJO; give the VIN or the plate.', aliases: ['VHVIN', 'VIN', 'chassis', 'chassis number', 'chassis no', 'frame number', 'vehicle'], example: 'JAANLR85EL7100001' },
+      { key: 'plateNumber', label: 'Plate number', help: 'Alternative way to find the vehicle (LICENSE_NUM).', aliases: ['LICENSE_NUM', 'LICNUM', 'plate', 'plate number', 'plate no', 'registration', 'registration number'], example: 'LND 123 AB' },
+      { key: 'status', label: 'Stage', help: 'Booked (the default: the customer is expected), Checked in, In service, Completed or Ready for collection. A closed, collected or cancelled service is history.', aliases: ['stage', 'status', 'booking status', 'service status', 'STAT'], example: 'Booked', choices: ['Booked', 'Checked in', 'In service', 'Completed', 'Ready for collection'] },
+      { key: 'bookedFor', label: 'Booked for (date)', help: 'For a booking: the day the customer is expected, e.g. 12.11.2026 (SAP GSTRP).', aliases: ['GSTRP', 'booked for', 'booking date', 'appointment date', 'date booked for', 'due date', 'date'], example: '12.11.2026' },
+      { key: 'bookedTime', label: 'Time', help: 'Optional: the time of the booking, e.g. 09:30. Empty: 09:00.', aliases: ['time', 'booking time', 'appointment time', 'slot', 'GSUZP'], example: '09:30' },
+      { key: 'checkedInOn', label: 'Checked in on', help: 'For a service already in the workshop: the day the vehicle came in (ERDAT).', aliases: ['ERDAT', 'checked in on', 'check-in date', 'date in', 'received', 'opened on'], example: '30.10.2026' },
+      { key: 'mileage', label: 'Mileage (km)', help: 'Optional: the odometer when it came in (RECDV).', aliases: ['RECDV', 'mileage', 'odometer', 'km'], example: '41200' },
+      { key: 'complaint', label: 'Work requested', help: 'What the customer asked for (KTEXT): "Service 40,000 km; check the brakes". Several: separate them with ";".', aliases: ['KTEXT', 'complaint', 'complaints', 'work requested', 'reason', 'description', 'request', 'service requested'], example: 'Service 40,000 km; check the brakes' },
+      { key: 'supervisor', label: 'Supervisor (employee ID)', help: 'Optional: the supervising person’s employee ID in EJO (a name is tried too). Empty: left for the workshop to set.', aliases: ['supervisor', 'supervisor id', 'service advisor', 'advisor', 'foreman'], example: 'EMP-0007' },
+      { key: 'technician', label: 'Technician (employee ID)', help: 'Optional, for a service in the workshop: the technician’s employee ID (PERNR) or name.', aliases: ['PERNR', 'technician', 'technician id', 'mechanic', 'assigned to'], example: 'EMP-0042' },
+      { key: 'notes', label: 'Notes', help: 'Optional: anything the workshop should know.', aliases: ['note', 'notes', 'remarks', 'comments'], example: 'Customer will wait' },
+      { key: 'branch', label: 'Branch', help: 'Optional: the branch (or SAP plant, WERKS). When given it must be the branch chosen for this import.', aliases: ['branch', 'branch name', 'workshop', 'location', 'WERKS', 'IWERK', 'plant'], example: 'Isolo Branch' },
+    ],
+  },
   warranties: {
     key: 'warranties',
     label: 'Warranties (sold before EJO)',
@@ -462,6 +493,7 @@ export function mappingProblems(entity: EntityKey, mapping: Mapping): string[] {
   if (entity === 'stock' && mapping.totalValue == null && mapping.unitCost == null) out.push('Choose the column for the stock value or the unit cost: stock is valued at what it cost.');
   if (entity === 'invoices' && mapping.customerExternalId == null && mapping.customerPhone == null) out.push('Choose how to find each invoice’s customer: their SAP customer number or phone.');
   if (entity === 'openJobs' && mapping.vin == null && mapping.plateNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate: an open job card is on a vehicle.');
+  if (entity === 'openServices' && mapping.vin == null && mapping.plateNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate: a service or a booking is for a vehicle.');
   if (entity === 'warranties' && mapping.vin == null && mapping.plateNumber == null && mapping.partNumber == null) out.push('Choose the column for the vehicle’s chassis number (VIN) or plate, or the part number: a warranty covers a vehicle or a part.');
   if (entity === 'claims' && mapping.warrantyNumber == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each claim’s warranty: its warranty number, or the vehicle’s chassis number or plate.');
   if (entity === 'jobs' && mapping.customerExternalId == null && mapping.customerPhone == null && mapping.customerEmail == null && mapping.vin == null && mapping.plateNumber == null) out.push('Choose how to find each job’s customer: their SAP customer number, phone or email — or the vehicle’s chassis number or plate.');

@@ -38,7 +38,8 @@ import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space 
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, jobTotalsOfRows, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { checkOpenJobRows, loadOpenJobRows, openJobTotalsLoaded, openJobTotalsOfRows, untouchedSinceImport, type OpenJobsJob } from '@/lib/data-exchange/open-jobs-server';
-import { moveImportedJobCardsToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
+import { moveImportedJobCardsToBinInTx, moveImportedServicesToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
+import { checkOpenServiceRows, loadOpenServiceRows, openServiceTotalsLoaded, openServiceTotalsOfRows, serviceUntouchedSinceImport } from '@/lib/data-exchange/open-services-server';
 import { checkClaimRows, checkWarrantyRows, claimTotalsLoaded, claimTotalsOfRows, claimUntouchedSinceImport, loadClaimRows, loadWarrantyRows, warrantyTotalsLoaded, warrantyTotalsOfRows, warrantyUntouchedSinceImport, type WarrantyImportJob } from '@/lib/data-exchange/warranties-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
 import { checkCustomerRow, checkVehicleRow, phoneKey, type CustomerValues, type Issue, type VehicleValues } from '@/lib/data-exchange/check';
@@ -203,7 +204,7 @@ export type ImportJobDetail = ImportJobRow & {
   sameFileBefore: { id: string; number: string; status: string } | null;
   branch: { id: string; name: string } | null;
   asOf: Date | null;
-  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
+  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; bookings?: number; inWorkshop?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
   signedOff: { by: string; at: Date } | null;
   /** The staged copy of the file: its size, whether it was released (by whom), and when it will be. */
   staged: { bytes: number | null; releasedAt: Date | null; releasedBy: string | null; releasable: boolean; why: string | null; dueAt: Date | null; days: number };
@@ -451,6 +452,8 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       updates.push(...(await checkHistoryRows(entity, histJob(job), mapping, rows)));
     } else if (entity === 'openJobs') {
       updates.push(...(await checkOpenJobRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'openServices') {
+      updates.push(...(await checkOpenServiceRows(openJobsJob(job), mapping, rows)));
     } else if (entity === 'warranties') {
       updates.push(...(await checkWarrantyRows(warrantyJob(job), mapping, rows)));
     } else if (entity === 'claims') {
@@ -530,7 +533,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
 
   // The whole file is checked: the second copy of the same customer or vehicle in the file is a duplicate (the first one loads).
   await prisma.$transaction(async (tx) => {
-    const strong = { customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'] }[entity];
+    const strong = { customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'] }[entity];
     const dups = await tx.$queryRaw<{ id: string; first: number; key: string }[]>`
       WITH k AS (
         SELECT r.id, r."rowNumber", unnest(r.keys) AS key FROM import_rows r WHERE r."jobId" = ${job.id} AND r.status IN ('GOOD', 'WARNING')
@@ -539,7 +542,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       )
       SELECT DISTINCT ON (k.id) k.id, f.first, k.key FROM k JOIN f ON f.key = k.key WHERE k."rowNumber" > f.first ORDER BY k.id, f.first`;
     if (dups.length) {
-      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', wty: 'warranty number', claim: 'claim number' };
+      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number' };
       const existing = await tx.importRow.findMany({ where: { id: { in: dups.map((d) => d.id) } }, select: { id: true, issues: true, keys: true, matchedId: true, matchedBy: true } });
       const byId = new Map(existing.map((e) => [e.id, e]));
       await writeRowResults(tx, dups.map((d) => {
@@ -569,6 +572,10 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
   }
   // Warranties: how many, on vehicles and parts, still in force. Open claims: how many, the amount claimed and accepted.
+  if (entity === 'openServices') {
+    const check = await openServiceTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
+    await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
+  }
   if (entity === 'warranties') {
     const check = await warrantyTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
@@ -697,6 +704,7 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
         last = rows[rows.length - 1]!.rowNumber;
         if (isHistoryEntity(entity)) await loadHistoryRows(tx, entity, histJob(job), mapping, rows);
         else if (entity === 'openJobs') await loadOpenJobRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'openServices') await loadOpenServiceRows(tx, openJobsJob(job), mapping, rows);
         else if (entity === 'warranties') await loadWarrantyRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'claims') await loadClaimRows(tx, warrantyJob(job), mapping, rows);
         else if (isInventoryEntity(entity)) await loadInventoryRows(tx, entity, invJob(job), mapping, rows);
@@ -732,6 +740,7 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   }
   if (entity === 'invoices') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await invoiceTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'openJobs') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openJobTotalsLoaded(job.id) } as Prisma.InputJsonValue;
+  if (entity === 'openServices') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openServiceTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'warranties') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await warrantyTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'claims') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await claimTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'LOADING' }, data: { ...data, ...(totals ? { totals } : {}), status: 'COMPLETED', completedAt: new Date(), error: null } });
@@ -915,7 +924,7 @@ async function undoBlockers(jobId: string, entity: EntityKey): Promise<{ label: 
   // History is read-only and nothing is built on it: undoing voids it (kept, restored by loading the file again).
   if (isHistoryEntity(entity)) return [];
   // Open job cards, warranties and claims: the undo itself keeps (and reports) any that have been worked on since.
-  if (entity === 'openJobs' || entity === 'warranties' || entity === 'claims') return [];
+  if (entity === 'openJobs' || entity === 'openServices' || entity === 'warranties' || entity === 'claims') return [];
   if (entity === 'parts') {
     const busy = await prisma.part.findMany({
       where: { importJobId: jobId, OR: [{ goodsReceiptLines: { some: {} } }, { batches: { some: {} } }, { serials: { some: {} } }, { quantityConsumptions: { some: {} } }, { requestSlipLines: { some: {} } }, { matchedOnEstimateLines: { some: {} } }, { matchedOnServiceEstimateLines: { some: {} } }, { warranties: { some: {} } }] },
@@ -991,6 +1000,7 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         if (entity === 'vehicles') return tx.customerVehicle.findMany({ where, select: { id: true } });
         if (entity === 'parts') return tx.part.findMany({ where, select: { id: true } });
         if (entity === 'openJobs') return tx.jobCard.findMany({ where, select: { id: true } });
+        if (entity === 'openServices') return tx.vehicleService.findMany({ where, select: { id: true } });
         if (entity === 'warranties') return tx.warranty.findMany({ where, select: { id: true } });
         if (entity === 'claims') return tx.warrantyClaim.findMany({ where, select: { id: true } });
         return tx.supplier.findMany({ where, select: { id: true } });
@@ -1003,6 +1013,12 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         const quiet: string[] = [];
         for (const id of createdIds) if (await untouchedSinceImport(tx, id, job.id, loadedAt)) quiet.push(id);
         moved = new Set(await moveImportedJobCardsToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
+      } else if (entity === 'openServices') {
+        // Services and bookings: to the bin whole, only those nobody has worked on since the import.
+        const loadedAt = job.completedAt ?? new Date(0);
+        const quiet: string[] = [];
+        for (const id of mine) if (await serviceUntouchedSinceImport(tx, id, job.id, loadedAt)) quiet.push(id);
+        moved = new Set(await moveImportedServicesToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
       } else if (entity === 'warranties' || entity === 'claims') {
         // Warranties and claims: to the bin, each restorable on its own, only those nobody has used since the import
         // (a warranty with a claim on it stays: undo the claims import first).

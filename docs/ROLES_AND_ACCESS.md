@@ -111,6 +111,18 @@ when the payment came in with the import and nothing has been recorded on
 the job card since — the desk's own delete still refuses any job card with a
 payment.
 
+### Open services and bookings at the cut-over (P6b)
+
+Approval is a **Workshop manager or an administrator**, as for the open job
+cards. The loader writes the services directly in the chosen workshop
+branch (never the assembly plant), with the approving person as the
+record's creator, and sends no email or notification. Staff are matched to
+active colleagues of the organisation by employee ID or name, and otherwise
+left unset. Checking a booking in is the front desk's own step
+(`workshop.job_card.create` for that branch), exactly as for any booking.
+Undo bins a service only when nothing has been recorded on it since the
+import — no audited step, no payment, parts request, inspection or estimate.
+
 ### Warranties and open claims at the cut-over (P6)
 
 Approval is **the Warranty HOD or a Branch Manager** (`warranty.claim.approve`

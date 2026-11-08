@@ -43,7 +43,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         {ENTITY_KEYS.map((k) => {
           const e = ENTITIES[k];
           return (
-            <SectionCard key={k} icon={({ customers: 'users', vehicles: 'car', suppliers: 'truck', parts: 'boxes', stock: 'package', invoices: 'receipt', jobs: 'wrench', openJobs: 'clipboard', warranties: 'shield-check', claims: 'shield', registers: 'clipboard' } as const)[k]} title={e.label} description={e.description}>
+            <SectionCard key={k} icon={({ customers: 'users', vehicles: 'car', suppliers: 'truck', parts: 'boxes', stock: 'package', invoices: 'receipt', jobs: 'wrench', openJobs: 'clipboard', openServices: 'calendar', warranties: 'shield-check', claims: 'shield', registers: 'clipboard' } as const)[k]} title={e.label} description={e.description}>
               <p className="text-xs text-[var(--ejo-text-muted)]">Recognised by {e.matchOrder.join(', then ')}.{e.after ? ` Load the ${ENTITIES[e.after].plural} file first.` : ''}</p>
               <div className="mt-3 flex flex-wrap gap-2">
                 {canRun ? <Link href={`/data-exchange/new?entity=${k}`} className="inline-flex items-center gap-2 rounded-[var(--ejo-radius-md)] bg-[var(--ejo-primary)] px-4 py-2 text-sm font-medium text-white hover:opacity-90"><Icon name="plus" size={14} /> Import {k === 'stock' ? 'opening stock' : k === 'invoices' ? 'invoice history' : k === 'registers' ? 'registers' : e.plural}</Link> : null}

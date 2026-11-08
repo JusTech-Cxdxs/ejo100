@@ -1075,6 +1075,8 @@ export async function listVehicleServices(branchId: string, search?: string, veh
               { vehicle: { plateNumber: { contains: q, mode: 'insensitive' } } },
               { vehicle: { chassisNumber: { contains: q, mode: 'insensitive' } } },
               { assignedTechnician: { fullName: { contains: q, mode: 'insensitive' } } },
+              // Brought in at the cut-over (P6b): the old booking or service number finds it too.
+              { externalId: { equals: q, mode: 'insensitive' } },
             ],
           }
         : {}),
@@ -1086,6 +1088,7 @@ export async function listVehicleServices(branchId: string, search?: string, veh
       serviceNumber: true,
       status: true,
       createdAt: true,
+      bookedFor: true,
       escalatedToJobCard: { select: { id: true, jobNumber: true } },
       customerId: true,
       customer: { select: { fullName: true } },

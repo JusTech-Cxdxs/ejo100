@@ -351,6 +351,59 @@ from 02 in the workshop at every stage); `with-mistakes/` adds a closed job
 card, an unknown stage, no vehicle, the same vehicle twice, a future date and
 a vehicle EJO does not have.
 
+## 7a3b. Open services and bookings at the cut-over (P6b)
+
+The routine services still in the workshop on the day EJO takes over, and
+the bookings already in the diary for the days after, so nobody arrives
+unexpected. **Open services and bookings** turns each row into an **EJO
+Vehicle Service** in the chosen workshop branch, on the customer and the
+vehicle already in EJO. Approval: a **Workshop manager** (or an
+administrator). Nobody is emailed — the customers were told at the time.
+
+| In the file | EJO |
+| --- | --- |
+| empty, Booked, Scheduled, Appointment, Confirmed | **a booking** (Scheduled): waits for the customer |
+| Checked in, Received, CRTD | Checked in |
+| In service, In progress, REL | In service |
+| Completed, TECO | Completed |
+| Ready for collection | Ready for collection |
+| Closed, Collected, Cancelled, No show | **refused** — history (§7a2) |
+
+- **A booking** needs its day (*Booked for*, e.g. 12.11.2026) and takes its
+  time (*Time*, e.g. 09:30; empty: 09:00), in Lagos time. The service page
+  says *Booked for 12 Nov 2026, 09:30 — check the vehicle in when it
+  arrives*, the Vehicle Services list shows the day, and the front desk
+  checks it in as any booking. A booking for a day already passed is kept,
+  with a note (the customer has not come). A technician is not given to a
+  booking: the workshop assigns one when the vehicle arrives.
+- **A service in the workshop** needs the day it came in (*Checked in on*,
+  ERDAT; never in the future) and carries on from its stage, accepted
+  before EJO (the supervisor's acceptance is not asked again); the
+  technician and supervisor are matched by employee ID (a name is tried).
+- **Its old number** (the booking reference, AUFNR or QMNUM) is kept and
+  searchable (*SAP booking BK-2026-0600 → SV-2026-000123*); EJO gives it its
+  own SV number. A banner on the service says where it came from.
+- **One open visit per vehicle** — a vehicle with an open job card or
+  service in EJO is refused, and the second row for a vehicle in the file is
+  a duplicate.
+
+Refused: no number, a stage EJO does not know, a closed or collected
+service, a booking with no day, a service in the workshop with no check-in
+day or one in the future, no VIN or plate, a vehicle EJO does not have, a
+vehicle with an open visit, a row for another branch.
+
+**Undo** moves the services and bookings nobody has worked on since the
+import to the Recycle bin, each with its complaints, so it restores whole;
+one that has had anything recorded since (a check-in, a technician, an
+inspection, a parts request, a payment — every step of a service is
+audited) is kept and reported.
+
+Demo: `docs/demo/correct/18_SAP_open_services_and_bookings_demo.csv`
+(eight bookings for the days after the cut-over, vehicles 13–20 of 02, with
+their times; three services already in the workshop); `with-mistakes/` adds
+no number, a collected service, a booking with no day, a vehicle EJO does
+not have, the same vehicle twice and a check-in day in the future.
+
 ## 7a4. Warranties and open warranty claims at the cut-over (P6)
 
 Two imports, loaded after the vehicles (and the parts, for part warranties),

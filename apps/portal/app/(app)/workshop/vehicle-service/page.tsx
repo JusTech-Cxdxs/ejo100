@@ -21,7 +21,7 @@ import { FormFeedbackBanner } from '@/components/FormFeedbackBanner';
 import { BinnedNotice } from '@/components/RecycleBinPanel';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ServiceComplaintListInput } from '@/components/ServiceComplaintListInput';
-import { formatDateOnly } from '@/lib/utils/format-date';
+import { formatDateOnly, formatDateTime } from '@/lib/utils/format-date';
 import { LiveSearchInput } from '@/components/LiveSearchInput';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
@@ -253,7 +253,7 @@ export default async function VehicleServicePage({
                         return badge ? <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.className}`}>{badge.label}</span> : <span className="text-xs text-[var(--ejo-text-muted)]">In progress</span>;
                       })()}
                     </td>
-                    <td data-label="Opened" className="px-4 py-3 text-[var(--ejo-text-muted)]">{formatDateOnly(s.createdAt)}</td>
+                    <td data-label="Opened" className="px-4 py-3 text-[var(--ejo-text-muted)]">{s.status === 'SCHEDULED' && s.bookedFor ? <span className="text-[var(--ejo-text)]" title="Booked for">Booked {formatDateTime(s.bookedFor)}</span> : formatDateOnly(s.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>

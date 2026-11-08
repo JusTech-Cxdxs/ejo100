@@ -1245,6 +1245,15 @@ model VehicleService {
   cancelledAt DateTime?
   // When this service was handed over to a Job Card (status ESCALATED).
   escalatedAt DateTime?
+  // A booking: the day and time the customer is expected (a SCHEDULED
+  // service). Brought in from the old system's diary at the cut-over (P6b),
+  // or set when a service is booked ahead.
+  bookedFor DateTime?
+  // Brought in open from another system at the cut-over (P6b): where from
+  // (SAP, LEGACY), its number there (kept and searchable) and the import.
+  externalSource String?
+  externalId     String?
+  importJobId    String?
 
   branch      Branch          @relation(fields: [branchId], references: [id])
   customer    Customer        @relation(fields: [customerId], references: [id])
@@ -1271,6 +1280,9 @@ model VehicleService {
   @@index([vehicleId])
   @@index([assignedTechnicianId])
   @@index([supervisorId])
+  @@index([branchId, bookedFor])
+  @@index([importJobId])
+  @@index([branchId, externalSource, externalId])
   @@map("vehicle_services")
   warranties Warranty[]
   warrantyClaims WarrantyClaim[]
