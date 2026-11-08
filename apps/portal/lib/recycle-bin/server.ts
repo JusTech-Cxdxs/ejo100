@@ -370,6 +370,31 @@ export async function moveImportedJobCardsToBinInTx(tx: Tx, ids: string[], impor
 }
 
 /**
+ * Moves imported vehicle services and bookings (P6b) to the bin inside the
+ * caller's transaction — the undo of that import. Like the open job cards:
+ * the caller has checked that nobody has worked on them since the import
+ * (open-services-server.ts, serviceUntouchedSinceImport); each restores whole.
+ */
+export async function moveImportedServicesToBinInTx(tx: Tx, ids: string[], importJobId: string, reason: string, actorId: string, now: Date = new Date()): Promise<string[]> {
+  if (!ids.length) return [];
+  await lockExisting(tx, 'vehicleService', ids).catch(() => undefined);
+  const purgeAfter = purgeAfterFrom(now, RETENTION_DAYS());
+  const moved: string[] = [];
+  for (const id of ids) {
+    const record = await binRecord('VehicleService', id, tx);
+    const s = await tx.vehicleService.findUnique({ where: { id }, select: { importJobId: true } });
+    if (!record || !s || s.importJobId !== importJobId) continue;
+    const snapshot = orderedSnapshot('VehicleService', await snapshotRows(tx, 'VehicleService', id));
+    await tx.recycleBinItem.create({
+      data: { organisationId: record.organisationId, branchId: record.branchId, entityType: 'VehicleService', entityId: id, reference: record.reference, label: record.label, reason, snapshot: snapshot as unknown as Prisma.InputJsonValue, deletedById: actorId, deletedAt: now, purgeAfter },
+    });
+    await deleteRoot(tx, 'VehicleService', id);
+    moved.push(id);
+  }
+  return moved;
+}
+
+/**
  * Moves imported warranties or warranty claims (P6) to the bin inside the
  * caller's transaction — the undo of that import, and the only way either
  * ever reaches the bin. The caller has checked that nobody has used them

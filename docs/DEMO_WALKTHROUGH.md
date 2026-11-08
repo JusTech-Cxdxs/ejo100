@@ -229,6 +229,19 @@ someone in **Finance**. Sections 1 and 2 loaded first.
     **483203**. Nobody was emailed. **Undo** moves the untouched ones to the
     Recycle bin whole (estimate and payments too); one that has had work
     recorded since stays and is reported.
+10b. **Open services and bookings (P6b).** Preparer → Data Exchange →
+    *Open services and bookings* → choose **Isolo Branch** → drop
+    `docs/demo/with-mistakes/18_SAP_open_services_and_bookings_demo.csv`.
+    The check shows **how many bookings (and over which days) and how many
+    services already in the workshop**, and refuses a collected service, a
+    booking with no day, a vehicle EJO does not have, the same vehicle
+    twice, a future check-in day and a row with no number. The Workshop
+    manager approves and loads. Open **Workshop → Vehicle Services**: the
+    bookings show *Booked 3 Nov 2026, 08:00*; open one — *Booked for …
+    Check the vehicle in when it arrives* and *Brought in from SAP as
+    booking BK-2026-0600*. Sign in as the front desk and **Check In
+    Vehicle**. Search **BK-2026-0600**. Undo: the booking you checked in
+    stays; the rest go to the Recycle bin.
 11. **Warranties and open claims (P6).** In the demo organisation (its
     workshop demo has the policies). Preparer → Data Exchange → *Warranties
     (sold before EJO)* → drop

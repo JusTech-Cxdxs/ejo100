@@ -18,11 +18,12 @@ import { checkPartRow, checkStockRow, checkSupplierRow } from '../lib/data-excha
 import { checkInvoiceRow, checkJobRow, checkRegisterRow } from '../lib/data-exchange/check-history';
 import { checkOpenJobRow } from '../lib/data-exchange/check-open-jobs';
 import { checkClaimRow, checkWarrantyRow } from '../lib/data-exchange/check-warranties';
+import { checkOpenServiceRow } from '../lib/data-exchange/check-open-services';
 
 const DEMO = join(__dirname, '..', '..', '..', '..', 'docs', 'demo');
 const FILES: [string, EntityKey][] = [
   ['01_SAP_customers_demo.csv', 'customers'], ['02_vehicles_demo.xlsx', 'vehicles'], ['03a_SAP_parts_200.csv', 'parts'], ['04_SAP_opening_stock_demo.csv', 'stock'],
-  ['05_SAP_suppliers_demo.csv', 'suppliers'], ['06_SAP_invoice_history_demo.csv', 'invoices'], ['14_SAP_job_card_history_demo.csv', 'jobs'], ['15_SAP_open_job_cards_demo.csv', 'openJobs'], ['16_SAP_warranties_demo.csv', 'warranties'], ['17_SAP_open_claims_demo.csv', 'claims'], ['07_PDI_register_demo.xlsx', 'registers'], ['08_production_QC_register_demo.csv', 'registers'],
+  ['05_SAP_suppliers_demo.csv', 'suppliers'], ['06_SAP_invoice_history_demo.csv', 'invoices'], ['14_SAP_job_card_history_demo.csv', 'jobs'], ['15_SAP_open_job_cards_demo.csv', 'openJobs'], ['18_SAP_open_services_and_bookings_demo.csv', 'openServices'], ['16_SAP_warranties_demo.csv', 'warranties'], ['17_SAP_open_claims_demo.csv', 'claims'], ['07_PDI_register_demo.xlsx', 'registers'], ['08_production_QC_register_demo.csv', 'registers'],
 ];
 type Planted = { file: string; row: number; entity: string; what: string; expect: 'rejected' | 'duplicate' | 'warning'; by: 'check' | 'file' | 'database'; says: string };
 const PLANTED: Planted[] = JSON.parse(readFileSync(join(DEMO, 'with-mistakes', 'mistakes.json'), 'utf8'));
@@ -46,6 +47,7 @@ function check(file: string, entity: EntityKey, cells: string[], m: ReturnType<t
     case 'invoices': return checkInvoiceRow(cells, m).issues;
     case 'jobs': return checkJobRow(cells, m).issues;
     case 'openJobs': return checkOpenJobRow(cells, m, '2026-11-02').issues;
+    case 'openServices': return checkOpenServiceRow(cells, m, '2026-11-02').issues;
     case 'warranties': return checkWarrantyRow(cells, m, '2026-11-02').issues;
     case 'claims': return checkClaimRow(cells, m, '2026-11-02').issues;
     default: return checkRegisterRow(cells, m, file.startsWith('07') ? 'PDI' : null).issues;
@@ -62,6 +64,7 @@ function keyOf(entity: EntityKey, h: string[], cells: string[]): string | null {
     case 'invoices': return at('VBELN') ? `${at('VBELN').replace(/^0+/, '')}|${at('BUKRS')}|${at('GJAHR')}` : null;
     case 'jobs': return at('AUFNR').replace(/^0+/, '') || null;
     case 'openJobs': return at('VHVIN') || at('AUFNR') || null; // one open job card per vehicle
+    case 'openServices': return at('VHVIN') || at('Booking number') || null; // one open visit per vehicle
     case 'warranties': return at('MGANR').toUpperCase() || null;
     case 'claims': return at('CLMNO').toUpperCase() || null;
     default: return null;

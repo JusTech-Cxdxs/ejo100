@@ -52,6 +52,7 @@ import {
   handBackCancelledVehicleServiceFormAction,
 } from '@/lib/actions/vehicle-service-form-handlers';
 import { LoadingLink } from '@/components/LoadingLink';
+import { getImportOrigin } from '@/lib/actions/data-exchange';
 import { PaymentAmountField } from '@/components/PaymentAmountField';
 import { MINIMUM_DEPOSIT_FRACTION, COMMON_ESTIMATE_LINE_DESCRIPTIONS } from '@/lib/workshop-constants';
 import { ServiceEstimateLineItemForm } from '@/components/ServiceEstimateLineItemForm';
@@ -327,6 +328,8 @@ export default async function VehicleServiceDetailPage({
     getRecycleBinOffer('VehicleService', id),
   ]);
   if (!service) notFound();
+  // Brought in at the cut-over (P6b): where it came from, for the banner.
+  const serviceOrigin = service.importJobId ? await getImportOrigin(service.importJobId).catch(() => null) : null;
   // Customer names link to their Customers (CRM) page for those who may open it.
   const canSeeCustomers = await allows('crm.view');
 
@@ -554,6 +557,20 @@ export default async function VehicleServiceDetailPage({
       {status === 'inspection_completed' ? (
         <div className="mb-6 max-w-xl">
           <FormFeedbackBanner kind="success" message="Inspection completed." />
+        </div>
+      ) : null}
+
+      {service.status === 'SCHEDULED' && service.bookedFor ? (
+        <div className="mb-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/40 bg-[var(--ejo-primary)]/5 px-4 py-3 text-sm text-[var(--ejo-text)]" role="note" data-testid="service-booking">
+          <span className="font-semibold">Booked for {formatDateTime(service.bookedFor)}.</span>{' '}
+          {new Date(service.bookedFor).getTime() < Date.now() ? 'The day has passed and the vehicle has not been checked in: call the customer, or cancel the booking.' : 'Check the vehicle in when it arrives.'}
+        </div>
+      ) : null}
+      {service.externalId ? (
+        <div className="mb-4 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-info)]/40 bg-[var(--ejo-info)]/10 px-4 py-3 text-sm text-[var(--ejo-text)]" role="note" data-testid="service-origin">
+          <span className="font-semibold">Brought in from {service.externalSource === 'LEGACY' ? 'the old system' : 'SAP'} as {service.status === 'SCHEDULED' ? 'booking' : 'service'} {service.externalId}.</span>{' '}
+          {serviceOrigin ? <>Brought into EJO by import {serviceOrigin.mayOpen ? <LoadingLink href={`/data-exchange/imports/${service.importJobId}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{serviceOrigin.number}</LoadingLink> : serviceOrigin.number}{serviceOrigin.loadedAt ? ` on ${formatDateOnly(serviceOrigin.loadedAt)}` : ''}. </> : null}
+          {service.status !== 'SCHEDULED' && service.checkedInAt ? `It came in on ${formatDateOnly(service.checkedInAt)} and was accepted before EJO; it carries on here.` : ''}
         </div>
       ) : null}
 

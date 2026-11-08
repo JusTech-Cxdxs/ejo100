@@ -12,6 +12,7 @@ this order (later files refer to earlier ones):
 6. `06_SAP_invoice_history_demo.csv` — Invoice history (SAP)
 6a. `14_SAP_job_card_history_demo.csv` — Job card history (SAP service orders): one job card per invoice, into the workshop branch (Isolo Branch); the services among them start each vehicle’s next-service clock
 6b. `15_SAP_open_job_cards_demo.csv` — Open job cards at the cut-over (into Isolo Branch): eight vehicles from 02 in the workshop at every stage, with estimates, parts issued and deposits; they become live EJO job cards
+6b2. `18_SAP_open_services_and_bookings_demo.csv` — Open services and bookings at the cut-over (into Isolo Branch): eight bookings for the days after (vehicles 13–20, with their times) and three services already in the workshop; a booking waits for its customer, a service carries on at its stage
 6c. `16_SAP_warranties_demo.csv` — Warranties sold before EJO (the workshop demo’s policies must be in EJO): fourteen vehicles from 02 under the Isuzu and Soueast policies (two found from their months and km; most have ended and are kept for their history), four batteries and two sets of brake pads fitted before EJO, one suspended warranty; they become EJO warranties, active from the day they started
 6d. `17_SAP_open_claims_demo.csv` — Open warranty claims at the cut-over: eight claims on the warranties of 16 still in force, one at every open stage, from a draft to one accepted and one rejected; they become live EJO claims
 7. `07_PDI_register_demo.xlsx` and `08_production_QC_register_demo.csv` — Registers

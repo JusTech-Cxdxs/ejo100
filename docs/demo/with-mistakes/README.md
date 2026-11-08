@@ -127,3 +127,14 @@ and invoices, the parts catalogue before opening stock).
 | 13 | Partially accepted with no accepted amount | Partially accepted: give the amount the provider accepted. | Rejected (not loaded) | the check (this row alone) |
 | 14 | Claim C-2026-0181 a second time (row 3 has it) | Same claim number as row 3 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
 
+## 18_SAP_open_services_and_bookings_demo.csv
+
+| Row | What is wrong | EJO says | Outcome | Caught by |
+| --- | --- | --- | --- | --- |
+| 13 | No booking number | Booking or service number is required (SAP AUFNR or QMNUM, or the diary’s booking reference). | Rejected (not loaded) | the check (this row alone) |
+| 14 | A service already collected: it is history | Stage “Collected”: a closed, collected or cancelled service is history (load it with the job card history), not an open one. | Rejected (not loaded) | the check (this row alone) |
+| 15 | A booking without its day | A booking needs its day (Booked for): when is the customer expected? | Rejected (not loaded) | the check (this row alone) |
+| 16 | A vehicle EJO does not have | The vehicle is not in EJO. Import the vehicles file first (a service or a booking is for a vehicle in EJO), or check the chassis number or plate. | Rejected (not loaded) | the check (against what EJO already holds) |
+| 17 | Vehicle JAANLR85EL7100013 a second time (row 2 has it): one open visit per vehicle | Same chassis number as row 2 of the file; only the first is loaded. | Duplicate (not loaded) | the check (against the other rows in the file) |
+| 18 | In the workshop since a day in the future | Checked in on 2027-03-15, which is in the future: a vehicle in the workshop came in already. | Rejected (not loaded) | the check (this row alone) |
+

@@ -297,6 +297,60 @@
     "says": "The vehicle is not in EJO. Import the vehicles file first (the open job card needs the vehicle it is on), or check the chassis number or plate."
   },
   {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 13,
+    "entity": "openServices",
+    "what": "No booking number",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Booking or service number is required (SAP AUFNR or QMNUM, or the diary’s booking reference)."
+  },
+  {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 14,
+    "entity": "openServices",
+    "what": "A service already collected: it is history",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Stage “Collected”: a closed, collected or cancelled service is history (load it with the job card history), not an open one."
+  },
+  {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 15,
+    "entity": "openServices",
+    "what": "A booking without its day",
+    "expect": "rejected",
+    "by": "check",
+    "says": "A booking needs its day (Booked for): when is the customer expected?"
+  },
+  {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 16,
+    "entity": "openServices",
+    "what": "A vehicle EJO does not have",
+    "expect": "rejected",
+    "by": "database",
+    "says": "The vehicle is not in EJO. Import the vehicles file first (a service or a booking is for a vehicle in EJO), or check the chassis number or plate."
+  },
+  {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 17,
+    "entity": "openServices",
+    "what": "Vehicle JAANLR85EL7100013 a second time (row 2 has it): one open visit per vehicle",
+    "expect": "duplicate",
+    "by": "file",
+    "says": "Same chassis number as row 2 of the file; only the first is loaded."
+  },
+  {
+    "file": "18_SAP_open_services_and_bookings_demo.csv",
+    "row": 18,
+    "entity": "openServices",
+    "what": "In the workshop since a day in the future",
+    "expect": "rejected",
+    "by": "check",
+    "says": "Checked in on 2027-03-15, which is in the future: a vehicle in the workshop came in already."
+  },
+  {
     "file": "16_SAP_warranties_demo.csv",
     "row": 22,
     "entity": "warranties",

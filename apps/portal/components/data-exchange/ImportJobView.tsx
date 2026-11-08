@@ -235,6 +235,12 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">Each becomes a live job card at its stage, with its old number kept, its estimate marked approved before EJO and its deposit as an opening payment that Finance confirms after the load. Nobody is emailed. Compare the count with the workshop’s open orders in SAP (IW38) before sending it for approval.</p>
             </div>
           ) : null}
+          {job.entity === 'openServices' && job.totals?.check ? (
+            <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="service-import-totals">
+              <p className="font-medium">To bring into {job.branch?.name ?? 'the branch'}: {nf(job.totals.check.bookings ?? 0)} {(job.totals.check.bookings ?? 0) === 1 ? 'booking' : 'bookings'}{job.totals.check.from && job.totals.check.to ? ` (${day(job.totals.check.from)} to ${day(job.totals.check.to)})` : ''} · {nf(job.totals.check.inWorkshop ?? 0)} {(job.totals.check.inWorkshop ?? 0) === 1 ? 'service' : 'services'} already in the workshop</p>
+              <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">A booking waits for its customer on its day and time, for the front desk to check in; a service in the workshop carries on at its stage, accepted before EJO. Old numbers are kept. Nobody is emailed. Compare the bookings with the old diary before sending it for approval.</p>
+            </div>
+          ) : null}
           {job.entity === 'warranties' && job.totals?.check ? (
             <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="warranty-import-totals">
               <p className="font-medium">To bring in: {nf(job.totals.check.lines)} warranties ({nf(job.totals.check.vehicles ?? 0)} on vehicles, {nf(job.totals.check.parts ?? 0)} on parts) {job.totals.check.notActive ? ` · ${nf(job.totals.check.notActive)} suspended, void or transferred` : ''}{job.totals.check.from && job.totals.check.to ? ` · started ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>
