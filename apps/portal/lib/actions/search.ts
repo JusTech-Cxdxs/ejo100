@@ -293,7 +293,10 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     { group: 'Staff', hits: staff.map((r) => ({ label: r.fullName, sub: r.email, href: `/users?q=${encodeURIComponent(r.email)}` })) },
   ];
   // Numbers SAP (or the old system) gave records: every match, labelled with its kind and year.
-  const sap = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), canWarranty: allowed('warranty.view'), opens });
+  // Old-system numbers can look like the start of an EJO reference ("W-2024-0412" after WR-, "C-2026-0184" after CTR-): only a
+  // bare prefix ("WR") or a complete EJO reference (WR-2026-000031) skips them.
+  const sapFits = plan.kind !== 'prefix' && !(plan.kind === 'reference' && plan.textScope === 'none');
+  const sap = !sapFits ? [] : await sapNumberHits(plan.q, { mineOrg, sameOrg, canWorkshop, canCrm, canCustomers, storeReach, canSuppliers: allowed('store.view'), canWarranty: allowed('warranty.view'), opens });
   if (sap.length) groups.splice(1, 0, { group: 'SAP numbers', hits: sap });
   // A VIN typed or scanned (a handheld scanner types it): that vehicle first — also before it is sold (plant registers only).
   const vin = plan.kind === 'reference' || plan.kind === 'prefix' ? [] : await vinHits(plan.q, mineOrg, any(['workshop.view', 'warranty.view', 'security.view', 'crm.view', 'plant.view']));

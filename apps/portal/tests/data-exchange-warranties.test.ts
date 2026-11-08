@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { autoMap, ENTITIES, mappingProblems } from '../lib/data-exchange/fields';
 import { atOrPast, checkClaimRow, checkWarrantyRow, NOT_RECORDED, openClaimStage, pickPolicy, warrantyStatus } from '../lib/data-exchange/check-warranties';
 import { DATA_INVENTORY } from '../lib/governance/data-inventory';
+import { planSearch, sapNumberQuery } from '../lib/search-plan';
 
 const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
 const TODAY = '2026-11-02';
@@ -171,4 +172,11 @@ test('wired in: old numbers kept, the import’s two people register and verify,
     for (const t of ['warranties', 'warranty_claims']) assert.match(sql, new RegExp(`ALTER TABLE "${t}" ADD COLUMN IF NOT EXISTS "externalId" TEXT`));
     assert.doesNotMatch(sql, /^\s*(DROP|DELETE|TRUNCATE|UPDATE) /im, 'additive only');
   }
+});
+
+test('search: an old number that looks like the start of an EJO reference still finds the SAP record; a complete EJO reference does not ask', () => {
+  const sapAsked = (q: string) => { const p = planSearch(q); return p.kind !== 'prefix' && !(p.kind === 'reference' && p.textScope === 'none') && Boolean(sapNumberQuery(q)); };
+  for (const q of ['W-2024-0412', 'C-2026-0184', 'B-2026-0001', '483203', 'BK-2026-0600']) assert.equal(sapAsked(q), true, q);
+  for (const q of ['WR-2026-000031', 'WC-2026-000004', 'WR']) assert.equal(sapAsked(q), false, q);
+  assert.match(read('lib/actions/search.ts'), /const sapFits = plan\.kind !== 'prefix' && !\(plan\.kind === 'reference' && plan\.textScope === 'none'\);/);
 });
