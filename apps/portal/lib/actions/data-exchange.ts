@@ -42,6 +42,8 @@ import { moveImportedJobCardsToBinInTx, moveImportedPlantToBinInTx, moveImported
 import { checkStaffRows, loadStaffRows, staffTotalsLoaded, staffTotalsOfRows, staffUntouchedSinceImport } from '@/lib/data-exchange/staff-server';
 import { sendStaffAccessEmail } from '@/lib/staff-onboarding';
 import { scopeFor } from '@/lib/authz/catalogue';
+import { checkRoundTripRows, loadRoundTripRows, roundTripChanges, roundTripTotals, undoRoundTripBatch } from '@/lib/data-exchange/round-trip-server';
+import { isRoundTripEntity } from '@/lib/data-exchange/round-trip';
 import { checkPlantKitIssueRows, checkPlantKitRows, checkPlantShipmentRows, checkPlantVehicleRows, isPlantEntity, loadPlantKitIssueRows, loadPlantKitRows, loadPlantShipmentRows, loadPlantVehicleRows, plantTotalsLoaded, plantTotalsOfRows, plantUntouchedSinceImport } from '@/lib/data-exchange/plant-server';
 import { checkOpenServiceRows, loadOpenServiceRows, openServiceTotalsLoaded, openServiceTotalsOfRows, serviceUntouchedSinceImport } from '@/lib/data-exchange/open-services-server';
 import { checkClaimRows, checkWarrantyRows, claimTotalsLoaded, claimTotalsOfRows, claimUntouchedSinceImport, loadClaimRows, loadWarrantyRows, warrantyTotalsLoaded, warrantyTotalsOfRows, warrantyUntouchedSinceImport, type WarrantyImportJob } from '@/lib/data-exchange/warranties-server';
@@ -130,6 +132,7 @@ const financeSigned = (e: string): boolean => Boolean(ENTITIES[asEntity(e)].fina
 const histJob = (j: { id: string; number: string; organisationId: string; branchId: string | null; sourceSystem: string; createdById: string; defaultKind: string | null }): HistoryJob => ({ id: j.id, number: j.number, organisationId: j.organisationId, branchId: j.branchId, sourceSystem: j.sourceSystem, createdById: j.createdById, defaultKind: j.defaultKind });
 const openJobsJob = (j: { id: string; number: string; organisationId: string; branchId: string | null; sourceSystem: string; createdById: string; approvedById: string | null }): OpenJobsJob => ({ id: j.id, number: j.number, organisationId: j.organisationId, branchId: j.branchId, sourceSystem: j.sourceSystem, createdById: j.createdById, approvedById: j.approvedById });
 const warrantyJob = (j: { id: string; number: string; organisationId: string; sourceSystem: string; createdById: string; approvedById: string | null }): WarrantyImportJob => ({ id: j.id, number: j.number, organisationId: j.organisationId, sourceSystem: j.sourceSystem, createdById: j.createdById, approvedById: j.approvedById });
+const roundTripJob = (j: { id: string; number: string; organisationId: string; branchId: string | null; sourceSystem: string; createdById: string; approvedById: string | null }) => ({ id: j.id, number: j.number, organisationId: j.organisationId, branchId: j.branchId, sourceSystem: j.sourceSystem, createdById: j.createdById, approvedById: j.approvedById });
 const invJob = (j: { id: string; number: string; organisationId: string; branchId: string | null; sourceSystem: string; matchMode: string; createdById: string; approvedById: string | null; asOf: Date | null }): InvJob => ({ id: j.id, number: j.number, organisationId: j.organisationId, branchId: j.branchId, sourceSystem: j.sourceSystem, matchMode: j.matchMode, createdById: j.createdById, approvedById: j.approvedById, asOf: j.asOf });
 
 async function nextImportNumber(): Promise<string> {
@@ -191,7 +194,7 @@ export async function listImportJobs(opts: { take?: number; before?: string } = 
 export type ImportJobDetail = ImportJobRow & {
   headers: string[];
   mapping: Mapping | null;
-  matchMode: 'ADD_ONLY' | 'FILL_BLANKS';
+  matchMode: 'ADD_ONLY' | 'FILL_BLANKS' | 'UPDATE';
   sourceSystem: 'SAP' | 'LEGACY';
   possibleDuplicates: 'SKIP' | 'ADD';
   matchedRows: number;
@@ -257,7 +260,7 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
     submittedAt: job.submittedAt, completedAt: job.completedAt, undoneAt: job.undoneAt, error: job.error,
     headers: Array.isArray(job.headers) ? (job.headers as unknown[]).map(String) : [],
     mapping: (job.mapping as Mapping | null) ?? null,
-    matchMode: job.matchMode === 'FILL_BLANKS' ? 'FILL_BLANKS' : 'ADD_ONLY',
+    matchMode: job.matchMode === 'FILL_BLANKS' || job.matchMode === 'UPDATE' ? job.matchMode : 'ADD_ONLY',
     sourceSystem: job.sourceSystem === 'LEGACY' ? 'LEGACY' : 'SAP',
     possibleDuplicates: job.possibleDuplicates === 'ADD' ? 'ADD' : 'SKIP',
     preview: preview.map((r) => ({ rowNumber: r.rowNumber, cells: (r.cells as unknown[]).map((c) => String(c ?? '')) })),
@@ -375,20 +378,24 @@ export async function saveImportMapping(jobId: string, input: { mapping: Record<
   const headers = (job.headers as unknown[]).map(String);
   const mapping = cleanMapping(entity, input.mapping, headers.length);
   const problems = mappingProblems(entity, mapping);
+  // An update from an edited export (P10): only the lists an export writes, and only with the EJO record matched.
+  const matchMode = input.matchMode === 'FILL_BLANKS' ? 'FILL_BLANKS' : input.matchMode === 'UPDATE' && isRoundTripEntity(entity) ? 'UPDATE' : 'ADD_ONLY';
+  if (input.matchMode === 'UPDATE' && !isRoundTripEntity(entity)) problems.push(`Updating from an edited export is for customers, vehicles, parts and suppliers, not ${ENTITIES[entity].plural}.`);
+  if (matchMode === 'UPDATE' && mapping.ejoRecord == null) problems.push('Match the “EJO record” column: each row is found by it, and only by it.');
   if (problems.length) return { problems };
   await prisma.$transaction(async (tx) => {
     const moved = await tx.importJob.updateMany({
       where: { id: job.id, status: job.status },
       data: {
         mapping, status: 'UPLOADED', error: null,
-        matchMode: input.matchMode === 'FILL_BLANKS' ? 'FILL_BLANKS' : 'ADD_ONLY',
+        matchMode,
         sourceSystem: input.sourceSystem === 'LEGACY' ? 'LEGACY' : 'SAP',
         possibleDuplicates: input.possibleDuplicates === 'ADD' ? 'ADD' : 'SKIP',
         goodRows: 0, warningRows: 0, rejectedRows: 0, duplicateRows: 0, matchedRows: 0,
       },
     });
     if (!moved.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
-    if (job.status !== 'UPLOADED') await tx.importRow.updateMany({ where: { jobId: job.id }, data: { status: 'PENDING', issues: Prisma.DbNull, matchedId: null, matchedBy: null, keys: [] } });
+    if (job.status !== 'UPLOADED') await tx.importRow.updateMany({ where: { jobId: job.id }, data: { status: 'PENDING', issues: Prisma.DbNull, matchedId: null, matchedBy: null, keys: [], changes: Prisma.DbNull } });
   }, TX);
   const profileName = String(input.saveAsProfile ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
   if (profileName) {
@@ -399,7 +406,7 @@ export async function saveImportMapping(jobId: string, input: { mapping: Record<
       update: { mapping: saved },
     });
   }
-  await writeAuditLog({ userId, action: 'data_exchange.columns_matched', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, fields: Object.values(mapping).filter((v) => v !== null).length, matchMode: input.matchMode === 'FILL_BLANKS' ? 'fill blanks' : 'add new only', ...(profileName ? { savedAs: profileName } : {}) } });
+  await writeAuditLog({ userId, action: 'data_exchange.columns_matched', entityType: 'ImportJob', entityId: job.id, metadata: { number: job.number, fields: Object.values(mapping).filter((v) => v !== null).length, matchMode: matchMode === 'FILL_BLANKS' ? 'fill blanks' : matchMode === 'UPDATE' ? 'update from an edited export' : 'add new only', ...(profileName ? { savedAs: profileName } : {}) } });
   return { problems: [] };
 }
 
@@ -455,7 +462,9 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
     if (!rows.length) break;
     last = rows[rows.length - 1]!.rowNumber;
     const updates: RowUpdate[] = [];
-    if (isHistoryEntity(entity)) {
+    if (job.matchMode === 'UPDATE' && isRoundTripEntity(entity)) {
+      updates.push(...(await checkRoundTripRows(entity, roundTripJob(job), mapping, rows)));
+    } else if (isHistoryEntity(entity)) {
       updates.push(...(await checkHistoryRows(entity, histJob(job), mapping, rows)));
     } else if (entity === 'openJobs') {
       updates.push(...(await checkOpenJobRows(openJobsJob(job), mapping, rows)));
@@ -550,7 +559,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
 
   // The whole file is checked: the second copy of the same customer or vehicle in the file is a duplicate (the first one loads).
   await prisma.$transaction(async (tx) => {
-    const strong = { staff: ['email', 'emp'], customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'], plantShipments: ['shp', 'bl'], plantVehicles: ['vin'], plantKits: ['vin'], plantKitIssues: ['issue'] }[entity];
+    const strong = { staff: ['email', 'emp'], customers: ['ext', 'email', 'ejo'], vehicles: ['ext', 'vin', 'plate', 'ejo'], suppliers: ['ext', 'name', 'ejo'], parts: ['ext', 'part', 'ejo'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'], plantShipments: ['shp', 'bl'], plantVehicles: ['vin'], plantKits: ['vin'], plantKitIssues: ['issue'] }[entity];
     const dups = await tx.$queryRaw<{ id: string; first: number; key: string }[]>`
       WITH k AS (
         SELECT r.id, r."rowNumber", unnest(r.keys) AS key FROM import_rows r WHERE r."jobId" = ${job.id} AND r.status IN ('GOOD', 'WARNING')
@@ -559,7 +568,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       )
       SELECT DISTINCT ON (k.id) k.id, f.first, k.key FROM k JOIN f ON f.key = k.key WHERE k."rowNumber" > f.first ORDER BY k.id, f.first`;
     if (dups.length) {
-      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', emp: 'employee ID', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number', shp: 'shipment reference', bl: 'bill of lading', issue: 'kit, kind, part, case and description' };
+      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', emp: 'employee ID', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number', shp: 'shipment reference', bl: 'bill of lading', issue: 'kit, kind, part, case and description', ejo: 'EJO record' };
       const existing = await tx.importRow.findMany({ where: { id: { in: dups.map((d) => d.id) } }, select: { id: true, issues: true, keys: true, matchedId: true, matchedBy: true } });
       const byId = new Map(existing.map((e) => [e.id, e]));
       await writeRowResults(tx, dups.map((d) => {
@@ -573,6 +582,11 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
     const matched = await tx.importRow.count({ where: { jobId: job.id, matchedId: { not: null }, status: { in: ['GOOD', 'WARNING'] } } });
     await tx.importJob.updateMany({ where: { id: job.id, status: 'VALIDATING' }, data: { status: 'VALIDATED', goodRows: n('GOOD'), warningRows: n('WARNING'), rejectedRows: n('REJECTED'), duplicateRows: n('DUPLICATE'), matchedRows: entity === 'stock' ? 0 : matched } });
   }, TX);
+  // An update from an edited export: how many records change, and which fields.
+  if (job.matchMode === 'UPDATE' && isRoundTripEntity(entity)) {
+    const check = await roundTripTotals(job.id);
+    await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
+  }
   // Opening stock: the quantity and value that will load, to reconcile against SAP before approving.
   if (entity === 'stock') {
     const check = await stockTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
@@ -729,7 +743,8 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
         if (!rows.length && from > 0) rows = await next(0);
         if (!rows.length) return 0;
         last = rows[rows.length - 1]!.rowNumber;
-        if (isHistoryEntity(entity)) await loadHistoryRows(tx, entity, histJob(job), mapping, rows);
+        if (job.matchMode === 'UPDATE' && isRoundTripEntity(entity)) await loadRoundTripRows(tx, entity, roundTripJob(job), rows);
+        else if (isHistoryEntity(entity)) await loadHistoryRows(tx, entity, histJob(job), mapping, rows);
         else if (entity === 'openJobs') await loadOpenJobRows(tx, openJobsJob(job), mapping, rows);
         else if (entity === 'staff') await loadStaffRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'openServices') await loadOpenServiceRows(tx, openJobsJob(job), mapping, rows);
@@ -1004,7 +1019,8 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
   if (entity === 'staff') await requireOrganisationWideUsers('undoImportBatch');
   if (!['COMPLETED', 'UNDOING'].includes(job.status)) throw new DataExchangeError('Only a finished import can be undone.');
   if (job.status === 'COMPLETED') {
-    const blockers = await undoBlockers(job.id, entity);
+    // An update from an edited export added nothing: nothing can be built on it, and each field is put back on its own.
+    const blockers = job.matchMode === 'UPDATE' ? [] : await undoBlockers(job.id, entity);
     if (blockers.length) return { done: false, left: -1, blockers };
     const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'COMPLETED' }, data: { status: 'UNDOING', undoneById: userId } });
     if (!res.count) throw new DataExchangeError('This import changed meanwhile. Refresh the page.');
@@ -1015,6 +1031,7 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
   for (;;) {
     const did = await prisma.$transaction(async (tx): Promise<number> => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`import:${job.id}`}))`;
+      if (job.matchMode === 'UPDATE' && isRoundTripEntity(entity)) return undoRoundTripBatch(tx, entity, roundTripJob(job), userId, UNDO_BATCH);
       // Opening stock: the opening-balance receipts are reversed one at a time (stock off, receipt gone), then the rows marked.
       if (isHistoryEntity(entity)) return voidHistoryBatch(tx, entity, job.id);
       if (entity === 'stock') {
@@ -1385,4 +1402,13 @@ export async function getDataExchangeTimeline(month?: string): Promise<{ month: 
   }
   events.sort((a, b) => +a.at - +b.at);
   return { month: m, events };
+}
+
+/** An update from an edited export (P10): its changes, a page at a time — previewed before approval, as applied after the load. */
+export async function listImportChanges(jobId: string, page = 0): Promise<{ rows: { rowNumber: number; recordId: string | null; status: string; changes: { field: string; label: string; from: string | number | null; to: string | number | null }[] }[]; more: boolean }> {
+  const [run, approve] = await Promise.all([canRun(), canApprove()]);
+  if (!run && !approve) await authorize('dataexchange.import.run', undefined, 'listImportChanges', 'Only the people who bring records into the system can see an import’s changes.');
+  const job = await myImportJob(jobId);
+  if (job.matchMode !== 'UPDATE') return { rows: [], more: false };
+  return roundTripChanges(job.id, Number.isInteger(page) && page >= 0 && page < 10_000 ? page : 0);
 }

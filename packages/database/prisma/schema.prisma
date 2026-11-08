@@ -4396,6 +4396,9 @@ model ImportRow {
   // The record created or updated from this row, and (FILL_BLANKS) which fields were filled — what an undo reverses.
   resultId  String?
   filled    String[] @default([])
+  // An update from an edited export (matchMode UPDATE, P10): each change [{ field, label, from, to }] — previewed at the
+  // check, what loaded after the load (a field changed in EJO meanwhile is left out), and what an undo puts back.
+  changes   Json?
 
   job ImportJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
 
