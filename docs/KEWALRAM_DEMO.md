@@ -135,9 +135,9 @@ the staff password otherwise.
   where their role says so (the Executive, the Administrator), and the
   Finance Officer at Headquarters can look at every branch's money but
   confirm none of it — money stays with the branch that earned it.
-- **Isolo** people are fenced to Isolo: a technician sees only the jobs
-  assigned to them; the Branch Administrator manages Isolo's people and
-  cannot see the plant.
+- **Isolo** people are fenced to Isolo: a technician sees the branch's job
+  cards but works only on those assigned to them; the Branch Administrator
+  manages Isolo's people and cannot see the plant's.
 - **Afprint** people are fenced to the plant: a line operator records
   their station's checks and cannot open a job card; the gate is passed by
   quality, never by the person who recorded the check.

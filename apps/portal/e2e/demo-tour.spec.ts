@@ -53,7 +53,7 @@ async function demoJob(where: Record<string, unknown>) {
   return db().jobCard.findFirstOrThrow({ where: { customer: { organisationId: org.id, externalSource: 'EJO-DEMO' }, ...where }, orderBy: { createdAt: 'desc' }, select: { id: true, jobNumber: true } });
 }
 
-test('branch fences on real demo records: the plant’s store officer cannot open an Isolo job card, a technician cannot open another’s; Headquarters’ Finance can', async ({ page }) => {
+test('branch fences on real demo records: the plant’s store officer and a line operator cannot open an Isolo job card; Headquarters’ Finance can', async ({ page }) => {
   test.setTimeout(150_000);
   const commercialTech = await db().user.findUniqueOrThrow({ where: { email: demoPerson('technician', 'ISOLO').email.replace('tech.passenger', 'tech.commercial') }, select: { id: true } });
   const job = await demoJob({ assignedTechnicianId: commercialTech.id, status: { in: ['IN_PROGRESS', 'READY_FOR_COLLECTION', 'CHECKED_OUT'] } });
@@ -66,7 +66,7 @@ test('branch fences on real demo records: the plant’s store officer cannot ope
     if (!denied) await expect(page.getByRole('link', { name: 'Back to the dashboard' })).toBeVisible();
   };
   await refused(DEMO_STAFF.find((s) => s.email.startsWith('kit.store@'))!.email); // Afprint: another branch
-  await refused(DEMO_STAFF.find((s) => s.email.startsWith('tech.passenger@'))!.email); // Isolo, but not his job
+  await refused(DEMO_STAFF.find((s) => s.email.startsWith('operator.1@'))!.email); // Afprint, and no workshop at all
   await page.context().clearCookies();
   await signIn(page, DEMO_STAFF.find((s) => s.email.startsWith('finance.hq@'))!.email, DEMO_E2E_PASSWORD);
   await gotoSettled(page, `/workshop/job-cards/${job.id}`);
