@@ -38,10 +38,11 @@ import { PAUSED_FOR_SPACE, importFits, shouldPauseLoad, stagingFits, type Space 
 import { checkHistoryRows, invoiceTotalsLoaded, invoiceTotalsOfRows, isHistoryEntity, jobTotalsOfRows, loadHistoryRows, voidHistoryBatch, type HistoryJob } from '@/lib/data-exchange/history-server';
 import { checkInventoryRows, isInventoryEntity, loadInventoryRows, reverseStockBatch, stockReversalBlockers, stockTotalsOfRows, type InvJob } from '@/lib/data-exchange/inventory-server';
 import { checkOpenJobRows, loadOpenJobRows, openJobTotalsLoaded, openJobTotalsOfRows, untouchedSinceImport, type OpenJobsJob } from '@/lib/data-exchange/open-jobs-server';
-import { moveImportedJobCardsToBinInTx, moveImportedServicesToBinInTx, moveImportedStaffToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
+import { moveImportedJobCardsToBinInTx, moveImportedPlantToBinInTx, moveImportedServicesToBinInTx, moveImportedStaffToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
 import { checkStaffRows, loadStaffRows, staffTotalsLoaded, staffTotalsOfRows, staffUntouchedSinceImport } from '@/lib/data-exchange/staff-server';
 import { sendStaffAccessEmail } from '@/lib/staff-onboarding';
 import { scopeFor } from '@/lib/authz/catalogue';
+import { checkPlantKitIssueRows, checkPlantKitRows, checkPlantShipmentRows, checkPlantVehicleRows, isPlantEntity, loadPlantKitIssueRows, loadPlantKitRows, loadPlantShipmentRows, loadPlantVehicleRows, plantTotalsLoaded, plantTotalsOfRows, plantUntouchedSinceImport } from '@/lib/data-exchange/plant-server';
 import { checkOpenServiceRows, loadOpenServiceRows, openServiceTotalsLoaded, openServiceTotalsOfRows, serviceUntouchedSinceImport } from '@/lib/data-exchange/open-services-server';
 import { checkClaimRows, checkWarrantyRows, claimTotalsLoaded, claimTotalsOfRows, claimUntouchedSinceImport, loadClaimRows, loadWarrantyRows, warrantyTotalsLoaded, warrantyTotalsOfRows, warrantyUntouchedSinceImport, type WarrantyImportJob } from '@/lib/data-exchange/warranties-server';
 import { keyVal, newId, writeLoadResults, writeRowResults, type JobForLoad, type LoadRow, type Result, type RowUpdate } from '@/lib/data-exchange/rows-server';
@@ -207,7 +208,7 @@ export type ImportJobDetail = ImportJobRow & {
   sameFileBefore: { id: string; number: string; status: string } | null;
   branch: { id: string; name: string } | null;
   asOf: Date | null;
-  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; bookings?: number; inWorkshop?: number; noRole?: number; branches?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
+  totals: { check?: { lines: number; quantity: number; value: number; estimates?: number; vehicles?: number; parts?: number; notActive?: number; bookings?: number; inWorkshop?: number; counts?: Record<string, number>; noRole?: number; branches?: number; accepted?: number; withProvider?: number; from?: string | null; to?: string | null }; loaded?: { lines: number; quantity: number; value: number }; receipts?: { id: string; number: string }[] } | null;
   signedOff: { by: string; at: Date } | null;
   /** A staff import (P7): its accounts now, and how many have been invited. */
   staffAccounts: { accounts: number; invited: number } | null;
@@ -462,6 +463,14 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       updates.push(...(await checkStaffRows(warrantyJob(job), mapping, rows)));
     } else if (entity === 'openServices') {
       updates.push(...(await checkOpenServiceRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'plantShipments') {
+      updates.push(...(await checkPlantShipmentRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'plantVehicles') {
+      updates.push(...(await checkPlantVehicleRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'plantKits') {
+      updates.push(...(await checkPlantKitRows(openJobsJob(job), mapping, rows)));
+    } else if (entity === 'plantKitIssues') {
+      updates.push(...(await checkPlantKitIssueRows(openJobsJob(job), mapping, rows)));
     } else if (entity === 'warranties') {
       updates.push(...(await checkWarrantyRows(warrantyJob(job), mapping, rows)));
     } else if (entity === 'claims') {
@@ -541,7 +550,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
 
   // The whole file is checked: the second copy of the same customer or vehicle in the file is a duplicate (the first one loads).
   await prisma.$transaction(async (tx) => {
-    const strong = { staff: ['email', 'emp'], customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'] }[entity];
+    const strong = { staff: ['email', 'emp'], customers: ['ext', 'email'], vehicles: ['ext', 'vin', 'plate'], suppliers: ['ext', 'name'], parts: ['ext', 'part'], stock: ['line', 'serial'], invoices: ['inv'], jobs: ['job'], openJobs: ['job', 'vin', 'plate'], openServices: ['svc', 'vin', 'plate'], warranties: ['wty'], claims: ['claim'], registers: ['check'], plantShipments: ['shp', 'bl'], plantVehicles: ['vin'], plantKits: ['vin'], plantKitIssues: ['issue'] }[entity];
     const dups = await tx.$queryRaw<{ id: string; first: number; key: string }[]>`
       WITH k AS (
         SELECT r.id, r."rowNumber", unnest(r.keys) AS key FROM import_rows r WHERE r."jobId" = ${job.id} AND r.status IN ('GOOD', 'WARNING')
@@ -550,7 +559,7 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
       )
       SELECT DISTINCT ON (k.id) k.id, f.first, k.key FROM k JOIN f ON f.key = k.key WHERE k."rowNumber" > f.first ORDER BY k.id, f.first`;
     if (dups.length) {
-      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', emp: 'employee ID', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number' };
+      const words: Record<string, string> = { ext: entity === 'parts' ? 'part number (SAP material number)' : entity === 'suppliers' ? 'supplier number' : 'customer number', email: 'email', vin: 'chassis number', plate: 'plate', name: 'name', part: 'part number', line: 'part, batch and storage location', serial: 'serial number', inv: 'invoice number', check: 'register, chassis number, date and station', job: 'job number', emp: 'employee ID', svc: 'booking or service number', wty: 'warranty number', claim: 'claim number', shp: 'shipment reference', bl: 'bill of lading', issue: 'kit, kind, part, case and description' };
       const existing = await tx.importRow.findMany({ where: { id: { in: dups.map((d) => d.id) } }, select: { id: true, issues: true, keys: true, matchedId: true, matchedBy: true } });
       const byId = new Map(existing.map((e) => [e.id, e]));
       await writeRowResults(tx, dups.map((d) => {
@@ -582,6 +591,11 @@ export async function checkImportBatch(jobId: string, after = 0): Promise<{ done
   // Warranties: how many, on vehicles and parts, still in force. Open claims: how many, the amount claimed and accepted.
   if (entity === 'staff') {
     const check = await staffTotalsOfRows(job.id, mapping, ['GOOD', 'WARNING']);
+    await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
+  }
+  // The plant: how many shipments, vehicles by stage, kits and issues by status — to compare with SAP and the plant's registers.
+  if (isPlantEntity(entity)) {
+    const check = await plantTotalsOfRows(entity, job.id, mapping, ['GOOD', 'WARNING']);
     await prisma.importJob.update({ where: { id: job.id }, data: { totals: { check } } });
   }
   if (entity === 'openServices') {
@@ -719,6 +733,10 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
         else if (entity === 'openJobs') await loadOpenJobRows(tx, openJobsJob(job), mapping, rows);
         else if (entity === 'staff') await loadStaffRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'openServices') await loadOpenServiceRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'plantShipments') await loadPlantShipmentRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'plantVehicles') await loadPlantVehicleRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'plantKits') await loadPlantKitRows(tx, openJobsJob(job), mapping, rows);
+        else if (entity === 'plantKitIssues') await loadPlantKitIssueRows(tx, openJobsJob(job), mapping, rows);
         else if (entity === 'warranties') await loadWarrantyRows(tx, warrantyJob(job), mapping, rows);
         else if (entity === 'claims') await loadClaimRows(tx, warrantyJob(job), mapping, rows);
         else if (isInventoryEntity(entity)) await loadInventoryRows(tx, entity, invJob(job), mapping, rows);
@@ -756,6 +774,7 @@ export async function loadImportBatch(jobId: string, after = 0): Promise<{ done:
   if (entity === 'openJobs') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openJobTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'staff') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await staffTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'openServices') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await openServiceTotalsLoaded(job.id) } as Prisma.InputJsonValue;
+  if (isPlantEntity(entity)) totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await plantTotalsLoaded(entity, job.id) } as Prisma.InputJsonValue;
   if (entity === 'warranties') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await warrantyTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   if (entity === 'claims') totals = { ...((job.totals as Record<string, unknown> | null) ?? {}), loaded: await claimTotalsLoaded(job.id) } as Prisma.InputJsonValue;
   const res = await prisma.importJob.updateMany({ where: { id: job.id, status: 'LOADING' }, data: { ...data, ...(totals ? { totals } : {}), status: 'COMPLETED', completedAt: new Date(), error: null } });
@@ -939,7 +958,7 @@ async function undoBlockers(jobId: string, entity: EntityKey): Promise<{ label: 
   // History is read-only and nothing is built on it: undoing voids it (kept, restored by loading the file again).
   if (isHistoryEntity(entity)) return [];
   // Open job cards, warranties and claims: the undo itself keeps (and reports) any that have been worked on since.
-  if (entity === 'staff' || entity === 'openJobs' || entity === 'openServices' || entity === 'warranties' || entity === 'claims') return [];
+  if (entity === 'staff' || entity === 'openJobs' || entity === 'openServices' || entity === 'warranties' || entity === 'claims' || isPlantEntity(entity)) return [];
   if (entity === 'parts') {
     const busy = await prisma.part.findMany({
       where: { importJobId: jobId, OR: [{ goodsReceiptLines: { some: {} } }, { batches: { some: {} } }, { serials: { some: {} } }, { quantityConsumptions: { some: {} } }, { requestSlipLines: { some: {} } }, { matchedOnEstimateLines: { some: {} } }, { matchedOnServiceEstimateLines: { some: {} } }, { warranties: { some: {} } }] },
@@ -1020,6 +1039,10 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         if (entity === 'staff') return tx.user.findMany({ where, select: { id: true } });
         if (entity === 'warranties') return tx.warranty.findMany({ where, select: { id: true } });
         if (entity === 'claims') return tx.warrantyClaim.findMany({ where, select: { id: true } });
+        if (entity === 'plantShipments') return tx.plantShipment.findMany({ where, select: { id: true } });
+        if (entity === 'plantVehicles') return tx.plantVehicle.findMany({ where, select: { id: true } });
+        if (entity === 'plantKits') return tx.plantKit.findMany({ where, select: { id: true } });
+        if (entity === 'plantKitIssues') return tx.plantKitIssue.findMany({ where, select: { id: true } });
         return tx.supplier.findMany({ where, select: { id: true } });
       };
       const mine = new Set((await mineOf()).map((x) => x.id));
@@ -1040,6 +1063,13 @@ export async function undoImportBatch(jobId: string): Promise<{ done: boolean; l
         const quiet: string[] = [];
         for (const id of mine) if (await serviceUntouchedSinceImport(tx, id, job.id)) quiet.push(id);
         moved = new Set(await moveImportedServicesToBinInTx(tx, quiet, job.id, `Undo of import ${job.number}`, userId));
+      } else if (isPlantEntity(entity)) {
+        // The plant: to the bin only what nobody has touched since and nothing hangs on (a shipment with kits, a kit with
+        // issues, a vehicle a kit is linked to stays: undo the later file first).
+        const loadedAt = job.completedAt ?? new Date(0);
+        const quiet: string[] = [];
+        for (const id of mine) if (await plantUntouchedSinceImport(tx, entity, id, job.id, loadedAt)) quiet.push(id);
+        moved = new Set(await moveImportedPlantToBinInTx(tx, entity, quiet, job.id, `Undo of import ${job.number}`, userId));
       } else if (entity === 'warranties' || entity === 'claims') {
         // Warranties and claims: to the bin, each restorable on its own, only those nobody has used since the import
         // (a warranty with a claim on it stays: undo the claims import first).
@@ -1190,10 +1220,10 @@ export async function reopenUndoneImport(jobId: string): Promise<void> {
 }
 
 /** The branches an import can load into (parts, stock, invoices): the person's own organisation's branches that keep a store (lib/branch-types.ts) — never an assembly plant. */
-export async function listImportBranches(area: 'store' | 'workshop' = 'store'): Promise<{ id: string; name: string }[]> {
+export async function listImportBranches(area: 'store' | 'workshop' | 'plant' = 'store'): Promise<{ id: string; name: string }[]> {
   await authorize('dataexchange.import.run', undefined, 'listImportBranches', 'Only the people who bring records into the system can start an import.');
   const { organisationId } = await exchangeOrg();
-  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area === 'workshop' ? 'workshop' : 'store'] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
 }
 
 async function staffAccountsOf(jobId: string): Promise<{ accounts: number; invited: number }> {

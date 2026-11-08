@@ -265,6 +265,31 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">A booking waits for its customer on its day and time, for the front desk to check in; a service in the workshop carries on at its stage, accepted before EJO. Old numbers are kept. Nobody is emailed. Compare the bookings with the old diary before sending it for approval.</p>
             </div>
           ) : null}
+          {(job.entity === 'plantShipments' || job.entity === 'plantVehicles' || job.entity === 'plantKits' || job.entity === 'plantKitIssues') && job.totals?.check ? (() => {
+            const t = job.totals.check;
+            const c = t.counts ?? {};
+            const n = (k: string, one: string, many: string) => (c[k] ? `${nf(c[k]!)} ${c[k] === 1 ? one : many}` : null);
+            const parts = job.entity === 'plantVehicles'
+              ? [n('LINE', 'on the line', 'on the line'), n('QA', 'in quality audit', 'in quality audit'), n('PDI', 'waiting for PDI', 'waiting for PDI'), n('YARD', 'in the yard', 'in the yard')]
+              : job.entity === 'plantKits'
+                ? [n('ARRIVED', 'arrived', 'arrived'), n('INSPECTING', 'being inspected', 'being inspected'), n('SUBMITTED', 'waiting for release', 'waiting for release'), n('ON_HOLD', 'on hold', 'on hold'), n('RELEASED', 'released', 'released'), n('REJECTED', 'rejected', 'rejected')]
+                : job.entity === 'plantKitIssues'
+                  ? [n('OPEN', 'open', 'open'), n('CLAIMED', 'claimed from the supplier', 'claimed from the supplier'), n('RESOLVED', 'resolved', 'resolved'), c.STOPS_LINE ? `${nf(c.STOPS_LINE)} still stopping the line` : null]
+                  : [t.from && t.to ? `arrived ${day(t.from)} to ${day(t.to)}` : null];
+            const noun = { plantShipments: ['shipment', 'shipments'], plantVehicles: ['vehicle', 'vehicles'], plantKits: ['kit', 'kits'], plantKitIssues: ['kit issue', 'kit issues'] }[job.entity as 'plantShipments' | 'plantVehicles' | 'plantKits' | 'plantKitIssues'];
+            const why = {
+              plantShipments: 'Each becomes an EJO shipment (SHP number), its old reference kept for the kits file. Load the plant vehicles next, then the kits, then the kit issues.',
+              plantVehicles: 'On the line, each takes the plant’s route: the stations before its current one done before EJO, the current one under way. Past the line, the gate is recorded as passed before EJO (nobody in EJO is named as passing it).',
+              plantKits: 'Each comes onto its shipment with its model’s arrival checklist; a kit checked before EJO has its checks recorded as done then. A released kit is linked to its vehicle in the plant.',
+              plantKitIssues: 'Each comes onto its kit as it stood, so the line knows what is still missing. Compare with the plant’s shortage register before sending it for approval.',
+            }[job.entity as 'plantShipments' | 'plantVehicles' | 'plantKits' | 'plantKitIssues'];
+            return (
+              <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="plant-import-totals">
+                <p className="font-medium">To bring into {job.branch?.name ?? 'the plant'}: {nf(t.lines)} {t.lines === 1 ? noun[0] : noun[1]}{parts.filter(Boolean).length ? ` · ${parts.filter(Boolean).join(' · ')}` : ''}</p>
+                <p className="mt-0.5 text-xs text-[var(--ejo-text-muted)]">{why} Nobody is emailed.</p>
+              </div>
+            );
+          })() : null}
           {job.entity === 'warranties' && job.totals?.check ? (
             <div className="mt-3 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-primary)]/30 bg-[var(--ejo-primary)]/5 p-3 text-sm text-[var(--ejo-text)]" data-testid="warranty-import-totals">
               <p className="font-medium">To bring in: {nf(job.totals.check.lines)} warranties ({nf(job.totals.check.vehicles ?? 0)} on vehicles, {nf(job.totals.check.parts ?? 0)} on parts) {job.totals.check.notActive ? ` · ${nf(job.totals.check.notActive)} suspended, void or transferred` : ''}{job.totals.check.from && job.totals.check.to ? ` · started ${day(job.totals.check.from)} to ${day(job.totals.check.to)}` : ''}</p>

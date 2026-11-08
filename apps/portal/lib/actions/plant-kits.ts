@@ -71,7 +71,9 @@ async function nextNumbers(prefixWord: 'SHP' | 'KIT', count: number, tx: Prisma.
   const rows = prefixWord === 'SHP'
     ? await tx.plantShipment.findMany({ where: { number: { startsWith: prefix } }, select: { number: true }, orderBy: { number: 'desc' }, take: 1 })
     : await tx.plantKit.findMany({ where: { number: { startsWith: prefix } }, select: { number: true }, orderBy: { number: 'desc' }, take: 1 });
-  const start = highestSequence(prefix, rows.map((r) => r.number)) + 1;
+  // Numbers held by binned records (an undone plant import, P8) stay reserved too.
+  const binned = await tx.recycleBinItem.findFirst({ where: { entityType: prefixWord === 'SHP' ? 'PlantShipment' : 'PlantKit', reference: { startsWith: prefix } }, orderBy: { reference: 'desc' }, select: { reference: true } });
+  const start = highestSequence(prefix, [...rows.map((r) => r.number), binned?.reference]) + 1;
   return Array.from({ length: count }, (_, i) => `${prefix}${String(start + i).padStart(6, '0')}`);
 }
 

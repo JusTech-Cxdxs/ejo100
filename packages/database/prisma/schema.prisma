@@ -4726,6 +4726,9 @@ model PlantVehicle {
   @@unique([organisationId, vinKey])
   @@index([organisationId, stage])
   @@index([branchId])
+  // The import that brought it in from SAP or the plant's registers (P8): its undo moves only this import's records to the bin.
+  importJobId String?
+  @@index([importJobId])
   @@map("plant_vehicles")
 }
 
@@ -4806,6 +4809,9 @@ model PlantShipment {
   @@index([organisationId, arrivedAt])
   @@index([branchId])
   @@index([organisationId, externalSource])
+  // The import that brought it in from SAP or the plant's registers (P8): its undo moves only this import's records to the bin.
+  importJobId String?
+  @@index([importJobId])
   @@map("plant_shipments")
 }
 
@@ -4866,6 +4872,9 @@ model PlantKit {
   @@index([shipmentId])
   @@index([branchId, status])
   @@index([organisationId, externalSource])
+  // The import that brought it in from SAP or the plant's registers (P8): its undo moves only this import's records to the bin.
+  importJobId String?
+  @@index([importJobId])
   @@map("plant_kits")
 }
 
@@ -4917,6 +4926,9 @@ model PlantKitIssue {
 
   @@index([kitId])
   @@index([organisationId, status])
+  // The import that brought it in from SAP or the plant's registers (P8): its undo moves only this import's records to the bin.
+  importJobId String?
+  @@index([importJobId])
   @@map("plant_kit_issues")
 }
 

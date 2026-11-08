@@ -573,7 +573,45 @@ the records and have no sign-in).
    [DATA_MIGRATION.md](DATA_MIGRATION.md)).
 4. The same six weeks are in `docs/demo/correct/` as files
    (`10_plant_shipments_demo.csv` … `13_plant_vehicles_demo.csv`), in the
-   layouts the plant records import reads.
+   layouts the plant records import reads — the next section loads them
+   that way instead.
+
+## 13b. The plant's records at the cut-over: four files (P8)
+
+*The question: "our plant is already running — how do the kits on the
+floor and the trucks on the line get into EJO?"*
+
+People: the **IT Administrator** prepares, the **Plant Manager** approves.
+Use an organisation without the plant demo loaded (the files are the same
+VINs), with the staff of 19 in first (§0: the inspectors and deciders are
+named by employee ID).
+
+1. **Data Exchange → Plant shipments**, into **Afprint Assembly Plant**:
+   upload `docs/demo/with-mistakes/10_plant_shipments_demo.csv`. The check
+   refuses a shipment with no supplier and one arriving in 2027, marks the
+   same shipment twice, and says what will load: *To bring into Afprint
+   Assembly Plant: 12 shipments · arrived …*. Send for approval; sign in as
+   the Plant Manager, approve and load. Each is an SHP shipment, its old
+   reference (SHP1…) kept.
+2. **Plant vehicles** — `13_plant_vehicles_demo.csv`: a sold vehicle, a
+   vehicle waiting for PDI with no gate day and a D-MAX are refused. The
+   totals count them by stage (on the line, in quality audit, waiting for
+   PDI, in the yard). Load: **The line** shows the three on the line at
+   their stations, the ones before done *before EJO*; a yard vehicle's page
+   shows every station passed and the gate passed before EJO.
+3. **Plant kits** — `11_plant_kits_demo.csv`: a cancelled kit is refused and
+   a shipment not in file 10 (SHP77) is refused against what EJO holds.
+   Load: **Kits** shows the ones still to check and the one on hold; a
+   released kit's page shows its checklist *Checked before EJO* and its
+   vehicle; the released kits still waiting for a line slot say so.
+4. **Plant kit issues** — `12_plant_kit_issues_demo.csv`: a kind EJO does
+   not know, an issue with no description and one on a kit EJO does not
+   have are refused. Load: the open shortages are back on their kits, the
+   line-stoppers marked.
+5. **Undo, in reverse.** Undo the kits import first: the kits with issues
+   stay (*kept*) and the others go to the Recycle bin. Undo the issues,
+   then restore a kit from **Recycle bin** — it comes back with its
+   checklist and its KIT number.
 
 ## 14. Sign in as anyone: the demo people (D1)
 

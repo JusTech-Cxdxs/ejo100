@@ -44,6 +44,7 @@ finished (section 9a).
 | Workshop manager | — | Customers, vehicles and invoice history of their branch; production / QC / PDI registers |
 | Customer care lead | — | Customers, vehicles and invoice history |
 | Store manager | — | Suppliers, parts and opening stock of their branch |
+| Plant manager | — | The plant's shipments, vehicles, kits and kit issues (§7b2) |
 | Finance officer | — | — · **confirms the totals** of loaded opening stock and invoice history |
 | Everyone else (front desk, technicians, security…) | — | — |
 
@@ -597,8 +598,86 @@ list is `docs/demo/correct/09_kit_packing_list_demo.csv`; the copy in
 **The line is recorded, not imported (D3).** Station visits, defects and QA
 audits are made on the tablet as the vehicle goes down the line; past
 production history comes in as register rows (above) and the plant records
-import (PR 8). The three lists leave as exports — **Line stations**, **Line
+import (§7b2): the vehicles on the line at the cut-over, at their station. The three lists leave as exports — **Line stations**, **Line
 defects**, **QA audits** — with SAP names ([SAP_INTEGRATION.md](SAP_INTEGRATION.md)).
+
+## 7b2. The plant's records at the cut-over (P8)
+
+What is already at the assembly plant on the day it starts using EJO, from
+SAP or the plant's own registers, in four files loaded **in this order**
+(each names what the one before brought in), each into the chosen assembly
+plant. Prepared by whoever brings records in (the IT Administrator, a
+branch administrator); approved by the **Plant Manager** (or an
+administrator) — approving needs the right to release kits. Nobody is
+emailed, and nothing is written into the records' own history: any step
+recorded on them afterwards, on the desk or the line, counts as use.
+
+1. **Plant shipments** — each becomes an EJO shipment with its own SHP
+   number; its old reference is kept (the kits file names the shipment by
+   it, or by the SHP number). Supplier and arrival (*15.09.2026* or
+   *2026-09-15 08:30*, Lagos time, never in the future) are required; the
+   same bill of lading twice is the same shipment.
+2. **Plant vehicles** — the vehicles being built, audited, waiting for PDI
+   or in the yard:
+
+   | In the file | EJO |
+   | --- | --- |
+   | LINE, On the line, Assembly | **on the line**, at its *Current station* (empty: the first) |
+   | QA, Quality audit | in quality audit |
+   | PDI, Waiting for PDI | waiting for PDI |
+   | YARD, In the yard, Finished, PDI passed | in the yard |
+   | KIT | **refused** — a kit not released yet is in the kits file |
+   | SOLD, Delivered | **refused** — the customer's vehicle (§4, with its warranty) |
+
+   On the line, a vehicle takes the plant's **live route** for its family
+   (or the default route): the stations before its current one are done
+   *before EJO*, the current one is under way, the rest are to come — the
+   line board picks it up from there. Past the line, every station is done
+   and the gate is recorded as passed *before EJO* on its *Gate passed*
+   day (required), with nobody in EJO named as passing it. A station not on
+   the route is refused, with the route's stations listed.
+3. **Plant kits** — the packing lists: VIN, engine number, model (NQR, NPR,
+   QLR, QMR, S07), lot, kit type (empty: the model's usual, CKD or SKD),
+   cases, and where each stands — *Arrived* (the default), *Inspecting*,
+   *Submitted* (waiting for release), *On hold*, *Released*, *Rejected*;
+   *Cancelled* is refused (it never came). Each takes its model's arrival
+   checklist: a kit checked before EJO has every check recorded as *OK —
+   Checked before EJO* (nobody in EJO answered them), one still to check
+   has them open. A **released** kit is linked to its vehicle from file 2;
+   one with no vehicle yet waits for its slot on the line (a note). A kit
+   whose VIN is already a vehicle in the plant must be *Released*. The
+   inspector and the decider are matched by employee ID (a name is tried);
+   the same person as both is a note, since EJO never allows that from now on.
+4. **Plant kit issues** — the shortages, damage, wrong parts and excess
+   raised before EJO, on their kit by its VIN: *Open*, *Claimed* (from the
+   supplier, with its claim reference) or *Resolved*; *Stops the line*
+   marks the ones the vehicle cannot be built without. Raised by: by
+   employee ID or name (empty: the person who approves the import).
+
+Each file shows what will load before it is sent for approval (shipments
+and their arrival days; vehicles by stage; kits and issues by status, and
+the issues still stopping the line), to compare with SAP and the plant's
+registers.
+
+**Undo goes in reverse** (issues, kits, vehicles, shipments): each record
+nobody has used since goes to the Recycle bin as its own item — a vehicle
+with its station visits, a kit with its checklist — and restores whole,
+with its number. One that has been used since (any audited step, a change,
+a station recorded on the line, a PDI, a defect, an audit) is kept and
+reported; so is one something else now hangs on (a shipment with kits, a
+kit with issues, a vehicle a kit is linked to): undo the later file first.
+SHP and KIT numbers held in the bin are never given out again.
+
+Demo: `docs/demo/correct/10_plant_shipments_demo.csv`,
+`13_plant_vehicles_demo.csv`, `11_plant_kits_demo.csv`,
+`12_plant_kit_issues_demo.csv` — the plant demo's six weeks (§7b) as files,
+into Afprint Assembly Plant (use the files or the demo load, not both:
+they are the same VINs). `with-mistakes/` adds a shipment with no supplier,
+the same shipment twice, an arrival in the future, a sold vehicle, the same
+VIN twice, a vehicle waiting for PDI with no gate day, a model the plant
+does not build, a cancelled kit, a shipment not in the file, a kind EJO
+does not know, an issue with no description and an issue on a kit EJO does
+not have.
 
 ## 7b. The plant demo: six weeks in one tap
 
@@ -644,7 +723,7 @@ no real person or vehicle in it).
   `12_plant_kit_issues_demo.csv`, `13_plant_vehicles_demo.csv` (Lagos
   times, a `Branch` column, SAP names where SAP has them: EBELN, VBELN,
   PRUEFLOS, MBLNR, WERKS, MATNR, AUFNR, EQUNR). They are the layouts the
-  plant records import (PR 8) reads and the exports write.
+  plant records import reads (§7b2) and the exports write.
 
 ## 7c. Undoing history
 

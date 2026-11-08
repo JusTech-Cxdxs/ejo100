@@ -18,7 +18,11 @@ this order (later files refer to earlier ones):
 6d. `17_SAP_open_claims_demo.csv` — Open warranty claims at the cut-over: eight claims on the warranties of 16 still in force, one at every open stage, from a draft to one accepted and one rejected; they become live EJO claims
 7. `07_PDI_register_demo.xlsx` and `08_production_QC_register_demo.csv` — Registers
 8. `09_kit_packing_list_demo.csv` — not an import: open it, copy the lines and paste them into **Assembly plant → Record a shipment** (12 kits: 8 Isuzu, 4 Soueast S07)
-9. `10_plant_shipments_demo.csv`, `11_plant_kits_demo.csv`, `12_plant_kit_issues_demo.csv`, `13_plant_vehicles_demo.csv` — the plant's six demo weeks as files (the same records `npm run demo:reset` loads straight into the plant, as of a fixed Friday). They are the layouts the plant records import reads; until that import lands, load the demo with the reset instead.
+9. The plant's records, into **Afprint Assembly Plant** (staff from 19 first: the inspectors and deciders are named by employee ID), in this order — the same six demo weeks `npm run demo:reset` loads straight into the plant, as of a fixed Friday (use one or the other, not both):
+   1. `10_plant_shipments_demo.csv` — Plant shipments: each becomes an EJO shipment (SHP number), its old reference kept
+   2. `13_plant_vehicles_demo.csv` — Plant vehicles: on the line (with their current station), in quality audit, waiting for PDI and in the yard
+   3. `11_plant_kits_demo.csv` — Plant kits: on their shipments, from arrived to released (linked to their vehicle from 13) or rejected
+   4. `12_plant_kit_issues_demo.csv` — Plant kit issues: shortages and damage, open, claimed from the supplier or resolved
 
 Real events are part of the story and load as they are: a PDI that failed and
 was re-inspected, a QC rework, credit notes (G2). The same files with planted
