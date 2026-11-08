@@ -176,6 +176,17 @@ record reaches the Recycle bin (governance inventory: `recycleBin:
 'IMPORT_UNDO'`), and restoring needs the Recycle bin right as for anything
 else.
 
+### The cut-over checklist (P9)
+
+Anyone with a Data Exchange right (`dataexchange.import.run` or
+`.approve`) sees every branch's checklist in their organisation. Marking a
+step not needed, signing a branch off as cut over and reopening it need
+`dataexchange.import.approve` **at that branch** (the Manager at a
+workshop, the Plant Manager at the plant, an administrator anywhere), a
+reason for every mark but the sign-off, and are refused during an assisted
+session. Each is an audit entry, never edited; the sign-off is refused
+while any step is unsettled.
+
 ### The plant demo (P3)
 
 Loading or removing the demo records needs `admin.structure.manage` (an
