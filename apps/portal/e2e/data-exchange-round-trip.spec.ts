@@ -58,7 +58,9 @@ test('the check: found by the EJO record, every change previewed, the same value
   await expect(changes).toContainText('Address: 3 Old Road, Ikeja → 12 New Road, Ikeja');
   await expect(changes).toContainText('Customer since: (empty) → 2019-03-14');
   await expect(changes).toContainText(`Name: Round Trip ${STAMP} 2 → Round Trip ${STAMP} Two Ltd`);
-  await expect(changes).not.toContainText('Phone: 0803');
+  await expect(changes).toContainText(`Phone: 0803${STAMP.slice(0, 6)}2 → 0809 000 1111`);
+  // a's phone written the international way is no change.
+  await expect(changes).not.toContainText(`Phone: 0803${STAMP.slice(0, 6)}1`);
   // Nothing has changed yet.
   expect((await db().customer.findUniqueOrThrow({ where: { id: ids.a } })).address).toBe('3 Old Road, Ikeja');
   await page.getByRole('button', { name: /Send for approval/ }).click();
