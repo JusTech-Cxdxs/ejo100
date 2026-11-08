@@ -1,11 +1,14 @@
 /** Data Exchange — the downloadable templates for each kind of record. Pure. */
 import { toCsv } from '../hq-core';
-import { ENTITIES, type EntityKey } from './fields';
+import { ENTITIES, type EntityDef, type EntityKey } from './fields';
+
+/** The entity as its template shows it: without the columns only an edited export carries (the EJO record). */
+const templateDef = (entity: EntityKey): EntityDef => ({ ...ENTITIES[entity], fields: ENTITIES[entity].fields.filter((f) => !f.roundTrip) });
 import type { SheetSpec } from './xlsx-writer';
 
 /** The Excel template: a Data sheet (headers, one example row, dropdowns) and an Instructions sheet. */
 export function templateSheets(entity: EntityKey, organisationName: string): SheetSpec[] {
-  const def = ENTITIES[entity];
+  const def = templateDef(entity);
   const data: SheetSpec = {
     name: def.label,
     header: true,
@@ -35,6 +38,6 @@ export function templateSheets(entity: EntityKey, organisationName: string): She
 
 /** The CSV template: the headers and the example row. */
 export function templateCsv(entity: EntityKey): string {
-  const def = ENTITIES[entity];
+  const def = templateDef(entity);
   return toCsv(def.fields.map((f) => f.label), [def.fields.map((f) => f.example)]);
 }

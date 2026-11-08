@@ -636,6 +636,26 @@ People: the **Plant Manager** (or the Manager at Isolo, or an administrator).
 5. Sign in as the IT Administrator: the same checklist, without the marks
    or the sign-off — preparing files is not approving them.
 
+## 13d. An edited export comes back as updates (P10)
+
+*The question: "SAP has the new phone numbers — do we retype them?"*
+
+People: the **IT Administrator** prepares, the **Workshop Manager** approves.
+
+1. **Customers → Export → Excel**. In Excel change two customers' addresses and
+   the first one's phone, write another customer's phone as *+234 …*
+   instead of *0…*; clear one customer's second phone.
+2. **Data Exchange → Customers**, upload the file. Choose **Update customers
+   exported from EJO**: the *EJO record* column is matched by itself.
+3. The check lists **To change: 2 customers · 3 fields**, each as *from →
+   to*. The phone written the other way is no change; the cleared second
+   phone is left as it is (a file never blanks a field).
+4. Before approving, change one of those customers' phone at the desk. Then
+   approve and load as the Workshop Manager: that phone is *changed in EJO
+   since the check: left as it is*; the rest are made, and each customer's
+   history shows the change with the import's number.
+5. **Undo this import**: each field goes back to what it was.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -789,7 +809,7 @@ as each person.
 
 *Coming in the next releases (each adds a section here):* the yard, sale and
 plant dashboards (D4); the job-card, service, warranty, staff and plant
-records imports are in (§13b) with the cut-over checklist (§13c); round-trip updates from an
-exported file with a preview of the changes (A4b); bulk PDFs, a customer's
+records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
+exported file (§13d); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
 reconciliation (C1); and inviting imported customers to the portal (B).

@@ -177,7 +177,8 @@ export function checkCustomerRow(cells: unknown[], mapping: Mapping): Checked<Cu
 const COMMERCIAL = /\b(truck|lorry|bus|minibus|van|pickup|pick-up|tipper|tanker|trailer|tractor|nqr|npr|nkr|nmr|nlr|fvr|fvz|qlr|qmr|qkr|ftr|fvm|cyz|exr|d-?max|canter|fuso|hiace|coaster|aumark|ollin|auman|forland)\b/i;
 const PASSENGER = /\b(suv|car|saloon|sedan|hatchback|crossover|jeep|s0?\d|dx\d|mu-?x|pajero|outlander|asx|corolla|camry)\b/i;
 
-export function checkVehicleRow(cells: unknown[], mapping: Mapping, thisYear = new Date().getFullYear()): Checked<VehicleValues> {
+/** `ownerOptional`: an update from an edited export (P10) names the vehicle by its EJO record and never changes its owner. */
+export function checkVehicleRow(cells: unknown[], mapping: Mapping, thisYear = new Date().getFullYear(), ownerOptional = false): Checked<VehicleValues> {
   const issues: Issue[] = [];
   const warn = (field: string, message: string) => issues.push({ field, message, level: 'warning' });
   const fail = (field: string, message: string) => issues.push({ field, message, level: 'error' });
@@ -190,7 +191,7 @@ export function checkVehicleRow(cells: unknown[], mapping: Mapping, thisYear = n
   const ce = get(cells, mapping, 'customerEmail');
   if (ce) { try { custEmail = cleanEmail(ce.split(/[;,\s]+/)[0]); } catch { warn('customerEmail', `“${ce}” is not a valid email, so it was not used to find the customer.`); } }
   const custPhone = phoneKey(get(cells, mapping, 'customerPhone'));
-  if (!custExt && !custEmail && !custPhone) fail('customer', 'No customer number, email or phone to find whose vehicle this is.');
+  if (!custExt && !custEmail && !custPhone && !ownerOptional) fail('customer', 'No customer number, email or phone to find whose vehicle this is.');
 
   const vinRaw = get(cells, mapping, 'chassisNumber');
   const chassisNumber = vinKey(vinRaw);
