@@ -47,6 +47,8 @@ const READ_FENCES = [
   'getAppointment(', 'requireJobCardApprover', 'managerApprovers', 'me()', 'requireStoreStaff',
   // Organisation structure (lib/actions/structure.ts): fenced to the person's organisation + authorize with the branch.
   'branchInMyOrg(', 'departmentInMyOrg(', 'orgFence(o)',
+  // Postings for SAP (lib/actions/sap-postings.ts): the file fenced to the person's organisation, with the rights at its branch.
+  'sapPostingOf(',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn

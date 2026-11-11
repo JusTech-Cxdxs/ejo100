@@ -24,6 +24,8 @@ const GUARDS = [
   'profileOrg(',
   // News & media (lib/actions/news.ts): authorize('website.news.manage') + the person's own organisation.
   'newsOrg(',
+  // Postings for SAP (lib/actions/sap-postings.ts): the file fenced to the person's organisation + allows() at its branch.
+  'sapPostingOf(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',

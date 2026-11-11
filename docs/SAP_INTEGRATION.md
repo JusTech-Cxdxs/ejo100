@@ -5,9 +5,9 @@ moves between the two without retyping or reshaping. EJO keeps the numbers
 SAP knows each record by, in SAP's own terms, beside its own number.
 
 This document grows with each release. **Today** EJO reads SAP extracts
-(Data Exchange imports) and keeps every SAP number it is given. **Next (C1)**
-it writes the daily files SAP posts from, takes SAP's refreshes back in, and
-reconciles the two; those sections are marked *coming in C1*.
+(Data Exchange imports) and keeps every SAP number it is given. Since C1a it
+writes the daily files SAP posts from (section 3a) and reconciles them line by
+line with SAP's return file; C1b takes SAP's refreshes back in.
 
 ## 1. Who owns what
 
@@ -246,9 +246,55 @@ moves only that import's records). Usage decisions taken in SAP before the
 cut-over are kept as they were (A for released, R for rejected; none for a
 kit on hold).
 
-## 3. The daily files *(coming in C1)*
+## 3. The daily files
 
-C1 adds, through Data Exchange, without new infrastructure:
+### 3a. Postings for SAP (C1a — in)
+
+**Data Exchange → Postings for SAP**. From the day a branch is signed off as
+cut over (the cut-over checklist), what happens there in EJO goes to SAP as
+files in SAP's own field names, which SAP's team loads with their own tools
+(Migration Cockpit, LSMW, BAPI programs) under their own checks. EJO never
+writes into SAP.
+
+| File | Each line | SAP fields |
+| --- | --- | --- |
+| New customers (the organisation's) | A customer created in EJO with no SAP number | ZZ_EJO_LINE, ZZ_EJO_ID, KUNNR (empty), NAME1, TELF1, SMTP_ADDR, STRAS, ERDAT |
+| Goods receipts | A part received into the Store (not an opening balance) | BWART 101, BLDAT, BUDAT, WERKS, MATNR, MENGE, MEINS, CHARG, LIFNR, XBLNR, DMBTR, WAERS |
+| Goods issues | A part released to a job card or service | BWART 261 (to its SAP order, AUFNR) or 201 (none), BUDAT, WERKS, MATNR, MENGE, MEINS, ZZ_EJO_REF |
+| Workshop billing | A job card or service closed | FKDAT, WERKS, KUNNR, ZZ_EJO_REF, NETWR (the customer's), ZZ_WARRANTY, ZZ_GOODWILL, ZZ_INTERNAL, WAERK |
+| Payments | A payment recorded | BUDAT, WERKS, KUNNR, WRBTR, WAERS, ZLSCH (C cash, T transfer), XBLNR |
+
+- **What goes in:** everything since the sign-off not yet in a file, up to
+  the day chosen (yesterday by default; catching up is the same button). Never
+  history brought in by an import, an opening balance, or the demo. At most
+  20,000 lines a file; the rest go in the next.
+- **One file at a time:** made under a lock per organisation, so a posting is
+  never in two files. Each file has a number (SAP-2026-000001), its control
+  totals (lines, quantity, amount) and a **SHA-256 checksum**. The CSV is
+  rebuilt from its lines on every download — the same bytes every time — and
+  is not given out if it no longer matches (the header *X-Checksum-SHA256*
+  carries it too). Line 1 is the header; days are YYYYMMDD in Lagos; KUNNR and
+  LIFNR carry SAP's leading zeros; amounts and quantities use a point.
+- **A status per line.** SAP's return file (CSV or Excel) names each line by
+  **ZZ_EJO_LINE**, with **STATUS** (S posted, W posted with a note, E or A
+  rejected), the document number (BELNR, MBLNR, VBELN; KUNNR for a new
+  customer) and **MESSAGE**. Each line is set once; the same answer twice
+  changes nothing; a different answer for a line already answered is reported,
+  never applied. A new customer posted with its KUNNR gets that SAP number in
+  EJO when it has none and no other customer has it (audited on the customer).
+- **Rejected, then fixed:** fix it in EJO or in SAP, then **Send again** on
+  the line: it goes in the next file of its kind, the new line naming the old
+  (which shows *Sent again*).
+- **Reconciliation:** each branch shows, per kind, since its sign-off: *not
+  in a file yet*, *sent and waiting for SAP*, *posted* and *rejected* — counts
+  and amounts. Every event is in exactly one of these.
+- Every file made, downloaded and answered, and every posting sent again, is
+  in the audit trail.
+- **Next (C1b):** the plant's events (PDI usage decisions, vehicles to the
+  yard, sales), refunds, SAP's master-data refreshes back in, and the "Where
+  this came from" box showing the SAP postings of each record.
+
+### 3b. What C1 covers overall
 
 - **Outbound files** EJO writes for SAP each day, in SAP's own field names: new
   customers, goods issues for jobs, workshop billing, plant events (PDI usage

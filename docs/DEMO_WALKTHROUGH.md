@@ -656,6 +656,28 @@ People: the **IT Administrator** prepares, the **Workshop Manager** approves.
    history shows the change with the import's number.
 5. **Undo this import**: each field goes back to what it was.
 
+## 13e. Postings for SAP, and SAP's answers (C1a)
+
+*The question: "we keep SAP for the books — how does it learn what the
+workshop did?"*
+
+People: the **Finance Officer** makes the files, the **Workshop Manager**
+records SAP's answers. The branch must be signed off as cut over (§13c), and
+have its SAP plant code (WERKS) on its page.
+
+1. Record a payment on a job card and close another job card.
+2. **Data Exchange → Postings for SAP**: the branch's table shows, per kind,
+   what is *not in a file yet*, *sent*, *posted* and *rejected*, with amounts.
+3. Choose **Payments**, up to yesterday, **Make the file for SAP**: its page
+   shows the lines, the total and the **SHA-256**. **Download for SAP** —
+   line 1 is the header; days read 20261110; KUNNR has its leading zeros.
+4. As the Manager, load SAP's return file (ZZ_EJO_LINE, STATUS, BELNR,
+   MESSAGE): one line *S* with a document number, one *E* with SAP's message.
+   The lines show *Posted in SAP* (with the document) and *Rejected by SAP*
+   (with the message). Load it again: *already recorded*, nothing changes.
+5. **Send again** on the rejected line; the next payments file carries it,
+   and the old line reads *Sent again*.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -812,4 +834,4 @@ plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
 exported file (§13d); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
-reconciliation (C1); and inviting imported customers to the portal (B).
+reconciliation (C1a is in, §13e; C1b next); and inviting imported customers to the portal (B).
