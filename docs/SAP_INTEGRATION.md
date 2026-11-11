@@ -263,6 +263,9 @@ writes into SAP.
 | Goods issues | A part released to a job card or service | BWART 261 (to its SAP order, AUFNR) or 201 (none), BUDAT, WERKS, MATNR, MENGE, MEINS, ZZ_EJO_REF |
 | Workshop billing | A job card or service closed | FKDAT, WERKS, KUNNR, ZZ_EJO_REF, NETWR (the customer's), ZZ_WARRANTY, ZZ_GOODWILL, ZZ_INTERNAL, WAERK |
 | Payments | A payment recorded | BUDAT, WERKS, KUNNR, WRBTR, WAERS, ZLSCH (C cash, T transfer), XBLNR |
+| Refunds (C1b) | Money paid back against a job card or service | BUDAT, WERKS, KUNNR, WRBTR, WAERS, ZLSCH, XBLNR (the refund's number), ZZ_EJO_REF (the job), SGTXT (the reason) |
+| PDI usage decisions (C1b, the plant) | A PDI decided: A when it passed, R each time it was rejected back to rework | VDATUM, WERKS, MATNR, SERNR (the VIN), EQUNR, AUFNR, VCODE (A or R), ZZ_EJO_REF (the PDI's number) |
+| Vehicles to the yard (C1b, the plant) | A vehicle that passed PDI, received from its production order — once per vehicle | BWART 101, BUDAT, WERKS, MATNR, MENGE 1, MEINS EA, AUFNR, SERNR, EQUNR, ZZ_EJO_REF |
 
 - **What goes in:** everything since the sign-off not yet in a file, up to
   the day chosen (yesterday by default; catching up is the same button). Never
@@ -290,9 +293,36 @@ writes into SAP.
   and amounts. Every event is in exactly one of these.
 - Every file made, downloaded and answered, and every posting sent again, is
   in the audit trail.
-- **Next (C1b):** the plant's events (PDI usage decisions, vehicles to the
-  yard, sales), refunds, SAP's master-data refreshes back in, and the "Where
-  this came from" box showing the SAP postings of each record.
+- **Which branch sends what:** a workshop its goods receipts and issues,
+  billing, payments and refunds; a warehouse its goods receipts and issues;
+  the assembly plant its PDI usage decisions and vehicles to the yard; the
+  organisation its new customers. A sales branch sends nothing yet: vehicle
+  sales are not recorded in EJO, so there is nothing true to send.
+- **The plant (C1b).** An accepted PDI is final, so its A is read from the
+  inspection. A rejection is overwritten when the PDI is decided again, so
+  each R is read from its audit entry, which is written in the same
+  transaction as the decision and so can never be missing. AUFNR carries
+  SAP's zeros to 12 digits and EQUNR to 18. A vehicle is received into the
+  yard once, whatever happens after.
+- **"Sent to SAP" on the record's page (C1b).** A job card, a service, a PDI
+  and a customer show each of their postings — the job's billing, its
+  payments, refunds and parts issued; the PDI's decisions and its vehicle's
+  yard receipt — with the file it went in and SAP's answer (document number
+  or message). Only the people who make or confirm the branch's postings see
+  it.
+
+### 3a2. SAP's master data back in (C1b)
+
+SAP's own extract of customers, vehicles (equipment), suppliers or parts —
+with no "EJO record" column — loads with **Update … exported from EJO, or
+from SAP's own file** and source **SAP**. Each row is found by its SAP number
+only (KUNNR, EQUNR, LIFNR, MATNR; SAP's leading zeros make no difference; a
+part within the import's branch, by its SAP number or, kept as SAP's MATNR,
+its part number). A number on no record, or on more than one, is refused in
+plain words — never guessed. Everything else is the round trip of P10
+(DATA_MIGRATION.md): every change previewed as "from → to", an empty cell
+leaves a field as it is, approval by someone else, a field changed in EJO
+since the check left as it is, each change in the record's history, and undo.
 
 ### 3b. What C1 covers overall
 

@@ -12,15 +12,10 @@
 import { prisma } from '@ejo/database';
 import { allows, authorize, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { requireUser } from '@/lib/actions/workshop';
-import { answerColumns, isPostingKind, KINDS, readAnswer, type Answer, type PostingKind } from '@/lib/sap/postings';
+import { answerColumns, BRANCH_KINDS, isPostingKind, KINDS, readAnswer, type Answer, type PostingKind } from '@/lib/sap/postings';
 import { applyAnswers, makeFile, tally, type Answered, type KindTally } from '@/lib/sap/postings-server';
 import { lagosToday } from '@/lib/data-exchange/dates';
 
-/** The kinds each kind of branch posts (the plant's events come with C1b). */
-const BRANCH_KINDS: Record<string, PostingKind[]> = {
-  WORKSHOP: ['GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT'],
-  WAREHOUSE: ['GOODS_RECEIPT', 'GOODS_ISSUE'],
-};
 const ORG = 'organisation';
 
 async function org(where: string) {
@@ -54,7 +49,7 @@ export type PostingScope = { id: string; name: string; sapPlant: string | null; 
 /** Every branch that posts (and the organisation's new customers), each with its reconciliation and its latest files. */
 export async function getSapPostings(): Promise<{ scopes: PostingScope[]; today: string }> {
   const organisationId = await org('getSapPostings');
-  const branches = await prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: Object.keys(BRANCH_KINDS) as ('WORKSHOP' | 'WAREHOUSE')[] } }, orderBy: { name: 'asc' }, select: { id: true } });
+  const branches = await prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: Object.keys(BRANCH_KINDS) as ('WORKSHOP' | 'WAREHOUSE' | 'ASSEMBLY_PLANT')[] } }, orderBy: { name: 'asc' }, select: { id: true } });
   const scopes: PostingScope[] = [];
   for (const id of [ORG, ...branches.map((b) => b.id)]) {
     const s = (await scopeOf(organisationId, id))!;
@@ -162,4 +157,54 @@ export async function sendPostingAgain(lineId: string): Promise<Done> {
   if (!done.count) return { ok: false, error: 'Only a posting SAP rejected can be sent again.' };
   await prisma.auditLog.create({ data: { organisationId, userId: me.id, action: 'sap.posting_resend', entityType: 'SapPostingLine', entityId: l.id, metadata: { file: l.file.number, ref: l.ref } } });
   return { ok: true };
+}
+
+export type TrailLine = { id: string; kind: PostingKind; fileId: string; fileNumber: string; madeAt: Date; status: string; sapDocument: string | null; message: string | null; answeredAt: Date | null; amount: number | null };
+
+/**
+ * Where an EJO record stands in SAP — the record (a job card, a service, a
+ * PDI, a customer) found inside the person's organisation, with the events
+ * that are posted for it: a job card's billing, its payments, refunds and the
+ * parts issued to it; a PDI's usage decisions and its vehicle received into
+ * the yard. Null when it is not theirs or they may not see the postings at
+ * its branch (export.run or import.approve there; a customer: the
+ * organisation's file).
+ */
+async function sapTrailOf(organisationId: string, entityType: string, entityId: string): Promise<{ branchId: string | null; refs: { entityType: string; entityId: string }[] } | null> {
+  const id = String(entityId).slice(0, 40);
+  if (entityType === 'JobCard' || entityType === 'VehicleService') {
+    const job = entityType === 'JobCard'
+      ? await prisma.jobCard.findFirst({ where: { id, branch: { businessUnit: { organisationId } } }, select: { id: true, branchId: true, payments: { select: { id: true } }, refunds: { select: { id: true } }, partRequestSlips: { select: { lines: { select: { id: true } } } } } })
+      : await prisma.vehicleService.findFirst({ where: { id, branch: { businessUnit: { organisationId } } }, select: { id: true, branchId: true, payments: { select: { id: true } }, refunds: { select: { id: true } }, partRequestSlips: { select: { lines: { select: { id: true } } } } } });
+    if (!job) return null;
+    return { branchId: job.branchId, refs: [{ entityType, entityId: job.id }, ...job.payments.map((p) => ({ entityType: 'Payment', entityId: p.id })), ...job.refunds.map((r) => ({ entityType: 'Refund', entityId: r.id })), ...job.partRequestSlips.flatMap((s) => s.lines.map((l) => ({ entityType: 'PartRequestSlipLine', entityId: l.id })))] };
+  }
+  if (entityType === 'PdiInspection') {
+    const p = await prisma.pdiInspection.findFirst({ where: { id, organisationId }, select: { id: true, branchId: true, plantVehicleId: true } });
+    return p ? { branchId: p.branchId, refs: [{ entityType, entityId: p.id }, { entityType: 'PlantVehicle', entityId: p.plantVehicleId }] } : null;
+  }
+  if (entityType === 'Customer') {
+    const c = await prisma.customer.findFirst({ where: { id, organisationId }, select: { id: true } });
+    return c ? { branchId: null, refs: [{ entityType, entityId: c.id }] } : null;
+  }
+  return null;
+}
+
+/** "Sent to SAP" on a record's page: its postings, newest first (at most 50); null when the person may not see them. */
+export async function getSapTrail(entityType: string, entityId: string): Promise<TrailLine[] | null> {
+  const p = await getPrincipal();
+  const organisationId = p.organisationId ?? (await myOrganisationId());
+  if (!organisationId) return null;
+  const found = await sapTrailOf(organisationId, String(entityType), entityId);
+  if (!found) return null;
+  const [make, answer] = await Promise.all([mayMake(found.branchId), mayAnswer(found.branchId)]);
+  if (!make && !answer) return null;
+  const byType = new Map<string, string[]>();
+  for (const r of found.refs) byType.set(r.entityType, [...(byType.get(r.entityType) ?? []), r.entityId]);
+  const lines = await prisma.sapPostingLine.findMany({
+    where: { organisationId, OR: [...byType].map(([t, ids]) => ({ entityType: t, entityId: { in: ids.slice(0, 2000) } })) },
+    orderBy: [{ file: { createdAt: 'desc' } }, { lineNo: 'asc' }], take: 50,
+    select: { id: true, status: true, sapDocument: true, message: true, answeredAt: true, amount: true, file: { select: { id: true, number: true, kind: true, createdAt: true } } },
+  });
+  return lines.map((l) => ({ id: l.id, kind: l.file.kind as PostingKind, fileId: l.file.id, fileNumber: l.file.number, madeAt: l.file.createdAt, status: l.status, sapDocument: l.sapDocument, message: l.message, answeredAt: l.answeredAt, amount: l.amount === null ? null : Number(l.amount) }));
 }

@@ -110,6 +110,58 @@ export async function collect(db: Db, kind: PostingKind, s: Scope, start: Date, 
       out.push({ ref: `BL:SV:${v.id}`, entityType: 'VehicleService', entityId: v.id, quantity: null, amount: total, at: v.closedAt!, payload: { ZZ_EJO_ID: v.id, FKDAT: sapDay(v.closedAt), WERKS, KUNNR: kunnr(v.customer), ZZ_EJO_REF: v.serviceNumber, NETWR: sapMoney(total), ZZ_WARRANTY: sapMoney(0), ZZ_GOODWILL: sapMoney(0), ZZ_INTERNAL: sapMoney(0), WAERK: 'NGN' } });
     }
     out.sort((a, b) => +a.at - +b.at);
+  } else if (kind === 'REFUND') {
+    const rows = await db.refund.findMany({
+      where: { recordedAt: { gte: start, lt: end }, OR: [{ jobCard: { branchId: s.branchId!, importJobId: null } }, { vehicleService: { branchId: s.branchId!, importJobId: null } }] },
+      orderBy: { recordedAt: 'asc' }, take: MAX_LINES * 2,
+      select: { id: true, referenceNumber: true, amount: true, method: true, reason: true, recordedAt: true, jobCard: { select: { id: true, jobNumber: true, customer: { select: { externalId: true, externalSource: true } } } }, vehicleService: { select: { id: true, serviceNumber: true, customer: { select: { externalId: true, externalSource: true } } } } },
+    });
+    const jobIds = rows.map((r) => r.jobCard?.id ?? r.vehicleService?.id).filter((x): x is string => Boolean(x));
+    const skip = new Set([...(await demo(db, s.organisationId, 'Refund', rows.map((r) => r.id))), ...(await demo(db, s.organisationId, 'JobCard', jobIds)), ...(await demo(db, s.organisationId, 'VehicleService', jobIds))]);
+    for (const r of rows) {
+      const job = r.jobCard ?? r.vehicleService;
+      if (skip.has(r.id) || (job && skip.has(job.id))) continue;
+      const c = r.jobCard?.customer ?? r.vehicleService?.customer;
+      out.push({ ref: `RF:${r.id}`, entityType: 'Refund', entityId: r.id, quantity: null, amount: num(r.amount), at: r.recordedAt, payload: {
+        ZZ_EJO_ID: r.id, BUDAT: sapDay(r.recordedAt), WERKS, KUNNR: c?.externalSource === 'SAP' ? sapNumber('KUNNR', c.externalId) : '', WRBTR: sapMoney(num(r.amount)), WAERS: 'NGN', ZLSCH: PAYMENT_METHOD[r.method] ?? '', XBLNR: sapText(r.referenceNumber, 16),
+        ZZ_EJO_REF: r.jobCard?.jobNumber ?? r.vehicleService?.serviceNumber ?? '', SGTXT: sapText(r.reason, 50),
+      } });
+    }
+  } else if (kind === 'USAGE_DECISION' || kind === 'PRODUCTION_RECEIPT') {
+    // The plant's own vehicles (never the demo's): an imported vehicle's PDI decided in EJO after the cut-over is EJO's event.
+    const vehicle = { select: { id: true, vin: true, modelCode: true, sapMaterial: true, sapProductionOrder: true, sapEquipment: true } } as const;
+    const notDemo = { OR: [{ externalSource: null }, { externalSource: { not: 'EJO-DEMO' } }] };
+    const plantVehicle = (v: { vin: string; modelCode: string; sapMaterial: string | null; sapProductionOrder: string | null; sapEquipment: string | null }) => ({ MATNR: sapText(v.sapMaterial ?? v.modelCode, 40), SERNR: sapText(v.vin, 18), EQUNR: sapNumber('EQUNR', v.sapEquipment), AUFNR: sapNumber('AUFNR', v.sapProductionOrder) });
+    // Accepted (A) is final: the inspection passed. The vehicle went to the yard that moment.
+    const passed = await db.pdiInspection.findMany({
+      where: { organisationId: s.organisationId, branchId: s.branchId!, status: 'PASSED', decidedAt: { gte: start, lt: end }, vehicle: notDemo },
+      orderBy: { decidedAt: 'asc' }, take: MAX_LINES * 2, select: { id: true, number: true, decidedAt: true, vehicle },
+    });
+    const skip = new Set([...(await demo(db, s.organisationId, 'PdiInspection', passed.map((p) => p.id))), ...(await demo(db, s.organisationId, 'PlantVehicle', passed.map((p) => p.vehicle.id)))]);
+    if (kind === 'PRODUCTION_RECEIPT') {
+      const seen = new Set<string>();
+      for (const p of passed) {
+        if (skip.has(p.id) || skip.has(p.vehicle.id) || seen.has(p.vehicle.id)) continue;
+        seen.add(p.vehicle.id);
+        const v = plantVehicle(p.vehicle);
+        out.push({ ref: `YD:${p.vehicle.id}`, entityType: 'PlantVehicle', entityId: p.vehicle.id, quantity: 1, amount: null, at: p.decidedAt!, payload: { ZZ_EJO_ID: p.vehicle.id, BWART: '101', BUDAT: sapDay(p.decidedAt), WERKS, MATNR: v.MATNR, MENGE: '1', MEINS: 'EA', AUFNR: v.AUFNR, SERNR: v.SERNR, EQUNR: v.EQUNR, ZZ_EJO_REF: p.number } });
+      }
+    } else {
+      for (const p of passed) {
+        if (skip.has(p.id) || skip.has(p.vehicle.id)) continue;
+        out.push({ ref: `UD:A:${p.id}`, entityType: 'PdiInspection', entityId: p.id, quantity: null, amount: null, at: p.decidedAt!, payload: { ZZ_EJO_ID: p.id, VDATUM: sapDay(p.decidedAt), WERKS, ...plantVehicle(p.vehicle), VCODE: 'A', ZZ_EJO_REF: p.number } });
+      }
+      // Rejected (R) back to rework: the inspection's own decision is overwritten when it is decided again, so each rejection is read from its audit entry (written with the decision, in one transaction).
+      const rejections = await db.auditLog.findMany({ where: { organisationId: s.organisationId, entityType: 'PdiInspection', action: 'plant.pdi_rejected', createdAt: { gte: start, lt: end } }, orderBy: { createdAt: 'asc' }, take: MAX_LINES * 2, select: { id: true, entityId: true, createdAt: true } });
+      const pdis = new Map((await db.pdiInspection.findMany({ where: { organisationId: s.organisationId, branchId: s.branchId!, id: { in: [...new Set(rejections.map((r) => r.entityId).filter((x): x is string => Boolean(x)))] }, vehicle: notDemo }, select: { id: true, number: true, vehicle } })).map((p) => [p.id, p]));
+      const skipR = new Set([...(await demo(db, s.organisationId, 'PdiInspection', [...pdis.keys()])), ...(await demo(db, s.organisationId, 'PlantVehicle', [...pdis.values()].map((p) => p.vehicle.id)))]);
+      for (const r of rejections) {
+        const p = r.entityId ? pdis.get(r.entityId) : undefined;
+        if (!p || skipR.has(p.id) || skipR.has(p.vehicle.id)) continue;
+        out.push({ ref: `UD:R:${r.id}`, entityType: 'PdiInspection', entityId: p.id, quantity: null, amount: null, at: r.createdAt, payload: { ZZ_EJO_ID: p.id, VDATUM: sapDay(r.createdAt), WERKS, ...plantVehicle(p.vehicle), VCODE: 'R', ZZ_EJO_REF: p.number } });
+      }
+      out.sort((a, b) => +a.at - +b.at);
+    }
   } else {
     const rows = await db.payment.findMany({
       where: { recordedAt: { gte: start, lt: end }, OR: [{ jobCard: { branchId: s.branchId!, importJobId: null } }, { vehicleService: { branchId: s.branchId!, importJobId: null } }] },

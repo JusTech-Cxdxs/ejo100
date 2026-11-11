@@ -188,6 +188,16 @@ organisation, refused during an assisted session, and audited when made,
 downloaded and answered. A file that no longer matches its checksum is never
 given out.
 
+C1b adds the plant: its PDI usage decisions and vehicles to the yard are made
+by whoever exports the plant's records (the Plant Manager, the Quality
+Supervisor, an administrator) and answered by the Plant Manager (who approves
+the plant's imports). **Sent to SAP** on a job card, service, PDI or customer
+shows only to people who make or confirm that branch's postings (the
+organisation's file for a customer); everyone else sees no box. SAP's own
+master-data extract loads through Data Exchange like any update, so it needs
+`dataexchange.import.run` to prepare and `dataexchange.import.approve` (by
+someone else) to load.
+
 ### Updates from an edited export (P10)
 
 Preparing needs `dataexchange.import.run`; approving needs

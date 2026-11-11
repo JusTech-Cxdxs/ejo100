@@ -381,7 +381,8 @@ export async function saveImportMapping(jobId: string, input: { mapping: Record<
   // An update from an edited export (P10): only the lists an export writes, and only with the EJO record matched.
   const matchMode = input.matchMode === 'FILL_BLANKS' ? 'FILL_BLANKS' : input.matchMode === 'UPDATE' && isRoundTripEntity(entity) ? 'UPDATE' : 'ADD_ONLY';
   if (input.matchMode === 'UPDATE' && !isRoundTripEntity(entity)) problems.push(`Updating from an edited export is for customers, vehicles, parts and suppliers, not ${ENTITIES[entity].plural}.`);
-  if (matchMode === 'UPDATE' && mapping.ejoRecord == null) problems.push('Match the “EJO record” column: each row is found by it, and only by it.');
+  // Or SAP's own extract (C1b): each row found by its SAP number (KUNNR, EQUNR, LIFNR, MATNR), and only by it.
+  if (matchMode === 'UPDATE' && mapping.ejoRecord == null && !(input.sourceSystem !== 'LEGACY' && mapping.externalId != null)) problems.push(input.sourceSystem === 'LEGACY' ? 'Match the “EJO record” column: each row is found by it, and only by it.' : 'Match the “EJO record” column (an edited export from EJO) or the SAP number column (SAP’s own file): each row is found by it, and only by it.');
   if (problems.length) return { problems };
   await prisma.$transaction(async (tx) => {
     const moved = await tx.importJob.updateMany({

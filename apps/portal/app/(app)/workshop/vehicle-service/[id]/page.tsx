@@ -73,6 +73,7 @@ import { IdempotencyKey } from '@/components/IdempotencyKey';
 import { BackLink, PageTitle, StatusChip } from '@/components/ui';
 import { CustomerLink } from '@/components/CustomerLink';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
+import { SapTrail } from '@/components/data-exchange/SapTrail';
 
 const STATUS_LABEL: Record<string, string> = {
   SCHEDULED: 'Scheduled',
@@ -1772,6 +1773,8 @@ export default async function VehicleServiceDetailPage({
           </div>
         </div>
       </div>
+
+      <SapTrail entityType="VehicleService" entityId={id} />
 
       <div className="mt-6 rounded-[var(--ejo-radius-lg)] border border-[var(--ejo-border)] bg-[var(--ejo-surface)] p-6">
         <h2 className="text-sm font-semibold text-[var(--ejo-text)]">Audit trail</h2>
