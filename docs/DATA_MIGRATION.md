@@ -1084,6 +1084,7 @@ permissions; the columns are SAP's:
 | P10 — each row's changes for an update from an edited export | `scripts/predeploy/0023-round-trip-changes.sql` (deploy) · `scripts/v-p10-round-trip.sql` (manual) |
 | C1a — postings for SAP: the files and their lines | `scripts/predeploy/0024-sap-postings.sql` (deploy) · `scripts/v-c1a-sap-postings.sql` (manual) |
 | C1b — the plant and refunds in the postings; SAP's master data back in | No change to the database: it uses C1a's tables and P10's import columns |
+| A4c1 — customers' data requests (NDPA 2023) | `scripts/predeploy/0025-data-requests.sql` (deploy) · `scripts/v-a4c1-data-requests.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a

@@ -703,6 +703,24 @@ signed off as cut over (§13c), with its SAP plant code.
    number only; a number EJO does not have is refused; every change is
    previewed, then approved by the Manager (as §13d).
 
+## 13g. A customer asks what we hold about them (A4c1)
+
+*The question: "a customer emails asking for all their data — what do we do?"*
+
+People: the **Customer Care Lead** and the **Organisation Administrator**.
+
+1. As the Customer Care Lead, open the customer's page → **Record a data
+   request** → *A copy of their data*, came in by email, today, their words.
+   It gets a DR- number; the page says a colleague confirms who is asking.
+2. As the Administrator, open it (search the DR- number). Type an ID number
+   into *How you confirmed it is them*: refused — EJO keeps no ID numbers.
+   Write how instead ("Called back on the phone number on the record").
+3. **Download their copy (zip)**: README (what is in it and what is not),
+   one spreadsheet per kind of record — details, vehicles, job cards,
+   payments, warranties, support requests, notes — and data.json. No staff
+   names, no passwords. The page shows the copy's SHA-256.
+4. Close it as answered with how it was sent. The front desk sees none of it.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -857,6 +875,6 @@ as each person.
 *Coming in the next releases (each adds a section here):* the yard, sale and
 plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
-exported file (§13d); bulk PDFs, a customer's
-data request and scheduled exports (A4c); the daily SAP files and
-reconciliation (C1a §13e and C1b §13f are in); and inviting imported customers to the portal (B).
+exported file (§13d), and a customer's data request (§13g); bulk PDFs and
+scheduled exports (A4c); the daily SAP files and reconciliation (C1a §13e and
+C1b §13f are in); and inviting imported customers to the portal (B).

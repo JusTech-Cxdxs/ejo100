@@ -163,7 +163,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const W = <T,>(w: Where) => w as T;
   const newest = { createdAt: 'desc' } as const;
 
-  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, pdis, kits, shipments, defects, audits, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
+  const [jcs, svs, prs, eprs, grns, refunds, warranties, claims, visits, passes, exits, tests, incidents, deliveries, contractors, appts, broadcasts, tickets, imports, exportJobs, dataRequests, pdis, kits, shipments, defects, audits, vehicles, customers, parts, policies, providers, rooms, branches, departments, staff] = await Promise.all([
     find(jobReach, { numbers: [['JC', 'jobNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
       (w) => prisma.jobCard.findMany({ where: W<Prisma.JobCardWhereInput>(w), take, orderBy: newest, select: { id: true, branchId: true, jobNumber: true, status: true, customer: { select: { fullName: true } }, vehicle: { select: { plateNumber: true } } } })),
     find(jobReach, { numbers: [['SV', 'serviceNumber']], text: ['customer.fullName'], codes: ['vehicle.plateNumber'], phones: ['customer.phone'] },
@@ -206,6 +206,9 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     // Exports (Data Exchange): those who export lists, in their own organisation — their own, or everyone's for those who read the audit trail.
     find(allowed('dataexchange.export.run') && { ...sameOrg, ...(allowed('audit.view') ? {} : { createdById: user.id }) }, { numbers: [['EXP', 'number']], text: ['summary'] },
       (w) => prisma.exportJob.findMany({ where: W<Prisma.ExportJobWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, format: true } })),
+    // Customers' data requests (NDPA 2023): the people who handle them, in their own organisation.
+    find(allowed('privacy.requests.manage') && sameOrg, { numbers: [['DR', 'number']] },
+      (w) => prisma.dataRequest.findMany({ where: W<Prisma.DataRequestWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, kind: true, status: true } })),
     // Pre-delivery inspections: the plant team, in their own organisation and plant.
     find(allowed('plant.view') && { AND: [sameOrg, await plantReach()] }, { numbers: [['PDI', 'number']] },
       (w) => prisma.pdiInspection.findMany({ where: W<Prisma.PdiInspectionWhereInput>(w), take, orderBy: newest, select: { id: true, number: true, status: true, vehicle: { select: { vin: true, modelCode: true } } } })),
@@ -278,6 +281,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
     ref('QAA', 'QA audits', audits.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, r.result ? `${words(r.result)} · ${r.demerits} demerits` : 'in progress'), href: referenceUrl('QAA', r.id) }))),
     ref('SHP', 'Shipments', shipments.map((r) => ({ label: r.number, sub: dot(r.supplier, r.billOfLading), href: referenceUrl('SHP', r.id) }))),
     ref('PDI', 'Pre-delivery inspections', pdis.map((r) => ({ label: r.number, sub: dot(r.vehicle.vin, r.vehicle.modelCode, words(r.status)), href: referenceUrl('PDI', r.id) }))),
+    ref('DR', 'Data requests', dataRequests.map((r) => ({ label: r.number, sub: dot(words(r.kind), words(r.status)), href: referenceUrl('DR', r.id) }))),
     ref('EXP', 'Exports', exportJobs.map((r) => ({ label: r.number, sub: dot(words(r.kind.replace(/-/g, ' ')), r.format.toUpperCase()), href: referenceUrl('EXP', r.id) }))),
     // A vehicle with a VIN opens its one page (kit to latest visit); one without opens its workshop record.
     { group: 'Vehicles', hits: vehicles.map((r) => ({ label: [r.make, r.model].filter(Boolean).join(' ') || 'Vehicle', sub: dot(r.plateNumber, r.chassisNumber, r.customer?.fullName), href: r.chassisNumber && isChassisLike(r.chassisNumber) ? vehiclePagePath(r.chassisNumber) : `/workshop/vehicles/${r.id}/edit` })) },

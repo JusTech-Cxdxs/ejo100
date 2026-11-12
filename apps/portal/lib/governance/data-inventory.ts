@@ -211,6 +211,9 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   ExportDownload: { tenancy: 'VIA_PARENT', owner: 'exportJobId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its export', ai: 'NEVER' },
   SapPostingFile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract: the record of what was sent to SAP and what SAP answered, never deleted', ai: 'NEVER' },
   SapPostingLine: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: 'With its file (a new customer’s line carries their name, phone and email as SAP received them)', ai: 'NEVER' },
+  // A4c1 Customers' data requests (NDPA 2023): who asked what, how identity was checked (never an ID number), and what was done.
+  // Evidence that each request was answered: kept, never deleted; never shown to AI.
+  DataRequest: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['PERSONAL'], lifecycle: 'ARCHIVE', retention: 'As the retention policy keeps evidence that each request was answered', ai: 'NEVER' },
   // D1 Assembly plant: vehicles in the plant (with their SAP numbers) and their pre-delivery inspections.
   // Quality evidence: kept for the life of the vehicle; a PDI started by mistake is cancelled, never deleted.
   PlantVehicle: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER', recycleBin: 'IMPORT_UNDO' },
