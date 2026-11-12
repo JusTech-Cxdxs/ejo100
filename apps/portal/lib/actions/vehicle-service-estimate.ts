@@ -21,7 +21,8 @@ import { renderCustomerServiceEstimateApprovedEmail } from '@/lib/email-template
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
 import { InspectionPdf } from '@/lib/pdf/inspection-pdf';
-import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { inspectionPdfProps, letterhead, serviceEstimatePdfProps } from '@/lib/pdf/document-props';
+import { pluralize } from '@/lib/utils/pluralize';
 import { formatDateTime } from '@/lib/utils/format-date';
 import { MINIMUM_DEPOSIT_FRACTION } from '@/lib/workshop-constants';
 import { scheduleResolution } from '@/lib/enyo/predict/lines';
@@ -857,48 +858,17 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
         // "VEHICLE SERVICE".
         try {
           const org = estimate.vehicleService.branch.businessUnit.organisation;
-          const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-          const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
+          // The documents' contents are worked out in one place (lib/pdf/document-props), so a copy made later for the records is this same document.
+          const head = letterhead(org, estimate.vehicleService.branch, portalUrl);
           const pdfBuffer = await renderToBuffer(
-            EstimatePdf({
-              organisation: {
-                name: org.name,
-                legalName: org.legalName,
-                hqAddress: org.hqAddress,
-                poBox: org.poBox,
-                rcNumber: org.rcNumber,
-                hotlines: org.hotlines,
-                website: org.website,
-                email: org.email,
-              },
-              branch: {
-                name: estimate.vehicleService.branch.name,
-                address: estimate.vehicleService.branch.address,
-                hotlines: estimate.vehicleService.branch.hotlines,
-                email: estimate.vehicleService.branch.email,
-              },
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
-              jobNumber: estimate.vehicleService.serviceNumber,
-              referenceLabel: 'VEHICLE SERVICE',
-              customerName: estimate.vehicleService.customer.fullName,
-              customerAddress: estimate.vehicleService.customer.address,
-              vehicleDescription: [estimate.vehicleService.vehicle.year, estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || vehicleDescription,
-              plateNumber: estimate.vehicleService.vehicle.plateNumber,
-              chassisNumber: estimate.vehicleService.vehicle.chassisNumber,
-              lineItems: estimate.lineItems.map((li: { description: string; quantity: unknown; amount: unknown; unitOfMeasure: string | null }) => ({
-                description: li.description,
-                quantity: Number(li.quantity),
-                unitLabel: li.unitOfMeasure ? pluralizeWord(Number(li.quantity), li.unitOfMeasure) : null,
-                amount: formatNairaForPdf(Number(li.amount ?? 0)),
-              })),
-              servicesSubtotal: servicesTotal > 0 ? formatNairaForPdf(servicesTotal) : null,
-              labourSubtotal: labourTotal > 0 ? formatNairaForPdf(labourTotal) : null,
-              sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
-              totalAmount: formatNairaForPdf(total),
-              minimumDepositAmount: formatNairaForPdf(minimumDeposit),
-              ...(await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId)),
-              paymentRemarkSuggestion,
-            }),
+            EstimatePdf(serviceEstimatePdfProps({
+              letterhead: head,
+              bank: await bankDetailsFor((await prisma.vehicleService.findUnique({ where: { id: estimate.vehicleService.id }, select: { branchId: true } }))?.branchId),
+              serviceNumber: estimate.vehicleService.serviceNumber,
+              customer: estimate.vehicleService.customer,
+              vehicle: estimate.vehicleService.vehicle,
+              lineItems: estimate.lineItems,
+            })),
           );
           const attachments: { filename: string; content: Buffer; contentType: string }[] = [
             { filename: `Estimate-${estimate.vehicleService.serviceNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' },
@@ -909,41 +879,16 @@ export async function notifyCustomerOfApprovedServiceEstimate(estimateId: string
           const inspection = estimate.vehicleService.inspection;
           if (inspection && inspection.status === 'COMPLETED') {
             try {
-              const reviewedItems = inspection.items.filter((i: { severity: string | null }) => i.severity);
               const inspectionPdfBuffer = await renderToBuffer(
-                InspectionPdf({
-                  organisation: {
-                    name: org.name,
-                    legalName: org.legalName,
-                    hqAddress: org.hqAddress,
-                    poBox: org.poBox,
-                    rcNumber: org.rcNumber,
-                    hotlines: org.hotlines,
-                    website: org.website,
-                    email: org.email,
-                  },
-                  branch: {
-                    name: estimate.vehicleService.branch.name,
-                    address: estimate.vehicleService.branch.address,
-                    hotlines: estimate.vehicleService.branch.hotlines,
-                    email: estimate.vehicleService.branch.email,
-                  },
-                  logoUrl: `${portalUrl}/images/logo/logo.png`,
+                InspectionPdf(inspectionPdfProps({
+                  letterhead: head,
                   serviceNumber: estimate.vehicleService.serviceNumber,
                   customerName: estimate.vehicleService.customer.fullName,
-                  vehicleDescription: [estimate.vehicleService.vehicle.year, estimate.vehicleService.vehicle.make, estimate.vehicleService.vehicle.model].filter(Boolean).join(' ') || vehicleDescription,
-                  plateNumber: estimate.vehicleService.vehicle.plateNumber,
-                  chassisNumber: estimate.vehicleService.vehicle.chassisNumber,
+                  vehicle: estimate.vehicleService.vehicle,
                   inspectedByName: inspection.inspectedBy.fullName,
                   completedOnLabel: inspection.completedAt ? formatDateTime(inspection.completedAt) : formatDateTime(new Date()),
-                  reviewedItems: reviewedItems.map((i: { section: string; name: string; condition: string | null; severity: string | null; action: string | null }) => ({
-                    section: i.section,
-                    name: i.name,
-                    condition: i.condition,
-                    severity: i.severity,
-                    action: i.action,
-                  })),
-                }),
+                  items: inspection.items,
+                })),
               );
               attachments.push({ filename: `Inspection-${estimate.vehicleService.serviceNumber}.pdf`, content: inspectionPdfBuffer, contentType: 'application/pdf' });
             } catch (inspectionPdfErr) {

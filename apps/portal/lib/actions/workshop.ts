@@ -37,13 +37,14 @@ import { claimed, lockExisting } from '@/lib/integrity';
 import { exceedsBalance, NUMBER_CLASH_TRIES, numberClashPause } from '@/lib/integrity-core';
 import { MINIMUM_DEPOSIT_FRACTION, APPROVAL_DEADLINE_WORKING_DAYS, APPROVAL_REMINDER_WORKING_DAYS, CANCELLED_COLLECTION_GRACE_WORKING_DAYS, READY_FOR_COLLECTION_GRACE_WORKING_DAYS } from '@/lib/workshop-constants';
 import { workingDaysBetween, addWorkingDays } from '@/lib/utils/working-days';
-import { pluralize, pluralizeWord } from '@/lib/utils/pluralize';
+import { pluralize } from '@/lib/utils/pluralize';
 import { getOrganisation } from '@/lib/actions/organisation';
 import { getSelectableJobCardStatuses, isReworkTransition as isReworkMove } from '@/lib/job-card-status-rules';
 import { anchorEscalatedServiceFromJobCard } from '@/lib/vehicle-service-cycle';
 import { custodyReminderState, notDueYetMessage, type CustodyReminderKind } from '@/lib/custody-reminders';
 import { renderToBuffer } from '@react-pdf/renderer';
 import { EstimatePdf } from '@/lib/pdf/estimate-pdf';
+import { jobEstimatePdfProps, letterhead } from '@/lib/pdf/document-props';
 import { activeAssistFor, signedInSession, type ActiveAssist } from '@/lib/assist/server';
 import { sendEmail } from '@/lib/email';
 import { renderSupervisorJobCardAssignedEmail } from '@/lib/email-templates/supervisor-job-card-assigned';
@@ -2748,9 +2749,6 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
     const total = servicesTotal + labourTotal + sundryTotal;
     const minimumDeposit = Math.round(total * MINIMUM_DEPOSIT_FRACTION * 100) / 100;
     const formatNaira = (value: number) => `₦${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    // Helvetica (the PDF default) has no ₦ glyph, and embedding a font would make
-    // every send depend on fetching it, so the PDF uses "NGN".
-    const formatNairaForPdf = (value: number) => `NGN ${value.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
     const websiteUrl = websiteBaseUrl();
     const vehicleDescription = [estimate.jobCard.vehicle.make, estimate.jobCard.vehicle.model].filter(Boolean).join(' ') || 'Vehicle';
@@ -2793,45 +2791,16 @@ export async function notifyCustomerOfApprovedEstimate(jobCardId: string): Promi
           const organisation = await getOrganisation();
           if (!organisation) return undefined;
           const portalUrl = portalBaseUrl();
+          // The document's contents are worked out in one place (lib/pdf/document-props), so a copy made later for the records is this same document.
           const pdfBuffer = await renderToBuffer(
-            EstimatePdf({
-              organisation: {
-                name: organisation.name,
-                legalName: organisation.legalName,
-                hqAddress: organisation.hqAddress,
-                poBox: organisation.poBox,
-                rcNumber: organisation.rcNumber,
-                hotlines: organisation.hotlines,
-                website: organisation.website,
-                email: organisation.email,
-              },
-              branch: {
-                name: estimate.jobCard.branch.name,
-                address: estimate.jobCard.branch.address,
-                hotlines: estimate.jobCard.branch.hotlines,
-                email: estimate.jobCard.branch.email,
-              },
-              logoUrl: `${portalUrl}/images/logo/logo.png`,
+            EstimatePdf(jobEstimatePdfProps({
+              letterhead: letterhead(organisation, estimate.jobCard.branch, portalUrl),
+              bank: await bankDetailsFor(estimate.jobCard.branch.id),
               jobNumber: estimate.jobCard.jobNumber,
-              customerName: estimate.jobCard.customer.fullName,
-              customerAddress: estimate.jobCard.customer.address,
-              vehicleDescription,
-              plateNumber: estimate.jobCard.vehicle.plateNumber,
-              chassisNumber: estimate.jobCard.vehicle.chassisNumber,
-              lineItems: rawLineItems.map((li) => ({
-                description: li.description,
-                quantity: li.quantity,
-                unitLabel: li.unitOfMeasure ? pluralizeWord(li.quantity, li.unitOfMeasure) : null,
-                amount: isCustomerLine(li) ? formatNairaForPdf(Number(li.amount ?? 0)) : coveredLabel(li.billTo, li.coveringWarranty?.warrantyNumber),
-              })),
-              servicesSubtotal: servicesTotal > 0 ? formatNairaForPdf(servicesTotal) : null,
-              labourSubtotal: labourTotal > 0 ? formatNairaForPdf(labourTotal) : null,
-              sundrySubtotal: sundryTotal > 0 ? formatNairaForPdf(sundryTotal) : null,
-              totalAmount: formatNairaForPdf(total),
-              minimumDepositAmount: formatNairaForPdf(minimumDeposit),
-              ...(await bankDetailsFor(estimate.jobCard.branch.id)),
-              paymentRemarkSuggestion,
-            }),
+              customer: estimate.jobCard.customer,
+              vehicle: estimate.jobCard.vehicle,
+              lineItems: estimate.lineItems,
+            })),
           );
           return [{ filename: `Estimate-${estimate.jobCard.jobNumber}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }];
         } catch (pdfErr) {

@@ -416,6 +416,24 @@ request*, the copy or the DR- numbers in search.
   the one month other regimes allow. It is EJO's target, not a legal
   deadline; confirm it with your Data Protection Officer.
 
+## Customer documents in bulk (A4c2)
+
+**Data Exchange → Documents in bulk** (`/data-exchange/documents`) gives the
+PDFs customers are sent — the estimate for a Job Card or a Vehicle Service,
+and the inspection report — for one workshop and a period (at most 92 days),
+as zips of up to 40 with an `index.csv`.
+
+- **Who:** the documents carry names, addresses and amounts, so a person
+  needs **both** `dataexchange.export.sensitive` and `dataexchange.export.run`
+  **at that workshop**. The workshop is found inside their own organisation.
+  Never during an assisted session; never cached.
+- **What they are:** drawn at download by the same code that builds the copy
+  emailed to the customer (`lib/pdf/document-props`), from the record as it
+  stands now. An estimate changed since it was sent shows as it is today.
+- **The trail:** each download is an audit entry on the branch
+  (`data_exchange.documents_downloaded`) with the kind, the period, the part,
+  every document's number, and the zip's SHA-256.
+
 ## Access changes made in this pass (before → after, and why)
 
 | Change | Before | After | Why |

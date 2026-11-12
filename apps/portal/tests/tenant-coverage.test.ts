@@ -54,6 +54,8 @@ const READ_FENCES = [
   // Customers' data requests (lib/actions/data-requests.ts): the request, or its customer, found inside the person's organisation.
   'dataRequestOf(',
   'requestCustomerOf(',
+  // Customer documents in bulk (lib/actions/documents.ts): the workshop found inside the person's organisation.
+  'documentBranchOf(',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn

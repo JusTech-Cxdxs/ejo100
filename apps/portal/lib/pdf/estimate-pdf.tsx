@@ -1,5 +1,7 @@
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
 import { PLATFORM } from '@/lib/brand';
+import type { EstimatePdfLineItem, EstimatePdfProps } from './document-types';
+export type { EstimatePdfLineItem, EstimatePdfProps } from './document-types';
 
 const styles = StyleSheet.create({
   page: { paddingTop: 32, paddingBottom: 32, paddingHorizontal: 36, fontSize: 10, fontFamily: 'Helvetica', color: '#0F172A' },
@@ -53,51 +55,7 @@ const styles = StyleSheet.create({
   footerCredit: { fontSize: 7, color: '#CBD5E1', marginTop: 3 },
 });
 
-export type EstimatePdfLineItem = {
-  description: string;
-  quantity: number;
-  unitLabel: string | null;
-  amount: string;
-};
 
-export type EstimatePdfProps = {
-  organisation: {
-    name: string;
-    legalName: string | null;
-    hqAddress: string | null;
-    poBox: string | null;
-    rcNumber: string | null;
-    hotlines: string[];
-    website: string | null;
-    email: string | null;
-  };
-  branch: {
-    name: string;
-    address: string | null;
-    hotlines: string[];
-    email: string | null;
-  };
-  logoUrl: string;
-  jobNumber: string;
-  customerName: string;
-  customerAddress: string | null;
-  vehicleDescription: string;
-  plateNumber: string | null;
-  chassisNumber: string | null;
-  lineItems: EstimatePdfLineItem[];
-  servicesSubtotal: string | null;
-  labourSubtotal: string | null;
-  sundrySubtotal: string | null;
-  totalAmount: string;
-  minimumDepositAmount: string;
-  bankName: string;
-  accountName: string;
-  accountNumber: string;
-  paymentRemarkSuggestion: string;
-  /** Label above the reference number. Defaults to "JOB CARD"; Vehicle
-   * Service passes "VEHICLE SERVICE". */
-  referenceLabel?: string;
-};
 
 /**
  * The customer's estimate PDF, attached to the estimate-approved email.

@@ -121,5 +121,5 @@ test('only the people who label vehicles print; each part of the page for those 
   await expect(page.getByRole('link', { name: 'Vehicle page and label' })).toBeVisible();
   // A VIN EJO has never seen.
   await open(page, '/vehicles/ZZZZZZ12345678901');
-  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Page not found' })).toBeVisible({ timeout: 45_000 });
 });

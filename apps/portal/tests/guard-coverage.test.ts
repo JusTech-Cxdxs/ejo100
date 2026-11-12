@@ -28,6 +28,8 @@ const GUARDS = [
   'sapPostingOf(',
   // Customers' data requests (lib/actions/data-requests.ts): authorize('privacy.requests.manage') across the organisation.
   'privacyDesk(',
+  // Customer documents in bulk (lib/actions/documents.ts): authorize('dataexchange.export.sensitive'), then allows('dataexchange.export.run') at the branch.
+  'documentsDesk(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',
