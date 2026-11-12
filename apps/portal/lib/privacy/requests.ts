@@ -1,18 +1,15 @@
 /**
  * A4c1 — a customer's data request (NDPA 2023). Pure (no database): the kinds
  * of request and how they arrive, the steps, what is kept out of the copy of
- * a customer's data (other people: staff; secrets: passwords, tokens), the
- * copy's files (CSV for a spreadsheet, JSON for another system) and its
- * README, and the zip.
+ * a customer's data (other people: staff; secrets: passwords, tokens) and
+ * the target for answering. No Node modules: the forms import it. The copy's
+ * files and the zip are in ./pack (server only).
  *
  * The copy holds what EJO holds about the customer, record by record — not a
  * summary — with the business's internal keys and the staff who handled each
  * record left out. The person who releases it reads it first: anything about
  * someone else (another customer named in a note, say) is theirs to remove.
  */
-import { zipSync, strToU8 } from 'fflate';
-import { createHash } from 'node:crypto';
-import { safeText } from '../exports/format';
 
 export const REQUEST_KINDS = ['ACCESS', 'CORRECTION', 'ERASURE', 'OBJECTION'] as const;
 export type RequestKind = (typeof REQUEST_KINDS)[number];
@@ -82,7 +79,7 @@ const STAFF_NAME = /(by|staff|technician|supervisor|inspector|advisor|approver|a
 const SECRET = /password|token|secret|hash|^scope$|MessageId$|^mailboxId$|^queueId$|^organisationId$|^importJobId$|^branchId$/i;
 export const leftOut = (key: string) => STAFF.test(key) || STAFF_NAME.test(key) || SECRET.test(key);
 
-type Plain = string | number | boolean | null | Plain[] | { [k: string]: Plain };
+export type Plain = string | number | boolean | null | Plain[] | { [k: string]: Plain };
 /** A value as plain data: dates as ISO 8601 (UTC), money and decimals as text (no rounding), nested JSON as it is. */
 export function plain(v: unknown): Plain {
   if (v === null || v === undefined) return null;
@@ -104,73 +101,3 @@ export function forCopy(row: Record<string, unknown>, branchNames: Map<string, s
   }
   return out;
 }
-
-// ── The files ───────────────────────────────────────────────────────────────
-
-const cell = (v: Plain): string => {
-  if (v === null) return '';
-  const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
-  return `"${safeText(s).replace(/"/g, '""')}"`;
-};
-/** A section as CSV (UTF-8 with its mark, so Excel reads Naira and accents): the union of the records' fields as the header, in first-seen order. */
-export function sectionCsv(rows: Record<string, Plain>[]): string {
-  const cols: string[] = [];
-  for (const r of rows) for (const k of Object.keys(r)) if (!cols.includes(k)) cols.push(k);
-  const lines = [cols.map((c) => cell(c)).join(','), ...rows.map((r) => cols.map((c) => cell(r[c] ?? null)).join(','))];
-  return `\uFEFF${lines.join('\r\n')}\r\n`;
-}
-
-export type Section = { file: string; title: string; rows: Record<string, Plain>[] };
-
-export function readme(p: { number: string; organisation: string; customerName: string; madeAt: Date; sections: Section[] }): string {
-  const day = p.madeAt.toISOString().replace('T', ' ').slice(0, 16);
-  return [
-    `A copy of your data — ${p.organisation}`,
-    '='.repeat(60),
-    '',
-    `For: ${p.customerName}`,
-    `Request: ${p.number}`,
-    `Made: ${day} UTC, from the records as they were at that moment.`,
-    '',
-    'What is in it',
-    '-------------',
-    'Everything our records system (EJO) holds about you, record by record:',
-    '',
-    ...p.sections.map((s) => `  ${s.file.padEnd(34)} ${String(s.rows.length).padStart(6)}  ${s.title}`),
-    '',
-    'Each .csv file opens in Excel, Google Sheets or Numbers. data.json holds the',
-    'same records in one file, for another system to read (dates in UTC, ISO 8601;',
-    'amounts in Naira exactly as recorded). Records refer to each other by their',
-    '"id" (a payment\'s jobCardId is the id of its job card).',
-    '',
-    'What is not in it',
-    '-----------------',
-    '- Who among our staff handled each record, and our internal keys: they are',
-    '  about other people, or about our systems, not about you.',
-    '- Passwords and sign-in tokens: never given out, to anyone.',
-    '- Technical logs (error reports) that happen to carry your account.',
-    '',
-    'Questions, or something is wrong? Reply to the message this came with, quoting',
-    `${p.number}. You may also ask us to correct or erase your data, or to stop`,
-    'using it for a purpose; some records (invoices, payments, warranties) we must',
-    'keep for as long as the law requires.',
-    '',
-  ].join('\r\n');
-}
-
-/**
- * The zip: README.txt, one CSV per section, data.json. Every entry dated the
- * moment it was made, so its SHA-256 identifies exactly what was given.
- */
-export function packZip(p: { number: string; organisation: string; customerName: string; madeAt: Date; sections: Section[] }): { bytes: Uint8Array; checksum: string } {
-  const mtime = p.madeAt;
-  const files: Record<string, [Uint8Array, { mtime: Date }]> = {
-    'README.txt': [strToU8(readme(p)), { mtime }],
-  };
-  for (const s of p.sections) files[s.file] = [strToU8(sectionCsv(s.rows)), { mtime }];
-  files['data.json'] = [strToU8(JSON.stringify({ request: p.number, organisation: p.organisation, madeAt: p.madeAt.toISOString(), sections: Object.fromEntries(p.sections.map((s) => [s.file.replace(/\.csv$/, ''), s.rows])) }, null, 2)), { mtime }];
-  const bytes = zipSync(files, { level: 6 });
-  return { bytes, checksum: createHash('sha256').update(bytes).digest('hex') };
-}
-
-export const packFileName = (number: string, madeAt: Date) => `EJO-data-copy-${number}-${madeAt.toISOString().slice(0, 10)}.zip`;

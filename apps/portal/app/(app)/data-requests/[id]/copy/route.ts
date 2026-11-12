@@ -1,7 +1,7 @@
 import { prisma } from '@ejo/database';
 import { allows, getPrincipal, myOrganisationId, refuseDuringAssist } from '@/lib/authz/server';
 import { collectPack, PackTooLarge } from '@/lib/privacy/pack-server';
-import { packFileName, packZip } from '@/lib/privacy/requests';
+import { packFileName, packZip } from '@/lib/privacy/pack';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;

@@ -10,7 +10,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { checkVerifiedHow, dueOf, dueWords, RESPONSE_TARGET_DAYS, forCopy, leftOut, packZip, plain, requestNumber, sectionCsv, KIND_LABEL, REQUEST_KINDS } from '../lib/privacy/requests';
+import { checkVerifiedHow, dueOf, dueWords, RESPONSE_TARGET_DAYS, forCopy, leftOut, plain, requestNumber, KIND_LABEL, REQUEST_KINDS } from '../lib/privacy/requests';
+import { packZip, sectionCsv } from '../lib/privacy/pack';
 import { DATA_INVENTORY } from '../lib/governance/data-inventory';
 import { decide, ROLE_GRANTS } from '../lib/authz/catalogue';
 
@@ -102,4 +103,11 @@ test('the target: 21 days from the day received — days left, due today, days p
   assert.equal(dueWords(at('2026-11-22T10:00:00.000Z')), 'due today');
   assert.equal(at('2026-11-22T12:00:00.000Z').overdue, true);
   assert.equal(dueWords(at('2026-11-24T12:00:00.000Z')), '3 days past the 21-day target');
+});
+
+test('the forms’ shared module pulls in no Node modules (the browser bundle builds)', () => {
+  const shared = read('lib/privacy/requests.ts');
+  assert.doesNotMatch(shared, /from 'node:|from 'fflate'|^import /m);
+  assert.match(read('components/privacy/DataRequestActions.tsx'), /from '@\/lib\/privacy\/requests'/);
+  assert.doesNotMatch(read('components/privacy/DataRequestActions.tsx'), /privacy\/pack/);
 });

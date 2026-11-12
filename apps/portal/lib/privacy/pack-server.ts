@@ -9,7 +9,8 @@
  * the old system. Nothing about the staff who handled them, no secrets.
  */
 import type { PrismaClient } from '@ejo/database';
-import { forCopy, type Section } from './requests';
+import { forCopy } from './requests';
+import type { Section } from './pack';
 
 /** A section larger than this is too large for one copy: the request is answered with support's help. */
 export const SECTION_MAX = 100_000;
