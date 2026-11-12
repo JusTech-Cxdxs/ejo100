@@ -42,7 +42,7 @@ test('Finance finds the Job Card estimates of the period and downloads the zip: 
   await open(page, '/data-exchange/documents');
   const form = page.getByTestId('documents-form');
   await form.getByLabel(/Job Card estimates/).check();
-  await form.getByLabel('Workshop', { exact: true }).selectOption(ids.branch);
+  await form.locator('select').selectOption(ids.branch);
   await form.getByLabel('From', { exact: true }).fill(today);
   await form.getByLabel(/^To/).fill(today);
   await form.getByRole('button', { name: 'Find the documents' }).click();
