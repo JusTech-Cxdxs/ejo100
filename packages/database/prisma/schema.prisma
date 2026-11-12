@@ -641,6 +641,9 @@ model Customer {
   externalId     String?
   // The import that created this customer (Data Exchange): "Undo this import" removes exactly these.
   importJobId    String?
+  // B: when this imported customer was invited to the customer portal from their import (once; a new link
+  // after that is sent from their own page). Null: never invited that way.
+  portalInvitedAt DateTime?
   // v-A3: when they became a customer of the business — from SAP (the business
   // partner's creation date, ERDAT) or the old system — which can be years
   // before this record was made (createdAt). Analytics read customerSince when

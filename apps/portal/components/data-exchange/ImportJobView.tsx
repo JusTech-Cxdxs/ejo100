@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import {
-  approveImport, cancelImport, checkImportBatch, releaseImportRows, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendImportBack, sendStaffInvitations, signOffImportTotals, submitImportForApproval, undoImportBatch,
+  approveImport, cancelImport, checkImportBatch, releaseImportRows, loadImportBatch, pauseImport, reopenUndoneImport, resumeImport, saveImportMapping, sendCustomerPortalInvitations, sendImportBack, sendStaffInvitations, signOffImportTotals, submitImportForApproval, undoImportBatch,
   type ImportJobDetail,
 } from '@/lib/actions/data-exchange';
 import { ENTITIES, mappingFromProfile, type Mapping } from '@/lib/data-exchange/fields';
@@ -128,13 +128,13 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
 
   // A staff import's invitations: sent in steps until none is left, with the progress shown.
   const [inviting, setInviting] = useState<string | null>(null);
-  const sendInvitations = () => {
+  const sendInvitations = (send: (id: string) => Promise<{ invited: number; failed: number; left: number }> = sendStaffInvitations) => {
     setError(null);
     startTransition(async () => {
       try {
         let invited = 0; let failed = 0;
         for (;;) {
-          const r = await sendStaffInvitations(job.id);
+          const r = await send(job.id);
           invited += r.invited; failed += r.failed;
           setInviting(`Invited ${nf(invited)}${failed ? ` · ${nf(failed)} not accepted by the mail server` : ''}${r.left ? ` · ${nf(r.left)} to go…` : ''}`);
           if (!r.left || (!r.invited && !r.failed)) break;
@@ -389,7 +389,15 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
               <p className="font-medium text-[var(--ejo-text)]">{nf(job.staffAccounts.accounts)} {job.staffAccounts.accounts === 1 ? 'account' : 'accounts'} from this import · {nf(job.staffAccounts.invited)} invited · {nf(Math.max(0, job.staffAccounts.accounts - job.staffAccounts.invited))} waiting for their invitation (switched off until then)</p>
               <p className="text-xs text-[var(--ejo-text-muted)]">Sending switches each waiting account on and emails the person their welcome — their employee ID, roles, branch and what they may do — with a one-time link to set their own password. No password is ever sent or seen. One person at a time: switch them on and send the welcome email from the Users page.</p>
               {inviting ? <p className="text-xs text-[var(--ejo-text)]" role="status">{inviting}</p> : null}
-              {job.staffAccounts.accounts > job.staffAccounts.invited ? !job.me.canInvite ? <p className="text-xs text-[var(--ejo-warning)]">Waiting for an administrator of the whole organisation to send the invitations.</p> : <button type="button" className={primary} disabled={pending} onClick={sendInvitations}><Icon name="mail" size={14} /> Send the invitations</button> : <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Everyone from this import has been invited.</p>}
+              {job.staffAccounts.accounts > job.staffAccounts.invited ? !job.me.canInvite ? <p className="text-xs text-[var(--ejo-warning)]">Waiting for an administrator of the whole organisation to send the invitations.</p> : <button type="button" className={primary} disabled={pending} onClick={() => sendInvitations()}><Icon name="mail" size={14} /> Send the invitations</button> : <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Everyone from this import has been invited.</p>}
+            </div>
+          ) : null}
+          {job.customerPortal && job.customerPortal.withEmail + job.customerPortal.noEmail > 0 ? (
+            <div className="mt-3 space-y-2 rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 text-sm" data-testid="portal-invitations">
+              <p className="font-medium text-[var(--ejo-text)]">Customer portal: {nf(job.customerPortal.invited)} invited · {nf(job.customerPortal.waiting)} can be invited{job.customerPortal.alreadyIn ? ` · ${nf(job.customerPortal.alreadyIn)} already have access, or have it switched off` : ''} · {nf(job.customerPortal.noEmail)} with no email (reached by phone)</p>
+              <p className="text-xs text-[var(--ejo-text-muted)]">Inviting emails each customer their welcome with a one-time link to set their own password, so they can follow their vehicles, estimates and payments online. No password is ever sent or seen. Each customer is invited once from here; after that, send a new link from their own page.</p>
+              {inviting ? <p className="text-xs text-[var(--ejo-text)]" role="status">{inviting}</p> : null}
+              {job.customerPortal.waiting > 0 ? !job.me.canInvitePortal ? <p className="text-xs text-[var(--ejo-warning)]">Someone who manages customers (front desk, a manager or an administrator) sends the invitations.</p> : <button type="button" className={primary} disabled={pending} onClick={() => sendInvitations(sendCustomerPortalInvitations)}><Icon name="mail" size={14} /> Invite {nf(job.customerPortal.waiting)} to the customer portal</button> : job.customerPortal.invited > 0 ? <p className="text-xs text-[var(--ejo-success)]"><Icon name="check" size={12} /> Every customer from this import who can use the portal has been invited.</p> : null}
             </div>
           ) : null}
           {def.financeSignOff && job.totals?.loaded ? (
