@@ -997,6 +997,11 @@ customers (vehicles, parts, suppliers) exported from EJO**:
   organisation (a part within the branch the import loads into). A row
   without one, or with one that is not the organisation's, is refused.
   Nothing new is ever added in this mode.
+- **Or SAP's own file (C1b).** SAP's extract has no EJO record column: with
+  source **SAP** and the SAP number column matched (KUNNR, EQUNR, LIFNR,
+  MATNR), each row is found by its SAP number only, leading zeros or not. A
+  number EJO does not have, or has on two records, is refused — never
+  guessed (SAP_INTEGRATION.md §3a2).
 - **Only real changes.** Each row is compared with the record as it is now.
   The same value written another way is no change: a phone as *+234 803…*
   or *0803…*, a plate with or without its space, a SAP number with its
@@ -1078,6 +1083,7 @@ permissions; the columns are SAP's:
 | P8 — plant shipments, vehicles, kits and kit issues made by an import | `scripts/predeploy/0022-plant-imports.sql` (deploy) · `scripts/v-p8-plant-imports.sql` (manual) |
 | P10 — each row's changes for an update from an edited export | `scripts/predeploy/0023-round-trip-changes.sql` (deploy) · `scripts/v-p10-round-trip.sql` (manual) |
 | C1a — postings for SAP: the files and their lines | `scripts/predeploy/0024-sap-postings.sql` (deploy) · `scripts/v-c1a-sap-postings.sql` (manual) |
+| C1b — the plant and refunds in the postings; SAP's master data back in | No change to the database: it uses C1a's tables and P10's import columns |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a

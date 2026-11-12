@@ -1,6 +1,7 @@
 /**
  * C1a — the daily files of postings EJO writes for SAP. Pure (no database):
- * the five kinds and their SAP columns, how each value is written (days as
+ * the kinds and their SAP columns (C1b added refunds and the plant's PDI
+ * usage decisions and vehicles received into the yard), how each value is written (days as
  * YYYYMMDD in Lagos, SAP's leading zeros, quantities and amounts with a
  * point), the CSV rebuilt byte for byte from its lines (so its checksum never
  * changes), and how a line of SAP's return file is read. The server part is
@@ -15,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { csvLine } from '../exports/format';
 import { alpha } from '../exports/sap-layout';
 
-export const POSTING_KINDS = ['NEW_CUSTOMER', 'GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT'] as const;
+export const POSTING_KINDS = ['NEW_CUSTOMER', 'GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT', 'REFUND', 'USAGE_DECISION', 'PRODUCTION_RECEIPT'] as const;
 export type PostingKind = (typeof POSTING_KINDS)[number];
 export const isPostingKind = (k: unknown): k is PostingKind => (POSTING_KINDS as readonly string[]).includes(String(k));
 
@@ -56,7 +57,30 @@ export const KINDS: Record<PostingKind, KindDef> = {
     label: 'Payments', what: 'Payments recorded against job cards and services (cash or bank transfer).', prefix: 'PY', amountColumn: 'WRBTR',
     columns: ['ZZ_EJO_LINE', 'ZZ_EJO_ID', 'BUDAT', 'WERKS', 'KUNNR', 'WRBTR', 'WAERS', 'ZLSCH', 'XBLNR'],
   },
+  REFUND: {
+    label: 'Refunds', what: 'Money paid back to customers against job cards and services, with the reason.', prefix: 'RF', amountColumn: 'WRBTR',
+    columns: ['ZZ_EJO_LINE', 'ZZ_EJO_ID', 'BUDAT', 'WERKS', 'KUNNR', 'WRBTR', 'WAERS', 'ZLSCH', 'XBLNR', 'ZZ_EJO_REF', 'SGTXT'],
+  },
+  USAGE_DECISION: {
+    label: 'PDI usage decisions', what: 'Each pre-delivery inspection decided at the plant: A accepted, R rejected back to rework (QM usage decision).', prefix: 'UD',
+    columns: ['ZZ_EJO_LINE', 'ZZ_EJO_ID', 'VDATUM', 'WERKS', 'MATNR', 'SERNR', 'EQUNR', 'AUFNR', 'VCODE', 'ZZ_EJO_REF'],
+  },
+  PRODUCTION_RECEIPT: {
+    label: 'Vehicles to the yard', what: 'Each vehicle that passed PDI, received from its production order into stock (movement 101).', prefix: 'YD', quantityColumn: 'MENGE',
+    columns: ['ZZ_EJO_LINE', 'ZZ_EJO_ID', 'BWART', 'BUDAT', 'WERKS', 'MATNR', 'MENGE', 'MEINS', 'AUFNR', 'SERNR', 'EQUNR', 'ZZ_EJO_REF'],
+  },
 };
+
+/** The kinds each kind of branch posts; the organisation's own file is the new customers. */
+export const BRANCH_KINDS: Record<string, PostingKind[]> = {
+  WORKSHOP: ['GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT', 'REFUND'],
+  WAREHOUSE: ['GOODS_RECEIPT', 'GOODS_ISSUE'],
+  ASSEMBLY_PLANT: ['USAGE_DECISION', 'PRODUCTION_RECEIPT'],
+};
+
+/** Where an EJO record's postings are found: the refs of its events (for "Sent to SAP" on its page). */
+export const TRAIL_ENTITIES = ['JobCard', 'VehicleService', 'Payment', 'Refund', 'PdiInspection', 'PlantVehicle', 'Customer'] as const;
+export type TrailEntity = (typeof TRAIL_ENTITIES)[number];
 
 /** At most this many lines in one file: the rest go in the next. */
 export const MAX_LINES = 20_000;
@@ -75,8 +99,16 @@ export const sapQuantity = (n: number | null | undefined): string => (n === null
 export const sapMoney = (n: number | null | undefined): string => (n === null || n === undefined || !Number.isFinite(n) ? '' : n.toFixed(2));
 /** A text field: one line, no separators SAP's tools trip on, cut to SAP's length. */
 export const sapText = (s: string | null | undefined, max = 40): string => String(s ?? '').replace(/[\r\n\t;]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
-/** A number field with SAP's leading zeros (KUNNR, LIFNR to ten digits). */
-export const sapNumber = (field: string, v: string | null | undefined): string => (v ? String(alpha(field, v)) : '');
+/** Order and equipment numbers SAP keeps with leading zeros too. */
+const MORE_ALPHA: Record<string, number> = { AUFNR: 12, EQUNR: 18 };
+/** A number field with SAP's leading zeros (KUNNR, LIFNR to ten digits; AUFNR twelve; EQUNR eighteen) when it is all digits. */
+export function sapNumber(field: string, v: string | null | undefined): string {
+  const t = String(v ?? '').trim();
+  if (!t) return '';
+  const len = MORE_ALPHA[field];
+  if (len) return /^\d+$/.test(t) && t.length <= len ? t.padStart(len, '0') : t.slice(0, len);
+  return String(alpha(field, t));
+}
 export const PAYMENT_METHOD: Record<string, string> = { CASH: 'C', BANK_TRANSFER: 'T' };
 
 /** The file, rebuilt from its lines in order: line 1 the header, as SAP's load tools expect. */

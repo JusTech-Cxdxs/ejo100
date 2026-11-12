@@ -93,31 +93,68 @@ async function writeChanges(db: Db, rows: { id: string; changes: Change[] | null
   await db.$executeRaw`UPDATE import_rows AS r SET changes = v.c::jsonb FROM unnest(${ids}::text[], ${json}::text[]) AS v(id, c) WHERE r.id = v.id`;
 }
 
+/** The SAP number a row of SAP's own extract carries (KUNNR, EQUNR, LIFNR, MATNR), without SAP's leading zeros. */
+function sapKeyOf(values: unknown): string | null {
+  const v = String((values as { externalId?: unknown } | null)?.externalId ?? '').trim().replace(/^0+(?=\d)/, '');
+  return v ? v.slice(0, 60) : null;
+}
+
+/**
+ * C1b — SAP's master data back in: the records with these SAP numbers, fenced
+ * to the organisation (a part to the import's branch, by its SAP number or,
+ * kept as SAP's MATNR, its part number). 'MANY' when a number is on more than
+ * one record (never guessed).
+ */
+async function sapMatches(db: Db, entity: RoundTripEntity, job: RoundTripJob, keys: string[]): Promise<Map<string, string | 'MANY'>> {
+  const out = new Map<string, string | 'MANY'>();
+  const want = [...new Set(keys)];
+  if (!want.length) return out;
+  const put = (k: string | null, id: string) => { if (!k) return; const key = k.replace(/^0+(?=\d)/, ''); const had = out.get(key); out.set(key, had && had !== id ? 'MANY' : id); };
+  const sap = { externalSource: 'SAP', externalId: { in: want } };
+  if (entity === 'customers') for (const r of await db.customer.findMany({ where: { organisationId: job.organisationId, ...sap }, select: { id: true, externalId: true } })) put(r.externalId, r.id);
+  else if (entity === 'suppliers') for (const r of await db.supplier.findMany({ where: { organisationId: job.organisationId, ...sap }, select: { id: true, externalId: true } })) put(r.externalId, r.id);
+  else if (entity === 'vehicles') for (const r of await db.customerVehicle.findMany({ where: { customer: { organisationId: job.organisationId }, ...sap }, select: { id: true, externalId: true } })) put(r.externalId, r.id);
+  else if (job.branchId) {
+    for (const r of await db.part.findMany({ where: { branchId: job.branchId, OR: [sap, { externalSource: 'SAP', externalId: null, partNumber: { in: want } }] }, select: { id: true, externalId: true, partNumber: true } })) put(r.externalId ?? r.partNumber, r.id);
+  }
+  return out;
+}
+
 /** Checks a block of rows: each found by its EJO record, its changes worked out and kept for the preview. */
 export async function checkRoundTripRows(entity: RoundTripEntity, job: RoundTripJob, mapping: Mapping, rows: { id: string; cells: Prisma.JsonValue }[]): Promise<RowUpdate[]> {
-  const checked = rows.map((r) => ({ r, c: parse(entity, r.cells as unknown[], mapping, job.sourceSystem), ejo: ejoRecordOf(r.cells as unknown[], mapping) }));
-  const current = await currentOf(prisma, entity, job, [...new Set(checked.map((x) => x.ejo).filter((x): x is string => Boolean(x)))]);
+  const parsed = rows.map((r) => ({ r, c: parse(entity, r.cells as unknown[], mapping, job.sourceSystem), ejo: ejoRecordOf(r.cells as unknown[], mapping) }));
+  // C1b — SAP's own extract (no EJO record column): each row found by its SAP number, and only by it.
+  const bySap = mapping.ejoRecord == null && job.sourceSystem === 'SAP' ? await sapMatches(prisma, entity, job, parsed.map((x) => sapKeyOf(x.c.values)).filter((k): k is string => Boolean(k))) : null;
+  const checked = parsed.map((x) => {
+    const sap = bySap ? sapKeyOf(x.c.values) : null;
+    const hit = sap ? bySap!.get(sap) : undefined;
+    return { ...x, sap, id: x.ejo ?? (hit && hit !== 'MANY' ? hit : null), many: hit === 'MANY' };
+  });
+  const current = await currentOf(prisma, entity, job, [...new Set(checked.map((x) => x.id).filter((x): x is string => Boolean(x)))]);
   const updates: RowUpdate[] = [];
   const changes: { id: string; changes: Change[] | null }[] = [];
-  for (const { r, c, ejo } of checked) {
+  for (const { r, c, ejo, sap, id, many } of checked) {
     const issues: Issue[] = [...c.issues];
-    const fail = (message: string) => issues.push({ field: 'ejoRecord', level: 'error', message });
+    const fail = (message: string) => issues.push({ field: bySap ? 'externalId' : 'ejoRecord', level: 'error', message });
     let found: Change[] | null = null;
-    const cur = ejo ? current.get(ejo) : undefined;
-    if (!ejo) fail('No EJO record: “Update records exported from EJO” changes only records exported from EJO (their “EJO record” column). To add new ones, import the file with “Add new only”.');
+    const cur = id ? current.get(id) : undefined;
+    if (bySap && !sap) fail(`No SAP number: an update from SAP’s file finds each ${AUDIT[entity].noun} by its SAP number only.`);
+    else if (bySap && many) fail(`SAP number ${sap} is on more than one ${AUDIT[entity].noun} in EJO: put it right on their pages first.`);
+    else if (bySap && !cur) fail(`No ${AUDIT[entity].noun} in EJO has SAP number ${sap}${entity === 'parts' ? ' in this branch’s catalogue' : ''}: to add new ones, import the file with “Add new only”.`);
+    else if (!ejo && !bySap) fail('No EJO record: “Update records exported from EJO” changes only records exported from EJO (their “EJO record” column). To add new ones, import the file with “Add new only”.');
     else if (!cur) fail(entity === 'parts' ? 'This EJO record is not a part of this branch’s catalogue: export the branch’s own parts, or start the import in the part’s branch.' : `This EJO record is not one of your organisation’s ${entity}.`);
     else if (c.values) {
       const d = diffRecord(entity, cur, c.values as never, r.cells as unknown[], mapping);
       for (const e of d.errors) fail(e);
       issues.push(...d.notes);
       if (!d.errors.length) {
-        for (const ch of d.changes) { const why = await taken(prisma, entity, job, ejo, cur, ch); if (why) fail(why); }
+        for (const ch of d.changes) { const why = await taken(prisma, entity, job, id!, cur, ch); if (why) fail(why); }
         found = d.changes;
       }
     }
     const failed = issues.some((i) => i.level === 'error');
     changes.push({ id: r.id, changes: failed ? null : found });
-    updates.push({ id: r.id, status: failed ? 'REJECTED' : issues.length ? 'WARNING' : 'GOOD', issues, matchedId: cur ? ejo : null, matchedBy: cur ? 'ejo' : null, keys: ejo ? [`ejo:${ejo}`] : [] });
+    updates.push({ id: r.id, status: failed ? 'REJECTED' : issues.length ? 'WARNING' : 'GOOD', issues, matchedId: cur ? id : null, matchedBy: cur ? (ejo ? 'ejo' : 'sap') : null, keys: ejo ? [`ejo:${ejo}`] : sap ? [`sap:${sap}`] : [] });
   }
   await writeChanges(prisma, changes);
   return updates;

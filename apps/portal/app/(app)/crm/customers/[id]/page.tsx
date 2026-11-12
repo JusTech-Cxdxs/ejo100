@@ -23,6 +23,7 @@ import { SpendChart } from '@/components/crm/LazyCrmCharts';
 import { EditCustomerForm } from '@/components/crm/EditCustomerForm';
 import { RefineTextButton } from '@/components/enyo/RefineTextButton';
 import { ExportAction } from '@/components/ExportAction';
+import { SapTrail } from '@/components/data-exchange/SapTrail';
 
 export const metadata = { title: 'Customer' };
 
@@ -370,6 +371,7 @@ export default async function Customer360Page({ params, searchParams }: { params
         ) : null}
       </div>
       <RecycleBinPanel offer={binOffer} entity="Customer" id={c.id} className="mt-6 max-w-xl" />
+      <SapTrail entityType="Customer" entityId={c.id} />
     </div>
   );
 }

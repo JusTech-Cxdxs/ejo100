@@ -11,13 +11,13 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { answerColumns, checksumOf, isPostingKind, KINDS, lagosWindow, postingCsv, postingFileName, POSTING_KINDS, readAnswer, sapDay, sapMoney, sapNumber, sapQuantity, sapText } from '../lib/sap/postings';
+import { answerColumns, BRANCH_KINDS, checksumOf, isPostingKind, KINDS, lagosWindow, postingCsv, postingFileName, POSTING_KINDS, readAnswer, sapDay, sapMoney, sapNumber, sapQuantity, sapText } from '../lib/sap/postings';
 import { DATA_INVENTORY } from '../lib/governance/data-inventory';
 
 const read = (p: string) => readFileSync(join(__dirname, '..', '..', p), 'utf8');
 
 test('the kinds: each file’s columns start with the line and the record, as SAP’s return file names them back', () => {
-  assert.deepEqual([...POSTING_KINDS], ['NEW_CUSTOMER', 'GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT']);
+  assert.deepEqual([...POSTING_KINDS], ['NEW_CUSTOMER', 'GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT', 'REFUND', 'USAGE_DECISION', 'PRODUCTION_RECEIPT']);
   for (const k of POSTING_KINDS) assert.deepEqual(KINDS[k].columns.slice(0, 2), ['ZZ_EJO_LINE', 'ZZ_EJO_ID'], k);
   assert.ok(KINDS.NEW_CUSTOMER.organisation);
   assert.equal(isPostingKind('STOCK'), false);
@@ -91,4 +91,52 @@ test('wired in: from the cut-over, never history or the demo, one file at a time
     assert.match(sql, /CREATE TABLE IF NOT EXISTS "sap_posting_lines"/);
     assert.doesNotMatch(sql.replace(/--.*$/gm, ''), /\b(DROP|DELETE|TRUNCATE|UPDATE)\b/i, 'additive only');
   }
+});
+
+test('C1b kinds: refunds at the workshop; PDI usage decisions and vehicles to the yard at the plant; SAP’s zeros on order and equipment numbers', () => {
+  assert.deepEqual(BRANCH_KINDS.WORKSHOP, ['GOODS_RECEIPT', 'GOODS_ISSUE', 'BILLING', 'PAYMENT', 'REFUND']);
+  assert.deepEqual(BRANCH_KINDS.ASSEMBLY_PLANT, ['USAGE_DECISION', 'PRODUCTION_RECEIPT']);
+  assert.equal(BRANCH_KINDS.SALES, undefined, 'a sales branch posts nothing yet');
+  assert.ok(KINDS.REFUND.columns.includes('SGTXT') && KINDS.REFUND.amountColumn === 'WRBTR');
+  assert.ok(KINDS.USAGE_DECISION.columns.includes('VCODE') && KINDS.USAGE_DECISION.columns.includes('SERNR'));
+  assert.equal(KINDS.PRODUCTION_RECEIPT.quantityColumn, 'MENGE');
+  assert.ok(!KINDS.USAGE_DECISION.columns.some((c) => /NAME/.test(c)), 'no person’s name in the plant’s files');
+  assert.equal(sapNumber('AUFNR', '1000234'), '000001000234');
+  assert.equal(sapNumber('EQUNR', '10000077'), '000000000010000077');
+  assert.equal(sapNumber('AUFNR', 'PO-77'), 'PO-77');
+  assert.equal(sapNumber('AUFNR', ''), '');
+});
+
+test('C1b wired in: decisions A from the passed PDI, R from its audit entry written with the decision; one yard receipt per vehicle; never the demo; “Sent to SAP” on the record’s page', () => {
+  const s = read('lib/sap/postings-server.ts');
+  assert.match(s, /ref: `UD:A:\$\{p\.id\}`/);
+  assert.match(s, /action: 'plant\.pdi_rejected'/);
+  assert.match(s, /ref: `UD:R:\$\{r\.id\}`/);
+  assert.match(s, /ref: `YD:\$\{p\.vehicle\.id\}`/, 'a vehicle is received into the yard once');
+  assert.match(s, /externalSource: \{ not: 'EJO-DEMO' \}/);
+  assert.match(s, /ref: `RF:\$\{r\.id\}`/);
+  const plant = read('lib/actions/plant.ts');
+  const reject = plant.slice(plant.indexOf('export async function rejectPdi'), plant.indexOf('export async function cancelPdi'));
+  assert.match(reject, /await tx\.auditLog\.create\(\{ data: \{ organisationId: p\.organisationId, userId: me\.userId, action: 'plant\.pdi_rejected'/, 'the R decision is never lost: its entry is written in the same transaction');
+  assert.doesNotMatch(reject, /writeAuditLog/);
+  const a = read('lib/actions/sap-postings.ts');
+  const trail = a.slice(a.indexOf('export async function getSapTrail'));
+  assert.match(trail, /sapTrailOf\(organisationId/);
+  assert.match(trail, /if \(!make && !answer\) return null/);
+  assert.match(a, /branch: \{ businessUnit: \{ organisationId \} \}/, 'a job card or service found inside the person’s organisation');
+  for (const [page, type] of [['app/(app)/workshop/job-cards/[id]/page.tsx', 'JobCard'], ['app/(app)/workshop/vehicle-service/[id]/page.tsx', 'VehicleService'], ['app/(app)/plant/pdi/[id]/page.tsx', 'PdiInspection'], ['app/(app)/crm/customers/[id]/page.tsx', 'Customer']] as const) {
+    assert.match(read(page), new RegExp(`<SapTrail entityType="${type}"`), page);
+  }
+});
+
+test('C1b SAP’s master data back in: SAP’s own extract updates records found by their SAP number only, never guessed', () => {
+  const s = read('lib/data-exchange/round-trip-server.ts');
+  assert.match(s, /mapping\.ejoRecord == null && job\.sourceSystem === 'SAP' \? await sapMatches\(/, 'only SAP’s file without an EJO record column, only from SAP');
+  assert.match(s, /out\.set\(key, had && had !== id \? 'MANY' : id\)/, 'a number on two records is never guessed');
+  assert.match(s, /SAP number \$\{sap\} is on more than one/);
+  assert.match(s, /matchedBy: cur \? \(ejo \? 'ejo' : 'sap'\) : null/);
+  assert.match(s, /db\.customer\.findMany\(\{ where: \{ organisationId: job\.organisationId, \.\.\.sap \}/, 'fenced to the organisation');
+  assert.match(s, /db\.part\.findMany\(\{ where: \{ branchId: job\.branchId,/, 'a part to the import’s branch');
+  const a = read('lib/actions/data-exchange.ts');
+  assert.match(a, /mapping\.ejoRecord == null && !\(input\.sourceSystem !== 'LEGACY' && mapping\.externalId != null\)/);
 });

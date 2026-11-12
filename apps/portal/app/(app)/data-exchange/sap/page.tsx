@@ -12,14 +12,14 @@ const nf = (n: number) => n.toLocaleString('en-NG');
 const naira = (n: number) => `₦${n.toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const dayBefore = (d: string) => new Date(new Date(`${d}T00:00:00.000Z`).getTime() - 86_400_000).toISOString().slice(0, 10);
 
-/** C1a — the daily postings for SAP, branch by branch: what is not sent yet, sent, posted and rejected since the cut-over, and the files. */
+/** C1a/C1b — the daily postings for SAP, branch by branch (workshops, warehouses, the plant): what is not sent yet, sent, posted and rejected since the cut-over, and the files. */
 export default async function SapPostingsPage() {
   await guardAnyPage(['dataexchange.export.run', 'dataexchange.import.approve'], '/data-exchange/sap');
   const { scopes, today } = await getSapPostings();
   return (
     <div className="w-full space-y-6 p-4 sm:p-8">
       <PageHeader icon="match" back={{ href: '/data-exchange', label: 'Back to Data Exchange' }} title="Postings for SAP"
-        description="What happened in EJO since each branch was signed off as cut over — goods received and issued, workshop billing, payments, new customers — as the files SAP's team loads with their own tools. Each file has a checksum; SAP's return file marks each line posted (with its document number) or rejected (with SAP's message). EJO never writes into SAP." />
+        description="What happened in EJO since each branch was signed off as cut over — goods received and issued, workshop billing, payments and refunds, new customers, and at the plant each PDI's usage decision and each vehicle received into the yard — as the files SAP's team loads with their own tools. Each file has a checksum; SAP's return file marks each line posted (with its document number) or rejected (with SAP's message). EJO never writes into SAP." />
       {scopes.length === 0 ? <EmptyState icon="inbox" title="No branch you send to SAP." /> : scopes.map((s) => (
         <SectionCard key={s.id} icon={s.id === 'organisation' ? 'users' : 'building'} title={s.name}
           description={s.start ? `Postings since ${formatDateTimeCompact(s.start)} (signed off as cut over)${s.sapPlant ? ` · SAP plant ${s.sapPlant}` : ''}.` : s.id === 'organisation' ? 'Postings start the day the first branch is signed off as cut over.' : 'Postings start the day this branch is signed off as cut over (Data Exchange → Cut-over checklist).'}>

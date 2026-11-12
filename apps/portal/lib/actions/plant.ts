@@ -387,10 +387,11 @@ export async function rejectPdi(id: string, reason: string, itemCodes: string[])
     const r = await tx.pdiInspection.updateMany({ where: { id: p.id, status: 'SUBMITTED' }, data: { status: 'REWORK', decidedById: me.userId, decidedAt: new Date(), decisionNote: why, sapUsageDecision: 'R' } });
     if (!r.count) return false;
     await tx.pdiItem.updateMany({ where: { inspectionId: p.id, code: { in: codes } }, data: { result: 'NOT_OK', defect: `Rejected at approval: ${why}`, reworkNote: null, reworkedAt: null, reworkedById: null } });
+    // In the same transaction: this entry is the R usage decision SAP is sent (C1b), and the inspection's own decision is overwritten when it is decided again.
+    await tx.auditLog.create({ data: { organisationId: p.organisationId, userId: me.userId, action: 'plant.pdi_rejected', entityType: 'PdiInspection', entityId: p.id, metadata: { number: p.number, vin: p.vehicle.vin, usageDecision: 'R', reason: why, items: p.items.filter((i) => codes.includes(i.code)).map((i) => i.label) } } });
     return true;
   });
   if (!done) return fail('This PDI changed meanwhile. Refresh the page.');
-  await writeAuditLog({ userId: me.userId, action: 'plant.pdi_rejected', entityType: 'PdiInspection', entityId: p.id, metadata: { number: p.number, vin: p.vehicle.vin, usageDecision: 'R', reason: why, items: p.items.filter((i) => codes.includes(i.code)).map((i) => i.label) } });
   return { ok: true };
 }
 

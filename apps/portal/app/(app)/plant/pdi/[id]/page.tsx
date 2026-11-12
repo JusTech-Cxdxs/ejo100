@@ -6,6 +6,7 @@ import { PageHeader, SectionCard, StatusChip, Icon } from '@/components/ui';
 import { PdiChecklist } from '@/components/plant/PdiChecklist';
 import { PDI_STATUS_WORDS, USAGE_DECISION_WORDS, type UsageDecision } from '@/lib/plant/pdi';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
+import { SapTrail } from '@/components/data-exchange/SapTrail';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,7 @@ export default async function PdiPage({ params }: { params: Promise<{ id: string
         </dl>
       </SectionCard>
       <PdiChecklist view={v} />
+      <SapTrail entityType="PdiInspection" entityId={v.id} />
     </div>
   );
 }

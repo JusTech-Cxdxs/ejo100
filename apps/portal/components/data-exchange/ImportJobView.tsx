@@ -227,7 +227,7 @@ export function ImportJobView({ job }: { job: ImportJobDetail }) {
       ) : null}
 
       {['VALIDATED', 'AWAITING_APPROVAL', 'APPROVED', 'LOADING', 'PAUSED', 'COMPLETED', 'UNDOING', 'UNDONE'].includes(job.status) ? (
-        <SectionCard icon="check" title="What the check found" description={job.matchMode === 'UPDATE' ? `${nf(job.fileRows)} rows in the file · each found by its EJO record and compared with the record as it is now · only the changes below are made, nothing is added, and an empty cell leaves a field as it is` : `${nf(job.fileRows)} rows in the file · ${job.matchMode === 'FILL_BLANKS' ? 'existing records get only their empty fields filled' : 'existing records are left as they are'} · nothing is ever overwritten`}
+        <SectionCard icon="check" title="What the check found" description={job.matchMode === 'UPDATE' ? `${nf(job.fileRows)} rows in the file · each found by its EJO record (or, from SAP’s own file, its SAP number) and compared with the record as it is now · only the changes below are made, nothing is added, and an empty cell leaves a field as it is` : `${nf(job.fileRows)} rows in the file · ${job.matchMode === 'FILL_BLANKS' ? 'existing records get only their empty fields filled' : 'existing records are left as they are'} · nothing is ever overwritten`}
           actions={<>
             {job.rejectedRows + job.duplicateRows > 0 ? <a className={secondary} href={`/data-exchange/imports/${job.id}/rows?kind=rejects`}><Icon name="download" size={14} /> Rejected rows (to fix in Excel)</a> : null}
             {job.possible.length ? <a className={secondary} href={`/data-exchange/imports/${job.id}/rows?kind=possible`}><Icon name="download" size={14} /> Possible duplicates</a> : null}
@@ -554,11 +554,11 @@ function MappingEditor({ job, onSaved }: { job: ImportJobDetail; onSaved: () => 
 
       <fieldset className="mt-4 space-y-2">
         <legend className="text-sm font-medium text-[var(--ejo-text)]">When a {def.noun} is already in the system</legend>
-        {([['ADD_ONLY', `Leave it as it is (add only new ${def.plural})`], ['FILL_BLANKS', 'Fill in only its empty fields (nothing is overwritten)'], ...(ROUND_TRIP.includes(job.entity) ? [['UPDATE', `Update ${def.plural} exported from EJO (found by their EJO record; each change previewed before approval)`] as const] : [])] as const).map(([v, label]) => (
+        {([['ADD_ONLY', `Leave it as it is (add only new ${def.plural})`], ['FILL_BLANKS', 'Fill in only its empty fields (nothing is overwritten)'], ...(ROUND_TRIP.includes(job.entity) ? [['UPDATE', `Update ${def.plural} exported from EJO, or from SAP’s own file (found by their EJO record or SAP number; each change previewed before approval)`] as const] : [])] as const).map(([v, label]) => (
           <label key={v} className="flex items-center gap-2 text-sm text-[var(--ejo-text)]"><input type="radio" name="matchMode" checked={matchMode === v} onChange={() => setMatchMode(v)} className="accent-[var(--ejo-primary)]" />{label}</label>
         ))}
       </fieldset>
-      {matchMode === 'UPDATE' ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]" data-testid="round-trip-help">Export the {def.plural} from EJO, change what needs changing in Excel, and upload the file as it is. Rows are found only by the “EJO record” column; nothing new is added; an empty cell leaves a field as it is; {job.entity === 'parts' ? 'a part’s number, how it is tracked and its base unit are changed on its page' : job.entity === 'vehicles' ? 'a vehicle’s chassis number and owner are changed on its page, and mileage never goes down' : 'nothing is ever blanked'}.</p> : null}
+      {matchMode === 'UPDATE' ? <p className="mt-1 text-xs text-[var(--ejo-text-muted)]" data-testid="round-trip-help">Export the {def.plural} from EJO, change what needs changing in Excel, and upload the file as it is. Rows are found only by the “EJO record” column — or, for SAP’s own extract (source SAP, no EJO record column), only by the SAP number; nothing new is added; an empty cell leaves a field as it is; {job.entity === 'parts' ? 'a part’s number, how it is tracked and its base unit are changed on its page' : job.entity === 'vehicles' ? 'a vehicle’s chassis number and owner are changed on its page, and mileage never goes down' : 'nothing is ever blanked'}.</p> : null}
       {job.entity === 'customers' ? (
         <fieldset className="mt-4 space-y-2">
           <legend className="text-sm font-medium text-[var(--ejo-text)]">A row that may be an existing customer (same phone, no matching number or email)</legend>

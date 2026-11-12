@@ -49,6 +49,8 @@ const READ_FENCES = [
   'branchInMyOrg(', 'departmentInMyOrg(', 'orgFence(o)',
   // Postings for SAP (lib/actions/sap-postings.ts): the file fenced to the person's organisation, with the rights at its branch.
   'sapPostingOf(',
+  // "Sent to SAP" on a record's page (lib/actions/sap-postings.ts): the record found inside the person's organisation, then allows() at its branch.
+  'sapTrailOf(',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn

@@ -678,6 +678,31 @@ have its SAP plant code (WERKS) on its page.
 5. **Send again** on the rejected line; the next payments file carries it,
    and the old line reads *Sent again*.
 
+## 13f. The plant and refunds in SAP's files; SAP's master data back in (C1b)
+
+*The question: "and the plant? and when SAP changes a customer?"*
+
+People: the **Plant Manager** at the plant, **Finance** at the workshop, the
+**IT Administrator** and the **Workshop Manager** for SAP's file. Each branch
+signed off as cut over (§13c), with its SAP plant code.
+
+1. At the plant, reject a submitted PDI back to rework, put it right and
+   accept it. **Postings for SAP → Afprint**: **PDI usage decisions** makes a
+   file with two lines for it, *R* then *A*; AUFNR and EQUNR carry SAP's
+   zeros. **Vehicles to the yard** has it once (movement 101 from its
+   production order); the next file never has it again.
+2. Load SAP's return file for the decisions; open the PDI: **Sent to SAP**
+   shows each decision *Posted in SAP* with its document, and the yard
+   receipt *waiting for SAP*.
+3. At the workshop, record a refund on a job card; **Refunds** makes a file
+   with its number, the job and the reason. The job card's page shows it
+   under **Sent to SAP**. (Front desk and technicians do not see that box.)
+4. As the IT Administrator, upload SAP's own customer extract — KUNNR (with
+   its zeros), name, phone, no EJO record column — choose **Update customers
+   exported from EJO, or from SAP's own file**: each row is found by its SAP
+   number only; a number EJO does not have is refused; every change is
+   previewed, then approved by the Manager (as §13d).
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -834,4 +859,4 @@ plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
 exported file (§13d); bulk PDFs, a customer's
 data request and scheduled exports (A4c); the daily SAP files and
-reconciliation (C1a is in, §13e; C1b next); and inviting imported customers to the portal (B).
+reconciliation (C1a §13e and C1b §13f are in); and inviting imported customers to the portal (B).
