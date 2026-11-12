@@ -32,6 +32,8 @@ export const PEOPLE: readonly Person[] = [
   { email: 'executive@e2e.test', name: 'Eze Executive', role: 'executive' },
   { email: 'itadmin@e2e.test', name: 'Ifeoma Itadmin', role: 'it-administrator' },
   { email: 'care@e2e.test', name: 'Chidi Care', role: 'customer-care' },
+  // Heads customer care across the organisation; with the Administrator, handles customers' data requests (one records, the other confirms who is asking).
+  { email: 'carelead@e2e.test', name: 'Lola Carelead', role: 'customer-care-lead' },
   // The assembly plant: PDI inspector, PDI supervisor (approves colleagues' PDIs) and the plant manager.
   { email: 'pdi@e2e.test', name: 'Pius Pdiinspector', role: 'pdi-inspector', branch: 'plant', dept: 'plant-pdi' },
   { email: 'pdisupervisor@e2e.test', name: 'Peace Pdisupervisor', role: 'pdi-supervisor', branch: 'plant', dept: 'plant-pdi' },

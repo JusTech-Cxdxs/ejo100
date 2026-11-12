@@ -385,6 +385,29 @@ road tests and contractor passes. Releasing parts, paying out cash, notifying
 customers and checking vehicles out are work, not decisions, so they stay on
 the dashboard's *Needs your attention*.
 
+## Customers' data requests (A4c1)
+
+A customer may ask what the business holds about them (a copy they can take
+elsewhere), or for it to be corrected, erased, or no longer used (Nigeria
+Data Protection Act 2023). **Data requests** (`/data-requests`) is for the
+people who hold `privacy.requests.manage`, across the organisation: the
+**Organisation Administrator** and the **Customer Care Lead**. No one else —
+no branch role, not IT — sees the page, the customer page's *Record a data
+request*, the copy or the DR- numbers in search.
+
+- **Four eyes.** One records the request; a *different* person confirms who
+  is asking (and how, in words — EJO refuses anything that looks like an ID
+  number, so none is ever stored). The rule is checked in the write itself.
+  Before that, no copy is made and the request cannot be answered.
+- **The copy** is a zip (README, a CSV per kind of record, data.json) made
+  from the live records at the moment of download — nothing is stored — for
+  a request for a copy, once identity is confirmed and until a week after it
+  is answered. It leaves out the staff who handled each record, passwords and
+  tokens, and internal keys. Each download is audited with its SHA-256, which
+  the request keeps. Never during an assisted session.
+- **Closing** says what was done, or why it was refused (the customer is
+  told). A request for a copy is answered only after its copy was downloaded.
+
 ## Access changes made in this pass (before → after, and why)
 
 | Change | Before | After | Why |

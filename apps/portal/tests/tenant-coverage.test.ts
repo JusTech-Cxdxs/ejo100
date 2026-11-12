@@ -51,6 +51,9 @@ const READ_FENCES = [
   'sapPostingOf(',
   // "Sent to SAP" on a record's page (lib/actions/sap-postings.ts): the record found inside the person's organisation, then allows() at its branch.
   'sapTrailOf(',
+  // Customers' data requests (lib/actions/data-requests.ts): the request, or its customer, found inside the person's organisation.
+  'dataRequestOf(',
+  'requestCustomerOf(',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn

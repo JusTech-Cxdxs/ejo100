@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { provenanceOf } from '@/lib/data-exchange/provenance-server';
 import { ProvenanceCard } from '@/components/ProvenanceCard';
 import { notFound } from 'next/navigation';
-import { guardPage } from '@/lib/authz/server';
+import { allows, guardPage } from '@/lib/authz/server';
 import { getCustomer360, getCustomerActivity } from '@/lib/actions/crm';
 import { getRecycleBinOffer } from '@/lib/actions/recycle-bin';
 import { RecycleBinPanel } from '@/components/RecycleBinPanel';
@@ -75,10 +75,11 @@ export default async function Customer360Page({ params, searchParams }: { params
   if (!data) notFound();
   const tab = TABS.some((t) => t.key === sp.tab) ? sp.tab! : 'overview';
   const { customer: c, portal, money, can } = data;
-  const [activity, binOffer, origin] = await Promise.all([
+  const [activity, binOffer, origin, mayDataRequest] = await Promise.all([
     tab === 'activity' ? getCustomerActivity(id, 300) : Promise.resolve([]),
     getRecycleBinOffer('Customer', id),
     provenanceOf({ organisationId: c.organisationId, createdAt: c.createdAt, createdBy: c.createdBy, importJobId: c.importJobId, externalSource: c.externalSource, externalId: c.externalId, numberLabel: 'customer number', original: { label: 'Customer since (before EJO)', date: c.customerSince } }),
+    allows('privacy.requests.manage'),
   ]);
   const base = `/crm/customers/${c.id}`;
   const notice: Notice | null = sp.error ? { kind: 'error', title: 'That didn’t work', text: sp.error } : sp.status ? STATUS[sp.status] ?? null : null;
@@ -124,6 +125,7 @@ export default async function Customer360Page({ params, searchParams }: { params
             <a href={`mailto:${c.email}`} className={ghost}><CrmIcon name="mail" size={14} />Email</a>
             {can.broadcast ? <Link href={`/notifications/broadcasts/new?for=customers&customerId=${encodeURIComponent(c.id)}`} className={ghost}><CrmIcon name="broadcast" size={14} />Send a message</Link> : null}
             {can.manage && !editing ? <Link href={`${base}?edit=1`} className={ghost}><CrmIcon name="edit" size={14} />Edit details</Link> : null}
+            {mayDataRequest ? <Link href={`/data-requests/new?customer=${encodeURIComponent(c.id)}`} className={ghost} data-testid="record-data-request">Record a data request</Link> : null}
           </div>
         </div>
       </section>

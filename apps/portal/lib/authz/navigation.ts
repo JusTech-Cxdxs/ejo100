@@ -63,6 +63,8 @@ export function navigationFor(p: Principal): NavItem[] {
   if (can('dataexchange.import.run') || can('dataexchange.import.approve')) out.push({ key: 'data-exchange', name: 'Data Exchange', href: '/data-exchange', status: 'LIVE' });
   // Exports: everyone else who may export lists finds their files (Data Exchange shows them to its own people).
   else if (can('dataexchange.export.run')) out.push({ key: 'exports', name: 'Exports', href: '/data-exchange/exports', status: 'LIVE' });
+  // Customers' data requests (NDPA 2023).
+  if (can('privacy.requests.manage')) out.push({ key: 'data-requests', name: 'Data requests', href: '/data-requests', status: 'LIVE' });
   // The integrity watch: reviewers only.
   if (can('integrity.review')) out.push({ key: 'integrity', name: 'Integrity watch', href: '/integrity', status: 'LIVE' });
   // Assisted sessions: the Branch Assistant starts them; user administrators review them.

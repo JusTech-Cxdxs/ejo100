@@ -34,6 +34,8 @@ export const REFERENCE_TYPES = [
   { prefix: 'IMP', model: 'ImportJob', group: 'Imports', path: (id: string) => `/data-exchange/imports/${id}` },
   // Data Exchange: an export of a list to Excel or CSV.
   { prefix: 'EXP', model: 'ExportJob', group: 'Exports', path: (id: string) => `/data-exchange/exports/${id}` },
+  // A customer's data request (NDPA 2023): for the people who handle them.
+  { prefix: 'DR', model: 'DataRequest', group: 'Data requests', path: (id: string) => `/data-requests/${id}` },
   // Assembly plant: a pre-delivery inspection.
   { prefix: 'PDI', model: 'PdiInspection', group: 'Pre-delivery inspections', path: (id: string) => `/plant/pdi/${id}` },
   // Assembly plant: a kit (one vehicle, CKD or SKD) and the shipment that brought it.

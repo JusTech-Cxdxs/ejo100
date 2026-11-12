@@ -19,6 +19,7 @@ export const AREAS: { url: string; needs: PermissionKey[] }[] = [
   { url: '/audit-logs', needs: ['audit.view'] },
   { url: '/recycle-bin', needs: ['admin.recycle_bin.manage'] },
   { url: '/data-exchange', needs: ['dataexchange.import.run', 'dataexchange.import.approve'] },
+  { url: '/data-requests', needs: ['privacy.requests.manage'] },
   { url: '/analytics', needs: ['analytics.business.view'] },
   { url: '/workshop', needs: ['workshop.view'] },
   { url: '/workshop/job-cards', needs: ['workshop.view'] },

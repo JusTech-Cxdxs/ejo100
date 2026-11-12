@@ -5152,3 +5152,46 @@ model SapPostingLine {
   @@index([organisationId, status])
   @@map("sap_posting_lines")
 }
+
+// ─── A4c1 — a customer's data request (NDPA 2023) ─────────────────────────────
+// A customer asks what the business holds about them (a copy, in a form they
+// can take elsewhere), or for it to be corrected, erased, or no longer used.
+// The request is recorded as received; a different person confirms who is
+// asking (how it was checked — never an ID number); only then is the copy
+// made, rebuilt from the live records each time it is downloaded (nothing
+// waits stored), each download in the audit trail with its checksum. Closed
+// with what was done, or why it was refused.
+model DataRequest {
+  id             String    @id @default(cuid())
+  // DR-2026-000001
+  number         String    @unique
+  organisationId String
+  customerId     String
+  // ACCESS (a copy of their data) | CORRECTION | ERASURE | OBJECTION
+  kind           String
+  // RECEIVED → VERIFIED → FULFILLED, or REFUSED / WITHDRAWN
+  status         String    @default("RECEIVED")
+  // EMAIL | PORTAL | IN_PERSON | LETTER | PHONE
+  receivedVia    String
+  receivedAt     DateTime
+  // What they asked, in their words.
+  details        String?
+  createdById    String
+  createdAt      DateTime  @default(now())
+  verifiedById   String?
+  verifiedAt     DateTime?
+  // How their identity was checked ("Seen in person with photo ID") — never a document number.
+  verifiedHow    String?
+  // The last copy given: when, its SHA-256 and how many times it was downloaded.
+  packAt         DateTime?
+  packChecksum   String?
+  packDownloads  Int       @default(0)
+  closedById     String?
+  closedAt       DateTime?
+  // What was done, or why it was refused.
+  outcome        String?
+
+  @@index([organisationId, status, receivedAt])
+  @@index([organisationId, customerId])
+  @@map("data_requests")
+}
