@@ -56,6 +56,8 @@ const READ_FENCES = [
   'requestCustomerOf(',
   // Customer documents in bulk (lib/actions/documents.ts): the workshop found inside the person's organisation.
   'documentBranchOf(',
+  // Scheduled exports (lib/actions/export-schedules.ts): the person's own schedule inside their organisation.
+  'myScheduleOf(',
   'requireEligible', 'requireWarrantyStaff', 'requireWarrantyApprover', 'requireStaff', 'getSchedulingAccess', 'loadForChange',
   'loadForGroups', 'requireMasterAdmin', 'currentUserIsMasterAdmin', 'branchInMyOrganisationOrSystem', 'onMyDesk',
   'allows(', // with the record (branch / assignees) — e.g. canRequestRoadTestOn
@@ -109,6 +111,9 @@ const RECORD_CHECKS = [
   'learnedOrg(',
   // Support centre set-up: where { id, organisationId: supportOrg() } (the person's own organisation).
   'supportOrg(',
+  // Scheduled exports: the person's own export, and their own schedule, inside their organisation.
+  'myExportOf(',
+  'myScheduleOf(',
 ];
 /** authorize(key, { branchId … }) — a role check WITH the record's branch. */
 const AUTHORIZE_WITH_RECORD = /\bauthorize\([^,]+,\s*\{\s*branchId/;

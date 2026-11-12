@@ -5195,3 +5195,42 @@ model DataRequest {
   @@index([organisationId, customerId])
   @@map("data_requests")
 }
+
+// ─── A4c3 — scheduled exports ─────────────────────────────────────────────────
+// A person's export repeated on a schedule: the list, the format and the
+// filters (never the data). When it is due, EJO records a fresh export for
+// its owner and tells them it is ready; the file is still built only when
+// they download it, signed in, within their permissions at that moment.
+// Nothing is emailed out, nothing is stored. A schedule whose owner has left
+// or may no longer export the list pauses itself, saying why.
+model ExportSchedule {
+  id             String    @id @default(cuid())
+  organisationId String
+  ownerId        String
+  // Which list (lib/exports/kinds), xlsx | csv, and the filters kept.
+  kind           String
+  format         String
+  params         Json
+  summary        String?
+  sensitive      Boolean   @default(false)
+  // DAILY | WEEKLY | MONTHLY
+  cadence        String
+  // WEEKLY: 1 (Monday) … 7 (Sunday). MONTHLY: 1 … 28.
+  dayOfWeek      Int?
+  dayOfMonth     Int?
+  // ACTIVE | PAUSED | ENDED (ended schedules are kept, never deleted)
+  status         String    @default("ACTIVE")
+  // Why it paused itself (the owner left, or may no longer export the list).
+  pausedReason   String?
+  // The next day it is due, in Lagos (YYYY-MM-DD).
+  nextRunOn      String
+  lastRunAt      DateTime?
+  lastExportId   String?
+  runs           Int       @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, nextRunOn])
+  @@index([organisationId, ownerId])
+  @@map("export_schedules")
+}

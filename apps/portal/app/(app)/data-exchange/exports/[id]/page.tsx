@@ -4,6 +4,7 @@ import { getExportDetail } from '@/lib/actions/exports';
 import { LoadingLink } from '@/components/LoadingLink';
 import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
 import { ExportDownloadPanel } from '@/components/ExportDownloadPanel';
+import { ScheduleExportForm } from '@/components/data-exchange/ExportSchedules';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,6 +33,11 @@ export default async function ExportPage({ params }: { params: Promise<{ id: str
           The link works until {when(e.expiresAt)}. <LoadingLink href={e.page} className="font-medium text-[var(--ejo-primary)] hover:underline">Open the list in EJO</LoadingLink>
         </p>
       </SectionCard>
+      {e.canSchedule ? (
+        <SectionCard icon="history" title="Repeat this export" description="The same list, format and filters, every day, week or month. Each time, EJO records a fresh export for you and tells you it is ready; the file is built when you download it, signed in — nothing is emailed out. Manage your schedules on the Exports page.">
+          <ScheduleExportForm exportId={e.id} />
+        </SectionCard>
+      ) : null}
       <SectionCard icon="users" title="Who has downloaded it" flush>
         {e.downloads.length === 0 ? <p className="p-4 text-sm text-[var(--ejo-text-muted)]">Nobody yet.</p> : (
           <ul className="divide-y divide-[var(--ejo-border)]">

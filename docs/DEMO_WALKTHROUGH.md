@@ -738,6 +738,25 @@ People: **Finance** at the workshop.
    page or the link. Each download is in the audit trail with the documents'
    numbers.
 
+## 13i. "Send me the supplier list every Monday" (A4c3)
+
+*The question: "can this report just arrive every week?"*
+
+People: the **Store Manager**.
+
+1. Export the suppliers list as usual, open the export, and under **Repeat
+   this export** choose *Every week*, *Monday*. It says when the first one is
+   due.
+2. **Data Exchange → Exports** now lists it under *Your scheduled exports*:
+   the list, the filters, *Every Monday*, the next day due.
+3. On that morning an email arrives: *Your scheduled export is ready* — with
+   a link, not an attachment. Signed in, the file downloads like any export,
+   built from the records as they are then.
+4. **Pause** it and nothing is made; **Resume** and it is due after today;
+   **End** it and it stays in the list as ended. If the Store Manager moved to
+   a role that may not export suppliers, the schedule would pause itself and
+   say so.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -893,5 +912,5 @@ as each person.
 plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
 exported file (§13d), a customer's data request (§13g), and customer
-documents in bulk (§13h); scheduled exports (A4c); the daily SAP files and reconciliation (C1a §13e and
+documents in bulk (§13h), and scheduled exports (§13i); the daily SAP files and reconciliation (C1a §13e and
 C1b §13f are in); and inviting imported customers to the portal (B).

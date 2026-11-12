@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { allows, guardPage } from '@/lib/authz/server';
 import { listExports } from '@/lib/actions/exports';
+import { listMyExportSchedules } from '@/lib/actions/export-schedules';
+import { ScheduleList } from '@/components/data-exchange/ExportSchedules';
 import { EmptyState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 import { ExportButton } from '@/components/ExportButton';
 
@@ -16,7 +18,7 @@ const fileSize = (b: number | null) => (b === null ? '' : b < 1024 * 1024 ? `${M
  */
 export default async function ExportsPage() {
   await guardPage('dataexchange.export.run', '/data-exchange/exports');
-  const { rows, everyone } = await listExports({ take: 200 });
+  const [{ rows, everyone }, schedules] = await Promise.all([listExports({ take: 200 }), listMyExportSchedules()]);
   const now = Date.now();
   const canDocuments = await allows('dataexchange.export.sensitive');
   return (
@@ -28,6 +30,11 @@ export default async function ExportsPage() {
         description={`${everyone ? 'Every list exported in your organisation' : 'The lists you have exported'}: Excel or CSV, exactly as the list was filtered. A file is built when it is downloaded, for the person downloading it; each link works for 24 hours, once per person. Use Export on any list to make one.`}
         actions={<span className="flex flex-wrap items-center gap-3">{canDocuments ? <Link href="/data-exchange/documents" className="text-sm font-medium text-[var(--ejo-primary)] hover:underline">Documents in bulk (PDF)</Link> : null}{everyone ? <ExportButton kind="exports" label="Export this history" /> : null}</span>}
       />
+      {schedules.length ? (
+        <SectionCard icon="history" title="Your scheduled exports" description="Each morning EJO records a fresh export for every schedule due that day and tells you it is ready. To add one, open an export you made and choose “Repeat this export”." flush>
+          <ScheduleList rows={schedules} />
+        </SectionCard>
+      ) : null}
       <SectionCard icon="history" title={everyone ? 'All exports' : 'Your exports'} flush>
         {rows.length === 0 ? (
           <div className="p-4"><EmptyState compact icon="download" title="No exports yet.">Every list has an Export button: customers, vehicles, parts, stock, suppliers, Job Cards, Vehicle Services, warranties and more.</EmptyState></div>

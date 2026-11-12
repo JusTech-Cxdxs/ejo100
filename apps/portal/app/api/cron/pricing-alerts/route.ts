@@ -18,6 +18,7 @@ import { resolveDurations } from '@/lib/enyo/ml/models';
 import { harvestPublicConversations } from '@/lib/enyo/conversations';
 import { prisma } from '@ejo/database';
 import { runDemoPulseForAll } from '@/lib/demo/pulse';
+import { runDueExportSchedules } from '@/lib/exports/schedule-server';
 
 /**
  * Pricing alert digest (scheduled in vercel.json). Reads the alerts that are
@@ -79,6 +80,9 @@ export async function GET(request: NextRequest) {
   }
 
   await recordJobRun('pricing-alerts', { branchesWithOpenAlerts: groups.length, emailsSent, emailsFailed });
+  // Scheduled exports due today: a fresh export recorded for each owner, who is told it is ready (A4c3).
+  const scheduled = await runDueExportSchedules().catch((err) => { logFailure('Scheduled exports failed', err); return null; });
+  if (scheduled !== null) await recordJobRun('export-schedules', scheduled);
   // Error references are kept for 90 days (data inventory: ErrorEvent).
   const purged = await purgeOldErrorEvents(90).catch((err) => { logFailure('Error log clean-up failed', err); return null; });
   if (purged !== null) await recordJobRun('error-log-cleanup', { errorReferencesRemoved: purged });
