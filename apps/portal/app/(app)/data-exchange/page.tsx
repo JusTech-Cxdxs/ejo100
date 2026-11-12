@@ -17,6 +17,7 @@ const nf = (n: number) => n.toLocaleString('en-NG');
 export default async function DataExchangePage({ searchParams }: { searchParams: Promise<{ before?: string }> }) {
   await guardAnyPage(['dataexchange.import.run', 'dataexchange.import.approve'], '/data-exchange');
   const canExport = await allows('dataexchange.export.run');
+  const canDocuments = await allows('dataexchange.export.sensitive');
   const canApprove = await allows('dataexchange.import.approve');
   const { before } = await searchParams;
   const { jobs, canRun, staging, space } = await listImportJobs({ take: 30, before });
@@ -28,7 +29,7 @@ export default async function DataExchangePage({ searchParams }: { searchParams:
         eyebrow="Data Exchange"
         title="Bring in existing records"
         description="Customers, vehicles, suppliers, parts and opening stock from SAP or your spreadsheets, without retyping. Every file is checked first, the department that owns the records approves it, it loads in batches, and it can be undone. Every list in EJO exports to Excel or CSV the same careful way."
-        actions={<><HeaderAction href="/data-exchange/cutover" icon="check-circle" variant="secondary">Cut-over checklist</HeaderAction>{canExport || canApprove ? <HeaderAction href="/data-exchange/sap" icon="match" variant="secondary">Postings for SAP</HeaderAction> : null}{canExport ? <HeaderAction href="/data-exchange/exports" icon="download" variant="secondary">Exports</HeaderAction> : null}</>}
+        actions={<><HeaderAction href="/data-exchange/cutover" icon="check-circle" variant="secondary">Cut-over checklist</HeaderAction>{canExport || canApprove ? <HeaderAction href="/data-exchange/sap" icon="match" variant="secondary">Postings for SAP</HeaderAction> : null}{canExport ? <HeaderAction href="/data-exchange/exports" icon="download" variant="secondary">Exports</HeaderAction> : null}{canDocuments ? <HeaderAction href="/data-exchange/documents" icon="file" variant="secondary">Documents in bulk</HeaderAction> : null}</>}
       />
 
       <ol className="grid grid-cols-2 gap-2 sm:grid-cols-6">

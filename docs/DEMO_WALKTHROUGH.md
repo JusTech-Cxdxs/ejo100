@@ -721,6 +721,23 @@ People: the **Customer Care Lead** and the **Organisation Administrator**.
    names, no passwords. The page shows the copy's SHA-256.
 4. Close it as answered with how it was sent. The front desk sees none of it.
 
+## 13h. The auditors ask for last month's estimates (A4c2)
+
+*The question: "can we have every estimate you sent in October, as PDFs?"*
+
+People: **Finance** at the workshop.
+
+1. **Data Exchange → Documents in bulk**. Choose *Job Card estimates*, the
+   workshop, the first and last day of the month → **Find the documents**:
+   how many there are, and in how many zips (40 to a zip).
+2. Download a zip: one PDF per estimate, named by its Job Card number — the
+   same document the customer was emailed — and `index.csv` listing file,
+   number, customer and date.
+3. The same for *Vehicle Service estimates* and *Inspection reports*. A
+   period of more than 92 days is refused; the front desk cannot open the
+   page or the link. Each download is in the audit trail with the documents'
+   numbers.
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -875,6 +892,6 @@ as each person.
 *Coming in the next releases (each adds a section here):* the yard, sale and
 plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
-exported file (§13d), and a customer's data request (§13g); bulk PDFs and
-scheduled exports (A4c); the daily SAP files and reconciliation (C1a §13e and
+exported file (§13d), a customer's data request (§13g), and customer
+documents in bulk (§13h); scheduled exports (A4c); the daily SAP files and reconciliation (C1a §13e and
 C1b §13f are in); and inviting imported customers to the portal (B).

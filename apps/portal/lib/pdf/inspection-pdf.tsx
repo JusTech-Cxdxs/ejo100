@@ -1,5 +1,7 @@
 import { Document, Page, Text, View, Image, StyleSheet } from '@react-pdf/renderer';
 import { PLATFORM } from '@/lib/brand';
+import type { InspectionPdfItem, InspectionPdfProps } from './document-types';
+export type { InspectionPdfItem, InspectionPdfProps } from './document-types';
 
 const styles = StyleSheet.create({
   page: { paddingTop: 32, paddingBottom: 32, paddingHorizontal: 36, fontSize: 10, fontFamily: 'Helvetica', color: '#0F172A' },
@@ -54,43 +56,7 @@ const SEVERITY_COLOR: Record<string, string> = {
   CRITICAL: '#DC2626',
 };
 
-export type InspectionPdfItem = {
-  section: string;
-  name: string;
-  condition: string | null;
-  severity: string | null;
-  action: string | null;
-};
 
-export type InspectionPdfProps = {
-  organisation: {
-    name: string;
-    legalName: string | null;
-    hqAddress: string | null;
-    poBox: string | null;
-    rcNumber: string | null;
-    hotlines: string[];
-    website: string | null;
-    email: string | null;
-  };
-  branch: {
-    name: string;
-    address: string | null;
-    hotlines: string[];
-    email: string | null;
-  };
-  logoUrl: string;
-  serviceNumber: string;
-  customerName: string;
-  vehicleDescription: string;
-  plateNumber: string | null;
-  chassisNumber: string | null;
-  inspectedByName: string;
-  completedOnLabel: string;
-  /** Reviewed items only: the customer copy never lists what wasn't checked
-   * (same rule as the print page). */
-  reviewedItems: InspectionPdfItem[];
-};
 
 /**
  * The customer's inspection report PDF, attached with the estimate PDF on
