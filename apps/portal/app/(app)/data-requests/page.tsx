@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { guardPage } from '@/lib/authz/server';
 import { listDataRequests } from '@/lib/actions/data-requests';
-import { KIND_LABEL, STATUS_LABEL, VIA_LABEL, type Via } from '@/lib/privacy/requests';
+import { dueOf, dueWords, KIND_LABEL, RESPONSE_TARGET_DAYS, STATUS_LABEL, VIA_LABEL, type Via } from '@/lib/privacy/requests';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { EmptyState, PageHeader, SectionCard, StatusChip } from '@/components/ui';
 
@@ -26,7 +26,7 @@ export default async function DataRequestsPage({ searchParams }: { searchParams:
             className={`rounded-full px-3 py-1 ${f === filter ? 'bg-[var(--ejo-primary)] text-white' : 'border border-[var(--ejo-border)] text-[var(--ejo-text)] hover:bg-[var(--ejo-bg)]'}`}>{FILTERS[f]}</Link>
         ))}
       </nav>
-      <SectionCard icon="inbox" title={`${FILTERS[filter]} requests`} description={filter === 'open' ? 'Oldest first: answer each without undue delay, within the time your organisation’s data protection policy sets.' : undefined}>
+      <SectionCard icon="inbox" title={`${FILTERS[filter]} requests`} description={filter === 'open' ? `Oldest first. EJO’s target is an answer within ${RESPONSE_TARGET_DAYS} days of the day received — sooner when it is urgent for the customer. The law sets no fixed number of days; it asks for a timely answer.` : undefined}>
         {rows.length === 0 ? <EmptyState compact icon="inbox" title={filter === 'open' ? 'No open requests.' : 'No requests here.'} /> : (
           <ul className="divide-y divide-[var(--ejo-border)]" data-testid="data-requests">
             {rows.map((r) => (
@@ -34,7 +34,7 @@ export default async function DataRequestsPage({ searchParams }: { searchParams:
                 <div className="min-w-0">
                   <Link href={`/data-requests/${r.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{r.number}</Link>
                   <span className="ml-2 text-sm text-[var(--ejo-text)]">{r.customer?.name ?? 'A customer no longer in the records'}</span>
-                  <span className="block text-xs text-[var(--ejo-text-muted)]">{KIND_LABEL[r.kind]?.label ?? r.kind} · {VIA_LABEL[r.receivedVia as Via] ?? r.receivedVia} · received {formatDateTimeCompact(r.receivedAt).split(',')[0]}{(r.status === 'RECEIVED' || r.status === 'VERIFIED') ? ` · waiting ${r.days} ${r.days === 1 ? 'day' : 'days'}` : ''}</span>
+                  <span className="block text-xs text-[var(--ejo-text-muted)]">{KIND_LABEL[r.kind]?.label ?? r.kind} · {VIA_LABEL[r.receivedVia as Via] ?? r.receivedVia} · received {formatDateTimeCompact(r.receivedAt).split(',')[0]}{(r.status === 'RECEIVED' || r.status === 'VERIFIED') ? <> · <span data-testid="request-due" className={dueOf(r.receivedAt).overdue ? 'font-medium text-[var(--ejo-error)]' : dueOf(r.receivedAt).soon ? 'font-medium text-[var(--ejo-warning-text)]' : ''}>{dueWords(dueOf(r.receivedAt))}</span></> : null}</span>
                 </div>
                 <StatusChip label={STATUS_LABEL[r.status]?.label ?? r.status} tone={STATUS_LABEL[r.status]?.tone ?? 'neutral'} />
               </li>

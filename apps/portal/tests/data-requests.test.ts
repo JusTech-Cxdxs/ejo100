@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { unzipSync, strFromU8 } from 'fflate';
-import { checkVerifiedHow, forCopy, leftOut, packZip, plain, requestNumber, sectionCsv, KIND_LABEL, REQUEST_KINDS } from '../lib/privacy/requests';
+import { checkVerifiedHow, dueOf, dueWords, RESPONSE_TARGET_DAYS, forCopy, leftOut, packZip, plain, requestNumber, sectionCsv, KIND_LABEL, REQUEST_KINDS } from '../lib/privacy/requests';
 import { DATA_INVENTORY } from '../lib/governance/data-inventory';
 import { decide, ROLE_GRANTS } from '../lib/authz/catalogue';
 
@@ -90,4 +90,16 @@ test('wired in: a colleague confirms who is asking; each step set once and audit
     assert.match(sql, /CREATE TABLE IF NOT EXISTS "data_requests"/);
     assert.doesNotMatch(sql.replace(/--.*$/gm, ''), /\b(DROP|DELETE|TRUNCATE|UPDATE|RENAME)\b/i, 'additive only');
   }
+});
+
+test('the target: 21 days from the day received — days left, due today, days past', () => {
+  assert.equal(RESPONSE_TARGET_DAYS, 21);
+  const got = new Date('2026-11-01T11:00:00.000Z');
+  const at = (d: string) => dueOf(got, new Date(d));
+  assert.equal(at('2026-11-01T12:00:00.000Z').daysLeft, 20);
+  assert.equal(dueWords(at('2026-11-02T11:00:00.000Z')), '20 days left of 21');
+  assert.equal(at('2026-11-17T11:00:00.000Z').soon, true);
+  assert.equal(dueWords(at('2026-11-22T10:00:00.000Z')), 'due today');
+  assert.equal(at('2026-11-22T12:00:00.000Z').overdue, true);
+  assert.equal(dueWords(at('2026-11-24T12:00:00.000Z')), '3 days past the 21-day target');
 });

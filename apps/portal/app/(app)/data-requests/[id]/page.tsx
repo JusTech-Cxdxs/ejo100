@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { guardPage } from '@/lib/authz/server';
 import { getDataRequest } from '@/lib/actions/data-requests';
-import { KIND_LABEL, STATUS_LABEL, VIA_LABEL, type Via } from '@/lib/privacy/requests';
+import { dueOf, dueWords, KIND_LABEL, STATUS_LABEL, VIA_LABEL, type Via } from '@/lib/privacy/requests';
 import { formatDateTimeCompact } from '@/lib/utils/format-date';
 import { PageHeader, SectionCard, StatusChip } from '@/components/ui';
 import { CloseForm, VerifyForm } from '@/components/privacy/DataRequestActions';
@@ -33,7 +33,7 @@ export default async function DataRequestPage({ params }: { params: Promise<{ id
           <Row term="Customer">{r.customer ? <Link href={`/crm/customers/${r.customer.id}`} className="font-medium text-[var(--ejo-primary)] hover:underline">{r.customer.name}</Link> : 'No longer in the records'}</Row>
           <Row term="Contact on record">{[r.customer?.phone, r.customer?.email].filter(Boolean).join(' · ') || '—'}</Row>
           <Row term="Came in">{VIA_LABEL[r.receivedVia as Via] ?? r.receivedVia}, {formatDateTimeCompact(r.receivedAt).split(',')[0]}</Row>
-          <Row term={open ? 'Waiting' : 'Recorded'}>{open ? `${r.days} ${r.days === 1 ? 'day' : 'days'}` : formatDateTimeCompact(r.createdAt)}</Row>
+          <Row term={open ? 'To answer by' : 'Recorded'}>{open ? <span data-testid="request-due" className={dueOf(r.receivedAt).overdue ? 'font-medium text-[var(--ejo-error)]' : ''}>{formatDateTimeCompact(dueOf(r.receivedAt).dueAt).split(',')[0]} ({dueWords(dueOf(r.receivedAt))})</span> : formatDateTimeCompact(r.createdAt)}</Row>
           {r.details ? <div className="sm:col-span-2 lg:col-span-4"><Row term="In their words"><span className="whitespace-pre-wrap">{r.details}</span></Row></div> : null}
         </dl>
       </SectionCard>

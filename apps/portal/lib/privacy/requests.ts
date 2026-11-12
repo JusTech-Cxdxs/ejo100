@@ -38,6 +38,26 @@ export const STATUS_LABEL: Record<string, { label: string; tone: 'neutral' | 'wa
 };
 export const OPEN_STATUSES = ['RECEIVED', 'VERIFIED'] as const;
 
+/**
+ * EJO's target for answering a request: 21 days from the day it was received.
+ * The NDPA 2023 and its Directive (GAID 2025) fix no number of days for a
+ * controller's answer to a data subject — obligations without a stated time
+ * are to be met "timeously" (GAID art. 49(2)) — but 21 days is the figure the
+ * Directive itself uses nearby: the compliance audit asks whether complaints
+ * about inaccurate data are "resolved within 21 days" (Schedule 2), and a
+ * controller has 21 days to reply to the Commission on a complaint (art.
+ * 39(8)). It is also inside the one month other regimes allow. A target, not
+ * a legal deadline: an urgent request is answered sooner.
+ */
+export const RESPONSE_TARGET_DAYS = 21;
+/** Where an open request stands against the target: days left (0 = due today), or days overdue. */
+export function dueOf(receivedAt: Date, now = new Date()): { dueAt: Date; daysLeft: number; overdue: boolean; soon: boolean } {
+  const dueAt = new Date(+receivedAt + RESPONSE_TARGET_DAYS * 86_400_000);
+  const daysLeft = Math.floor((+dueAt - +now) / 86_400_000);
+  return { dueAt, daysLeft, overdue: daysLeft < 0, soon: daysLeft >= 0 && daysLeft <= 5 };
+}
+export const dueWords = (d: { daysLeft: number; overdue: boolean }) => (d.overdue ? `${-d.daysLeft} ${d.daysLeft === -1 ? 'day' : 'days'} past the ${RESPONSE_TARGET_DAYS}-day target` : d.daysLeft === 0 ? 'due today' : `${d.daysLeft} ${d.daysLeft === 1 ? 'day' : 'days'} left of ${RESPONSE_TARGET_DAYS}`);
+
 /** "DR-2026-000001". */
 export const requestNumber = (year: number, n: number) => `DR-${year}-${String(n).padStart(6, '0')}`;
 

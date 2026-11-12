@@ -407,6 +407,14 @@ request*, the copy or the DR- numbers in search.
   the request keeps. Never during an assisted session.
 - **Closing** says what was done, or why it was refused (the customer is
   told). A request for a copy is answered only after its copy was downloaded.
+- **The target: 21 days** from the day received; the list shows the days
+  left and turns red when past. The NDPA 2023 and GAID 2025 fix no number of
+  days for answering a data subject — obligations without a stated time are
+  met "timeously" (GAID art. 49(2)). 21 days is the Directive's own nearby
+  figure (inaccuracy complaints "resolved within 21 days" in the audit
+  schedule; 21 days to reply to the Commission, art. 39(8)) and is inside
+  the one month other regimes allow. It is EJO's target, not a legal
+  deadline; confirm it with your Data Protection Officer.
 
 ## Access changes made in this pass (before → after, and why)
 
