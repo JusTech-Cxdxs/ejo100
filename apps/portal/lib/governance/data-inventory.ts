@@ -209,6 +209,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   // stored: the file is built at download time for the person downloading it.
   ExportJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract (the record of what left EJO, never deleted); the link itself stops working after 24 hours', ai: 'NEVER' },
   ExportDownload: { tenancy: 'VIA_PARENT', owner: 'exportJobId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its export', ai: 'NEVER' },
+  SapPostingFile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract: the record of what was sent to SAP and what SAP answered, never deleted', ai: 'NEVER' },
+  SapPostingLine: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: 'With its file (a new customer’s line carries their name, phone and email as SAP received them)', ai: 'NEVER' },
   // D1 Assembly plant: vehicles in the plant (with their SAP numbers) and their pre-delivery inspections.
   // Quality evidence: kept for the life of the vehicle; a PDI started by mistake is cancelled, never deleted.
   PlantVehicle: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the vehicle (build and quality record)', ai: 'AUTHORISED_USER', recycleBin: 'IMPORT_UNDO' },

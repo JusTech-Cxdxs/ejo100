@@ -1057,8 +1057,8 @@ permissions; the columns are SAP's:
 - **What this is not.** SAP's team loads such a file with their own tools
   (Migration Cockpit, LSMW or a program of theirs), under their own checks.
   EJO never writes into SAP's database. Daily postings from EJO to SAP —
-  parts issued, workshop invoices, payments — are a different file with an
-  agreed layout, a checksum and a status per line (C1, next).
+  parts received and issued, workshop billing, payments — are a different
+  file with a checksum and a status per line (SAP_INTEGRATION.md §3a).
 - **Not kept separately yet.** EJO keeps a customer's city in the address
   line and the state only for long addresses, so SAP's ORT01 and REGIO are
   not separate columns: STRAS carries "street, city". Keeping city and state
@@ -1074,6 +1074,10 @@ permissions; the columns are SAP's:
 | A3 — customer since; invoice history; production / QC / PDI registers | `scripts/predeploy/0006-sap-history.sql` (deploy) · `scripts/v-a3-sap-history.sql` (manual) |
 | Staged files — release period, size, release record | `scripts/predeploy/0007-import-staging-release.sql` (deploy) · `scripts/v-a4a-import-staging-release.sql` (manual) |
 | Search and tracking — SAP-number indexes; invoice company code and fiscal year | `scripts/predeploy/0008-search-and-tracking.sql` (deploy) · `scripts/v-a4b-search-and-tracking.sql` (manual) |
+| P3–P7 — open job cards, the demo organisation and its records, warranties and claims, services and bookings, staff | `scripts/predeploy/0016` … `0021` (deploy) · `scripts/v-p5` … `v-p7` (manual) |
+| P8 — plant shipments, vehicles, kits and kit issues made by an import | `scripts/predeploy/0022-plant-imports.sql` (deploy) · `scripts/v-p8-plant-imports.sql` (manual) |
+| P10 — each row's changes for an update from an edited export | `scripts/predeploy/0023-round-trip-changes.sql` (deploy) · `scripts/v-p10-round-trip.sql` (manual) |
+| C1a — postings for SAP: the files and their lines | `scripts/predeploy/0024-sap-postings.sql` (deploy) · `scripts/v-c1a-sap-postings.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a

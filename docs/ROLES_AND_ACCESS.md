@@ -176,6 +176,18 @@ record reaches the Recycle bin (governance inventory: `recycleBin:
 'IMPORT_UNDO'`), and restoring needs the Recycle bin right as for anything
 else.
 
+### Postings for SAP (C1a)
+
+Making and downloading a branch's postings file needs
+`dataexchange.export.run` **at that branch** (Finance, the Manager, the
+Store Manager, an administrator); the organisation's new-customers file
+carries names, phones and emails, so it needs `dataexchange.export.sensitive`.
+Loading SAP's return file and sending a rejected posting again need
+`dataexchange.import.approve` at that branch. Every file is fenced to the
+organisation, refused during an assisted session, and audited when made,
+downloaded and answered. A file that no longer matches its checksum is never
+given out.
+
 ### Updates from an edited export (P10)
 
 Preparing needs `dataexchange.import.run`; approving needs

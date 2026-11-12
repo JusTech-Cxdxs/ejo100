@@ -5098,3 +5098,57 @@ model PdiItem {
   @@unique([inspectionId, code])
   @@map("pdi_items")
 }
+
+/// C1a — a daily file of postings for SAP: one branch (or the organisation, for new customers), one kind, the
+/// events up to a Lagos day not yet sent. The CSV is rebuilt from its lines byte for byte (its checksum never
+/// changes); SAP's return file sets each line's status. Never edited after it is made; never posts into SAP itself.
+model SapPostingFile {
+  id             String    @id @default(cuid())
+  number         String    @unique // SAP-2026-000001
+  organisationId String
+  branchId       String?   // null: the organisation's (new customers)
+  kind           String    // NEW_CUSTOMER | GOODS_RECEIPT | GOODS_ISSUE | BILLING | PAYMENT
+  upTo           DateTime  @db.Date // the last Lagos day it covers
+  lineCount      Int
+  quantity       Decimal   @default(0) @db.Decimal(18, 4)
+  amount         Decimal   @default(0) @db.Decimal(18, 2)
+  checksum       String    // SHA-256 of the CSV
+  createdById    String
+  createdAt      DateTime  @default(now())
+  downloadedAt   DateTime?
+  acknowledgedAt DateTime?
+
+  lines SapPostingLine[]
+
+  @@index([organisationId, branchId, kind, createdAt])
+  @@map("sap_posting_files")
+}
+
+/// One posting in a file. `ref` is the event (e.g. GI:<slip line id>): it is in at most one file at a time unless
+/// SAP rejected it and someone sent it again (the new line names the old in retryOf).
+model SapPostingLine {
+  id             String    @id @default(cuid())
+  fileId         String
+  organisationId String
+  lineNo         Int
+  ref            String
+  entityType     String
+  entityId       String
+  quantity       Decimal?  @db.Decimal(18, 4)
+  amount         Decimal?  @db.Decimal(18, 2)
+  payload        Json      // the SAP fields, in the file's column order
+  status         String    @default("SENT") // SENT | POSTED | REJECTED | RESEND | SUPERSEDED
+  sapDocument    String?
+  message        String?
+  retryOf        String?
+  answeredAt     DateTime?
+  answeredById   String?
+
+  file SapPostingFile @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@unique([fileId, lineNo])
+  @@index([organisationId, ref])
+  @@index([organisationId, entityType, entityId])
+  @@index([organisationId, status])
+  @@map("sap_posting_lines")
+}
