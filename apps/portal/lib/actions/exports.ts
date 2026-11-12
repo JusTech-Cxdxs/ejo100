@@ -136,7 +136,7 @@ export async function listExports(opts: { take?: number } = {}): Promise<{ rows:
 }
 
 /** One export, for its page: what it holds, and this person's download. */
-export async function getExportDetail(id: string): Promise<(ExportRow & { page: string; mayDownload: boolean; progress: ExportProgress | null }) | null> {
+export async function getExportDetail(id: string): Promise<(ExportRow & { page: string; mayDownload: boolean; canSchedule: boolean; progress: ExportProgress | null }) | null> {
   await authorize('dataexchange.export.run', undefined, 'getExportDetail');
   const job = await myExportJob(id);
   if (!job) return null;
@@ -153,6 +153,8 @@ export async function getExportDetail(id: string): Promise<(ExportRow & { page: 
     createdAt: job.createdAt, expiresAt: job.expiresAt, createdBy: names.get(job.createdById) ?? 'Someone', rowCount: job.rowCount, bytes: job.bytes,
     downloads: downloads.map((d) => ({ by: names.get(d.userId) ?? 'Someone', at: d.partFinishedAt ?? d.startedAt, parts: d.parts, rows: d.rowCount, finished: Boolean(d.finishedAt) })),
     page: kind?.page ?? '/data-exchange', mayDownload: may,
+    // Its maker may repeat it on a schedule (never one customer's records: a one-off request).
+    canSchedule: may && job.createdById === p.userId && !(job.params as Record<string, unknown> | null)?.customerId,
     progress: may ? await getExportProgress(job.id) : null,
   };
 }

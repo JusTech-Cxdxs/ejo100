@@ -209,6 +209,8 @@ export const DATA_INVENTORY: Record<string, DataEntry> = {
   // stored: the file is built at download time for the person downloading it.
   ExportJob: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract (the record of what left EJO, never deleted); the link itself stops working after 24 hours', ai: 'NEVER' },
   ExportDownload: { tenancy: 'VIA_PARENT', owner: 'exportJobId', classification: ['INTERNAL'], lifecycle: 'CASCADE', retention: 'With its export', ai: 'NEVER' },
+  // A4c3: an export repeated on a schedule — the list, format and filters only (never data), its owner and its days. Ended schedules are kept.
+  ExportSchedule: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['INTERNAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract (ended schedules are kept, never deleted)', ai: 'NEVER' },
   SapPostingFile: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL'], lifecycle: 'ARCHIVE', retention: 'Life of the contract: the record of what was sent to SAP and what SAP answered, never deleted', ai: 'NEVER' },
   SapPostingLine: { tenancy: 'ORGANISATION', owner: 'organisationId', classification: ['FINANCIAL', 'PERSONAL'], lifecycle: 'ARCHIVE', retention: 'With its file (a new customer’s line carries their name, phone and email as SAP received them)', ai: 'NEVER' },
   // A4c1 Customers' data requests (NDPA 2023): who asked what, how identity was checked (never an ID number), and what was done.

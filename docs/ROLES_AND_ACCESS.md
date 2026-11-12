@@ -434,6 +434,36 @@ as zips of up to 40 with an `index.csv`.
   (`data_exchange.documents_downloaded`) with the kind, the period, the part,
   every document's number, and the zip's SHA-256.
 
+## Scheduled exports (A4c3)
+
+A person who may export lists can repeat **one of their own exports** every
+day, on a day of the week, or on a day of the month (1–28): open the export →
+**Repeat this export**. Their schedules are listed on the Exports page, where
+they pause, resume or end them.
+
+- **What a schedule keeps:** the list, the format and the filters — never
+  data. One customer's records cannot be scheduled. At most 10 per person.
+- **What happens when it is due:** the morning job records a fresh export
+  (its own EXP- number) *for the owner* and emails them that it is ready.
+  **Nothing is attached and nothing is stored**: the file is built when the
+  owner downloads it, signed in, within their permissions at that moment —
+  exactly as when they press Export.
+- **Who:** a schedule is its owner's alone; nobody else sees or changes it.
+  Each run first checks the owner is still an active account of the
+  organisation and may still export that list (`dataexchange.export.run`,
+  `.sensitive` for contact details or payments, and the list's own view
+  permission). If not, the schedule **pauses itself and says why**.
+- **Safe to run twice:** each schedule is claimed (its due day moved on)
+  before its export is made, so a second run of the job makes nothing. A job
+  that missed days makes one export, not one per missed day. A resumed
+  schedule is due after today.
+- **The trail:** scheduled, paused (by the owner or by the schedule), resumed
+  and ended are audit entries; each export made carries its schedule. Ended
+  schedules are kept, never deleted.
+- **The job:** part of the morning job (`/api/cron/pricing-alerts`), and on
+  its own at `/api/cron/export-schedules` — both need the scheduler's secret.
+  No new infrastructure.
+
 ## Access changes made in this pass (before → after, and why)
 
 | Change | Before | After | Why |

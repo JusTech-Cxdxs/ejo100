@@ -30,6 +30,8 @@ const GUARDS = [
   'privacyDesk(',
   // Customer documents in bulk (lib/actions/documents.ts): authorize('dataexchange.export.sensitive'), then allows('dataexchange.export.run') at the branch.
   'documentsDesk(',
+  // Scheduled exports (lib/actions/export-schedules.ts): authorize('dataexchange.export.run'); a schedule is its owner's alone.
+  'exportScheduler(',
 ];
 /** Acting only on the person's OWN data (their read marks, their passes) — checked inside by user id. */
 const SELF_SCOPED = new Set(['markNotificationsRead', 'markNotificationsUnread', 'markAllRead', 'setNotificationsMuted', 'cancelExitPass', 'createExitPass', 'getJobCardSourcingNeeds',
