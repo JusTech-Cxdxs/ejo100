@@ -196,7 +196,8 @@ test('outside purchase: technician requests → Finance reviews → Manager appr
   await as(page, 'technician');
   await open(page, S.url);
   await expect(page.getByRole('link', { name: '+ Request Procurement' })).toHaveAttribute('href', `${S.url}/request-procurement`);
-  await page.goto(`${S.url}/request-procurement`);
+  // open() waits for the page to settle, so the button is live before it is pressed.
+  await open(page, `${S.url}/request-procurement`);
   await expect(page.getByRole('heading', { name: 'Request External Procurement' })).toBeVisible();
   await page.getByRole('button', { name: 'Raise Procurement Request' }).click();
   await waitOutcome(page, /status=procurement_requested/);

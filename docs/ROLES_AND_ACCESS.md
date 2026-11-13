@@ -519,6 +519,9 @@ Three rules follow, and they hold together:
    have; at the plant they are offered the line and not Workshop, Inventory or
    Warranty, and at the workshop not the Assembly plant. The same goes for
    dashboard tiles and shortcuts.
+   Opening such an area by a pasted link or an old bookmark shows a short
+   notice in place of the page ("Afprint Assembly Plant has no Warranty"),
+   with the way to the person's own area. It shows none of the area's records.
 
 These rules decide what is *offered*. What anyone may *do* is still decided
 by their permissions and the organisation and branch fences, unchanged.
