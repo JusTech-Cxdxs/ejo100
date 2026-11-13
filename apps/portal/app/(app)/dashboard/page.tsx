@@ -2,7 +2,8 @@ import { redirect } from 'next/navigation';
 import { after } from 'next/server';
 import { ensureDemoPulse } from '@/lib/demo/pulse';
 import { prisma } from '@ejo/database';
-import { allows, getPrincipal } from '@/lib/authz/server';
+import { allows, getBranchView, getPrincipal } from '@/lib/authz/server';
+import { hrefInView } from '@/lib/authz/navigation';
 import { OrgTrail } from '@/components/OrgTrail';
 import { getWorkshopDashboardCounts, requireUser } from '@/lib/actions/workshop';
 import { getDashboardTrend, getDashboardNotifications, getPlatformGlance } from '@/lib/actions/dashboard';
@@ -90,6 +91,9 @@ export default async function DashboardPage() {
   // A demo organisation gets today's working day the first time anyone looks (after the page is sent; never in its way).
   after(() => ensureDemoPulse(principal.organisationId));
   const doesSupport = principal.isSuperAdmin || ['customer-care', 'customer-care-lead'].some((s) => principal.roleSlugs.includes(s));
+  // Tiles and shortcuts only into areas the branch in view has (the plant has no store; a workshop has no line).
+  const view = await getBranchView().catch(() => ({}));
+  const inView = (href: string) => hrefInView(principal, href, view);
   const overviews = await overviewsFor();
   const [counts, trend, notifications, myBroadcasts, broadcaster, glance, person, myNumbers, myJobs, waiting] = await Promise.all([
     getWorkshopDashboardCounts(),
@@ -105,7 +109,7 @@ export default async function DashboardPage() {
   ]);
   const approvals = notifications.filter(isApproval);
   // Unique destinations, role-specific first, at most ten.
-  const allowedQuick = QUICK.filter((q, i) => quickAllowed[i] && QUICK.findIndex((x) => x.href === q.href) === i && (doesSupport || q.href !== '/crm/support/new'));
+  const allowedQuick = QUICK.filter((q, i) => quickAllowed[i] && inView(q.href) && QUICK.findIndex((x) => x.href === q.href) === i && (doesSupport || q.href !== '/crm/support/new'));
   const forEveryone = (q: (typeof QUICK)[number]) => q.href === '/support/help' || q.href === '/support/features';
   const quick = [...allowedQuick.filter((q) => !forEveryone(q)).slice(0, 8), ...allowedQuick.filter(forEveryone)];
   const firstName = person?.fullName?.trim().split(/\s+/)[0];
@@ -146,7 +150,7 @@ export default async function DashboardPage() {
       {overviews.leadership ? <Suspense fallback={<OverviewSkeleton label="The business at a glance" />}><LeadershipOverview /></Suspense> : null}
       {overviews.it ? <Suspense fallback={<OverviewSkeleton label="Systems and access" />}><ItOverview /></Suspense> : null}
 
-      {seesWorkshop ? (
+      {seesWorkshop && inView('/workshop') ? (
         <div className="ejo-stagger mb-6 grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 xl:grid-cols-5">
           {stats.map((s) => <StatTile key={s.label} icon={s.icon} label={s.label} value={s.value} href={s.href} />)}
         </div>
@@ -255,11 +259,11 @@ export default async function DashboardPage() {
         </SectionCard>
       </div>
 
-      {glance.length > 0 ? (
+      {glance.some((t) => inView(t.href)) ? (
         <div className="mb-6">
           <h2 className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ejo-text-muted)]"><Icon name="globe" size={13} />{overviews.leadership ? 'The whole business at a glance' : seesWorkshop ? 'Your branch at a glance' : 'Your areas at a glance'}</h2>
           <div className="ejo-stagger grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-            {glance.map((t) => (
+            {glance.filter((t) => inView(t.href)).map((t) => (
               <StatTile key={t.label} icon={GLANCE_ICON[t.href] ?? 'grid'} label={t.label} value={t.value} hint={t.hint} href={t.href} tone={GLANCE_TONE[t.tone] ?? 'brand'} emphasis={t.tone === 'warning' || t.tone === 'error'} />
             ))}
           </div>
@@ -267,7 +271,7 @@ export default async function DashboardPage() {
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
-        {seesWorkshop ? (
+        {seesWorkshop && inView('/workshop') ? (
           <SectionCard icon="chart" title={<>{seesMoney ? 'Work opened and money collected' : 'Work opened'} — last 14 working days</>}>
             <DashboardTrendChart data={trend} showRevenue={seesMoney} />
           </SectionCard>

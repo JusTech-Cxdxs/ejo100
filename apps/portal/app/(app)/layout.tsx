@@ -4,7 +4,7 @@ import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { auth } from '@/lib/auth';
-import { currentAssist, getPrincipal } from '@/lib/authz/server';
+import { currentAssist, getBranchView, getPrincipal } from '@/lib/authz/server';
 import { AssistBanner } from '@/components/AssistBanner';
 import { navigationFor } from '@/lib/authz/navigation';
 import { AppShell } from '@/components/AppShell';
@@ -57,6 +57,8 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
 
   // Headquarters roles: the branch bar (all branches, or one) — not while working for a colleague.
   const lens = assist ? null : await getBranchLensOptions().catch(() => null);
+  // The kind of branch in view: the menu offers only the areas that branch has (a plant has no Inventory; a workshop has no line).
+  const view = await getBranchView().catch(() => ({}));
 
   // The role a person is shown with, and where: "Manager · Isolo" (a manager of the Isolo branch), "Store Manager · Store".
   const roleSlugs = (user.roles ?? []).map((r: { role: { slug: string } }) => r.role.slug);
@@ -72,7 +74,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
   return (
     <NotificationProvider userId={session?.user?.id ? (assist ? `${session.user.id}.assist.${assist.subject.id}` : session.user.id) : null}>
       <AppShell
-        items={assist ? navigationFor(principal).filter((i) => i.key !== 'mail') : navigationFor(principal)}
+        items={assist ? navigationFor(principal, view).filter((i) => i.key !== 'mail') : navigationFor(principal, view)}
         organisationName={user.organisation?.name ?? portalConfig.companyName}
         userName={user?.fullName ?? 'Unknown user'}
         roleName={roleName}

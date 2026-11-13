@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { BRANCH_TYPE_WORDS, isBranchType } from '@/lib/branch-types';
-import { guardPage } from '@/lib/authz/server';
+import { guardOrganisationWide } from '@/lib/authz/server';
 import { HistoryToggle } from '@/components/HistoryToggle';
 import { getHeadquarters, type HqRow } from '@/lib/actions/headquarters';
 import { getMasterAnalytics } from '@/lib/actions/master-analytics';
@@ -96,7 +96,7 @@ function BranchTable({ rows, period }: { rows: HqRow[]; period: string }) {
  * with, and decisions stay with the managers who own them.
  */
 export default async function HeadquartersPage({ searchParams }: { searchParams: Promise<{ period?: string; history?: string }> }) {
-  await guardPage('analytics.business.view', '/headquarters');
+  await guardOrganisationWide('analytics.business.view', '/headquarters');
   const sp = await searchParams;
   // History from before EJO (SAP invoices) is included unless the viewer chooses EJO's own figures only.
   const history = sp.history !== 'exclude';

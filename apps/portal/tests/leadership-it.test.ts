@@ -75,7 +75,7 @@ test('Headquarters tabs, IT control room and Enyo briefings are wired, guarded a
   assert.ok(!navigationFor(who(['technician'])).some((i) => i.key === 'it'));
   assert.match(read('app/(app)/it/page.tsx'), /guardPage\('audit\.view', '\/it'\)/);
   assert.match(read('lib/actions/it.ts'), /await authorize\('audit\.view'/);
-  assert.match(read('app/(app)/headquarters/team/page.tsx'), /guardPage\('analytics\.business\.view'/);
+  assert.match(read('app/(app)/headquarters/team/page.tsx'), /guardOrganisationWide\('analytics\.business\.view'/);
   assert.match(read('lib/actions/team.ts'), /await authorize\('analytics\.business\.view'/);
   const tools = read('lib/enyo/tools/leadership.ts');
   assert.match(tools, /name: 'branch_briefing'/);

@@ -74,7 +74,7 @@ export const TOUR: Record<string, TourStop> = {
   pdi: { firstView: 'Pre-delivery inspections to do on the tablet.', clicks: [L('The plant', '/plant'), L('Plant vehicles', '/plant/vehicles'), L('My profile', '/profile')], mustNot: [NO_JOBS, NO_USERS] },
   'pdi.supervisor': { firstView: 'Colleagues’ PDIs to accept or send back.', clicks: [L('The plant', '/plant'), L('Plant vehicles', '/plant/vehicles'), L('QA audits', '/plant/qa')], mustNot: [NO_JOBS, NO_USERS] },
   'afprint.admin': { firstView: 'The plant’s people and the plant at a glance.', clicks: [L('Users at Afprint', '/users'), L('The plant (read-only)', '/plant'), L('The plant’s Recycle bin', '/recycle-bin')], mustNot: [NO_SETTINGS, NO_STRUCTURE] },
-  'kit.store': { firstView: 'The plant’s own store: the parts on the shelf for the line and what came in.', clicks: [L('Parts and stock', '/inventory/parts'), L('Goods receipts', '/inventory/goods-receipts'), L('Record a goods receipt', '/inventory/goods-receipts/new')], mustNot: [NO_USERS, NO_LINE] },
+  'kit.store': { firstView: 'The kit store: what has arrived, what is being checked and what is waiting for release to the line.', clicks: [L('Kits', '/plant/kits'), L('Shipments', '/plant/shipments'), L('The plant at a glance', '/plant')], mustNot: [NO_JOBS, NO_STORE] },
   'plant.gate': { firstView: 'The plant gate: containers in, vehicles out.', clicks: [L('The register', '/security/register'), L('Visitors', '/security/visitors'), L('Vehicles inside', '/security/vehicles-inside')], mustNot: [NO_JOBS, NO_USERS, NO_STORE] },
 };
 

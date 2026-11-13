@@ -59,7 +59,7 @@ test('Headquarters: leadership with the whole organisation in view; a branch man
   assert.ok(!navigationFor(who(['technician'])).some((i) => i.key === 'headquarters'));
   assert.equal(decide(who(['technician']), 'analytics.business.view').allowed, false);
   const page = read('app/(app)/headquarters/page.tsx');
-  assert.match(page, /guardPage\('analytics\.business\.view'/);
+  assert.match(page, /guardOrganisationWide\('analytics\.business\.view'/);
   const action = read('lib/actions/headquarters.ts');
   assert.match(action, /await authorize\('analytics\.business\.view'/);
   assert.match(action, /businessUnit: \{ organisationId: org \}/, 'branches from the viewer\'s own organisation only');

@@ -155,11 +155,15 @@ async function placeStaff(prisma: PrismaClient, organisationId: string, s: DemoS
     if (changed) { await prisma.user.update({ where: { id: existing.id }, data: want }); r.staffRefreshed += 1; }
     userId = existing.id;
   }
+  const wanted: string[] = [];
   for (const slug of [s.role, ...(s.alsoRoles ?? [])]) {
     const roleId = roles.get(slug);
     if (!roleId) throw new Error(`Demo people: the role ${slug} is missing.`);
     await prisma.userRole.upsert({ where: { userId_roleId: { userId, roleId } }, update: {}, create: { userId, roleId } });
+    wanted.push(roleId);
   }
+  // Keep the demo account right: a role this demo person no longer has in the demo (their job changed) comes off, so what they are shown matches their tour.
+  await prisma.userRole.deleteMany({ where: { userId, roleId: { notIn: wanted } } });
   const account = await prisma.account.findFirst({ where: { userId, providerId: 'credential' }, select: { id: true } });
   if (!account) {
     await prisma.account.create({ data: { userId, accountId: userId, providerId: 'credential', password: hash } });

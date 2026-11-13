@@ -1,7 +1,9 @@
 'use server';
 
 import { prisma } from '@ejo/database';
-import { allows, authorize, getPrincipal, myOrganisationId, reachWhere } from '@/lib/authz/server';
+import { allows, authorize, getPrincipal, myOrganisationId, reachWhere, typedReach } from '@/lib/authz/server';
+import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
+import { minutesBetween, stationTimes } from '@/lib/plant/line';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { lagosYmd } from '@/lib/nigeria-calendar';
 import { jobIsLate, jobStatuses } from '@/lib/job-runs';
@@ -196,4 +198,41 @@ export async function overviewsFor(): Promise<{ leadership: boolean; it: boolean
   const orgWide = (k: 'analytics.business.view' | 'audit.view') => p.isSuperAdmin || scopeFor(p, k) === 'ALL';
   const [audit, users] = await Promise.all([allows('audit.view'), allows('admin.users.manage')]);
   return { leadership: orgWide('analytics.business.view'), it: audit && users && orgWide('audit.view') };
+}
+
+
+export type PlantPulse = {
+  /** The plant(s) in view. */
+  plants: string[];
+  kitsOpen: number; releaseWaiting: number; onLine: number; inPdi: number; inYard: number;
+  /** The station running furthest over its standard time in the last 14 days (median, at least three vehicles). */
+  bottleneck: { name: string; median: number; standard: number; vehicles: number } | null;
+} | null;
+
+/**
+ * The assembly plant on leadership's dashboard: where its vehicles are now
+ * (the line, PDI, the yard), the kits waiting, and the station holding the
+ * line up. Null for anyone who may not see the plant, and when the branch in
+ * view is not a plant (typedReach: within the person's organisation, the
+ * branch bar respected).
+ */
+export async function getPlantPulse(): Promise<PlantPulse> {
+  // Quietly nothing for people who do not see the plant (a workshop manager's dashboard asks too).
+  if (!(await allows('plant.view'))) return null;
+  const reach = await typedReach('plant.view', AREA_BRANCH_TYPES.plant);
+  if (reach.reason !== 'ok' || !reach.branchIds.length) return null;
+  const since = new Date(Date.now() - 14 * 86_400_000);
+  const [stages, kitsOpen, releaseWaiting, visits] = await Promise.all([
+    prisma.plantVehicle.groupBy({ by: ['stage'], where: reach.where, _count: { _all: true } }),
+    prisma.plantKit.count({ where: { ...reach.where, status: { in: ['ARRIVED', 'INSPECTING', 'SUBMITTED', 'ON_HOLD'] } } }),
+    prisma.plantKit.count({ where: { ...reach.where, status: 'SUBMITTED' } }),
+    prisma.plantStationVisit.findMany({ where: { ...reach.where, finishedAt: { gte: since }, startedAt: { not: null } }, orderBy: { finishedAt: 'desc' }, take: 5000, select: { code: true, name: true, standardMinutes: true, startedAt: true, finishedAt: true } }),
+  ]);
+  const n = (st: string[]) => stages.filter((x) => st.includes(x.stage)).reduce((sum, x) => sum + x._count._all, 0);
+  const slowest = stationTimes(visits.map((v) => ({ code: v.code, name: v.name, standardMinutes: v.standardMinutes, minutes: minutesBetween(v.startedAt, v.finishedAt) })))
+    .filter((t) => t.n >= 3 && t.median !== null && t.over > 0).sort((a, b) => b.over - a.over)[0];
+  return {
+    plants: reach.branches.map((b) => b.name), kitsOpen, releaseWaiting, onLine: n(['LINE', 'QA']), inPdi: n(['PDI']), inYard: n(['YARD']),
+    bottleneck: slowest ? { name: slowest.name, median: slowest.median!, standard: slowest.standard, vehicles: slowest.n } : null,
+  };
 }

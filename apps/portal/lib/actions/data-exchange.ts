@@ -309,6 +309,8 @@ export async function createImportJob(input: { entity: string; fileName: string;
     // Parts, stock and invoices belong to a branch that keeps a store; job history to a workshop: never an assembly plant (lib/branch-types.ts).
     const mismatch = branchTypeMismatch(ENTITIES[entity].branchArea ?? 'store', b.name, b.type);
     if (mismatch) throw new DataExchangeError(mismatch);
+    // And a branch this person may bring records into (a Branch Administrator: their own branch only).
+    if (!(await allows('dataexchange.import.run', { branchId: b.id }))) throw new DataExchangeError(`You may bring records into your own branch only, not ${b.name}.`);
     branchId = b.id;
   }
   // Opening stock: the cut-over date it was counted at (not in the future).
@@ -1245,7 +1247,11 @@ export async function reopenUndoneImport(jobId: string): Promise<void> {
 export async function listImportBranches(area: 'store' | 'workshop' | 'plant' = 'store'): Promise<{ id: string; name: string }[]> {
   await authorize('dataexchange.import.run', undefined, 'listImportBranches', 'Only the people who bring records into the system can start an import.');
   const { organisationId } = await exchangeOrg();
-  return prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+  const all = await prisma.branch.findMany({ where: { businessUnit: { organisationId }, isActive: true, type: { in: AREA_BRANCH_TYPES[area] } }, orderBy: { name: 'asc' }, select: { id: true, name: true } });
+  // Only the branches this person may bring records into: every branch for the organisation's own importers, their own branch for a Branch Administrator.
+  const mine: { id: string; name: string }[] = [];
+  for (const b of all) if (await allows('dataexchange.import.run', { branchId: b.id })) mine.push(b);
+  return mine;
 }
 
 async function staffAccountsOf(jobId: string): Promise<{ accounts: number; invited: number }> {

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { as, open, visitHealthy } from './helpers';
+import { as, menuLinks, open, visitHealthy } from './helpers';
+import { PLANT_BRANCH } from './people';
 
 /**
  * Headquarters roles in a real browser: the branch bar on every page (all
@@ -29,7 +30,8 @@ test('an executive chooses a branch in the bar; every page follows; All branches
   await visitHealthy(page, '/analytics');
   await visitHealthy(page, '/workshop');
 
-  // Every branch in the bar can be chosen (whatever its id looks like).
+  // Every branch in the bar can be chosen (whatever its id looks like) — on a page every branch has.
+  await visitHealthy(page, '/dashboard');
   const chips = page.getByTestId('branch-lens').getByRole('button');
   const n = await chips.count();
   for (let i = 1; i < Math.min(n, 5); i += 1) {
@@ -41,6 +43,57 @@ test('an executive chooses a branch in the bar; every page follows; All branches
   await open(page, '/headquarters');
   await expect(page.getByRole('status').filter({ hasText: /Showing .* only/ })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Brief me' }).first()).toBeVisible();
+});
+
+const area = (page: import('@playwright/test').Page, name: string) => menuLinks(page).filter({ hasText: new RegExp(`^\\s*${name}\\s*$`) });
+
+test('the branch bar and the menu follow the kind of branch: the plant is not a choice under Inventory, and has no Inventory of its own', async ({ page }) => {
+  await as(page, 'executive');
+  // A director oversees every branch: Workshop, Inventory and the Assembly plant are all in the menu.
+  await visitHealthy(page, '/dashboard');
+  const bar = page.getByTestId('branch-lens');
+  const everywhere = await bar.getByRole('button').count();
+  for (const name of ['Workshop', 'Inventory', 'Assembly plant']) await expect(area(page, name), name).toHaveCount(1);
+
+  // Under Inventory the bar offers only branches with a store: never the plant.
+  await visitHealthy(page, '/inventory');
+  await expect(bar.getByRole('button', { name: new RegExp(PLANT_BRANCH) })).toHaveCount(0);
+  expect(await bar.getByRole('button').count()).toBeLessThan(everywhere);
+  // On the line it offers the plant, and not the workshop.
+  await visitHealthy(page, '/plant');
+  await expect(bar.getByRole('button', { name: new RegExp(PLANT_BRANCH) })).toHaveCount(1);
+  expect(await bar.getByRole('button').count()).toBeLessThan(everywhere);
+
+  // Looking at the plant alone: its menu has the line, and neither Workshop nor Inventory.
+  await bar.getByRole('button', { name: new RegExp(PLANT_BRANCH) }).click();
+  await expect(bar.getByRole('button', { name: new RegExp(PLANT_BRANCH) })).toHaveAttribute('aria-pressed', 'true');
+  await visitHealthy(page, '/dashboard');
+  await expect(area(page, 'Assembly plant')).toHaveCount(1);
+  for (const name of ['Workshop', 'Inventory']) await expect(area(page, name), name).toHaveCount(0);
+  // Typing Inventory's address explains why there is nothing, and offers the branches that have a store.
+  await open(page, '/inventory');
+  await expect(page.getByTestId('branch-lens-elsewhere')).toContainText(`${PLANT_BRANCH}, which does not have a store`);
+
+  // All branches again: everything is back.
+  await page.getByTestId('branch-lens').getByRole('button', { name: /All branches/ }).click();
+  await expect(page.getByTestId('branch-lens-elsewhere')).toHaveCount(0);
+  await visitHealthy(page, '/dashboard');
+  for (const name of ['Workshop', 'Inventory', 'Assembly plant']) await expect(area(page, name), name).toHaveCount(1);
+});
+
+test('the plant’s people are not offered Workshop or Inventory; the workshop’s people are not offered the Assembly plant', async ({ page }) => {
+  await as(page, 'plant-manager');
+  await visitHealthy(page, '/dashboard');
+  await expect(area(page, 'Assembly plant')).toHaveCount(1);
+  for (const name of ['Workshop', 'Inventory']) await expect(area(page, name), name).toHaveCount(0);
+  await as(page, 'workshop-manager');
+  await visitHealthy(page, '/dashboard');
+  await expect(area(page, 'Workshop')).toHaveCount(1);
+  await expect(area(page, 'Assembly plant')).toHaveCount(0);
+  await as(page, 'store-manager');
+  await visitHealthy(page, '/dashboard');
+  await expect(area(page, 'Inventory')).toHaveCount(1);
+  await expect(area(page, 'Assembly plant')).toHaveCount(0);
 });
 
 test('an IT administrator has the IT control room; the branch bar too', async ({ page }) => {

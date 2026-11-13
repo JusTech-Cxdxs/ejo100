@@ -1,4 +1,4 @@
-import { guardPage } from '@/lib/authz/server';
+import { guardOrganisationWide } from '@/lib/authz/server';
 import { getTeamPerformance } from '@/lib/actions/team';
 import { HQ_PERIODS } from '@/lib/hq-core';
 import { RATING_LABEL, STANDARDS } from '@/lib/team-core';
@@ -23,7 +23,7 @@ const TONE = { strong: 'success', steady: 'brand', attention: 'warning', quiet: 
  * rework, and jobs open now. Read-only; within the viewer's reach.
  */
 export default async function TeamPerformancePage({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
-  await guardPage('analytics.business.view', '/headquarters/team');
+  await guardOrganisationWide('analytics.business.view', '/headquarters/team');
   const sp = await searchParams;
   const t = await getTeamPerformance(sp.period);
   const link = (k: string) => (k === 'this_month' ? '/headquarters/team' : `/headquarters/team?period=${k}`);

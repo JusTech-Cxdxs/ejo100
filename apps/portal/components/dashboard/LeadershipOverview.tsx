@@ -1,4 +1,4 @@
-import { getLeadershipPulse } from '@/lib/actions/leadership';
+import { getLeadershipPulse, getPlantPulse } from '@/lib/actions/leadership';
 import { getMasterAnalytics } from '@/lib/actions/master-analytics';
 import { LoadingLink } from '@/components/LoadingLink';
 import { AskEnyoButton } from '@/components/enyo/AskEnyoButton';
@@ -16,7 +16,7 @@ const age = (h: number | null) => (h === null ? '' : h < 1 ? 'under an hour' : h
  * it. For directors and managers (analytics.business.view), within their reach.
  */
 export async function LeadershipOverview() {
-  const [p, a] = await Promise.all([getLeadershipPulse(), getMasterAnalytics('this_month').catch(() => null)]);
+  const [p, a, plant] = await Promise.all([getLeadershipPulse(), getMasterAnalytics('this_month').catch(() => null), getPlantPulse().catch(() => null)]);
   const waiting = p.waiting.filter((w) => w.count > 0).sort((x, y) => (y.oldestHours ?? 0) - (x.oldestHours ?? 0));
   const totalWaiting = waiting.reduce((n, w) => n + w.count, 0);
   const stale = waiting.filter((w) => (w.oldestHours ?? 0) >= 48);
@@ -45,6 +45,27 @@ export async function LeadershipOverview() {
           <StatTile icon="alert" label="Owed on finished jobs" value={naira(a.position.receivables)} hint={pluralize(a.position.receivableJobs, 'job')} tone={a.position.receivables > 0 ? 'warning' : 'brand'} href="/analytics" />
           <StatTile icon="activity" label="Month projection" value={naira(proj)} hint={last ? `Last month ${naira(last)}` : 'At the current pace'} tone={proj !== null && last && proj < last * 0.85 ? 'warning' : 'brand'} href="/analytics" />
         </div>
+      ) : null}
+
+      {plant ? (
+        <SectionCard icon="garage" title={`On the line now · ${plant.plants.join(', ')}`} data-testid="plant-pulse"
+          description={plant.bottleneck ? `Holding the line up: ${plant.bottleneck.name} — a median of ${plant.bottleneck.median} minutes against a standard of ${plant.bottleneck.standard}, over ${pluralize(plant.bottleneck.vehicles, 'vehicle')} in the last 14 days.` : 'No station is running over its standard time in the last 14 days.'}
+          actions={<LoadingLink href="/plant/line" className="font-medium text-[var(--ejo-primary)] hover:underline">The line board →</LoadingLink>}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {[
+              { label: 'Kits being checked', value: plant.kitsOpen, href: '/plant/kits' },
+              { label: 'Kits waiting for release', value: plant.releaseWaiting, href: '/plant/kits' },
+              { label: 'Vehicles on the line', value: plant.onLine, href: '/plant/line' },
+              { label: 'In PDI', value: plant.inPdi, href: '/plant/pdi' },
+              { label: 'In the yard', value: plant.inYard, href: '/plant/vehicles' },
+            ].map((t) => (
+              <LoadingLink key={t.label} href={t.href} className="rounded-[var(--ejo-radius-md)] border border-[var(--ejo-border)] bg-[var(--ejo-bg)] p-3 hover:border-[var(--ejo-primary)]/50">
+                <span className="block text-2xl font-semibold tabular-nums text-[var(--ejo-text)]">{t.value}</span>
+                <span className="block text-xs text-[var(--ejo-text-muted)]">{t.label}</span>
+              </LoadingLink>
+            ))}
+          </div>
+        </SectionCard>
       ) : null}
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
