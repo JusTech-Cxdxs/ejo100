@@ -6,9 +6,11 @@ holds, the invoices from SAP and the plant's production, QC and PDI
 registers — comes into EJO 100 from SAP and from spreadsheets, **without
 retyping and without risk to the live records**.
 
-> Status: **A3.** Customers, vehicles (A1); suppliers, parts, opening stock
-> (A2); SAP history — customer-since dates, invoice history, production / QC
-> / PDI registers (A3). Coming next: A4 export from every list.
+> Status: imports (customers, vehicles, suppliers, parts, opening stock, SAP
+> history, job cards and services, warranties, staff, the plant's records),
+> the cut-over checklist, exports from every list, updates from an edited
+> export or SAP's own file, documents in bulk and scheduled exports are all
+> built. Each section below says what it covers.
 
 ## 1. The principle
 

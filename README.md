@@ -7,7 +7,7 @@ approved it. It is built to sit beside SAP: SAP stays the system of record for f
 procurement and the material master, and EJO exchanges files with it.
 
 **Who it is for.** The first organisation is Kewalram Chanrai Group's automotive business in
-Nigeria: a workshop branch, a warehouse and an assembly plant. Staff use the portal on desktops
+Nigeria: a workshop branch with its parts store, and an assembly plant. Staff use the portal on desktops
 and tablets. Customers use the customer portal. This file is for the IT team that will review,
 host and maintain it.
 

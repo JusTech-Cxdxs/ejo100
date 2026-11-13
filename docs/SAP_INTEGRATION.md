@@ -327,8 +327,9 @@ since the check left as it is, each change in the record's history, and undo.
 ### 3b. What C1 covers overall
 
 - **Outbound files** EJO writes for SAP each day, in SAP's own field names: new
-  customers, goods issues for jobs, workshop billing, plant events (PDI usage
-  decisions, vehicles to the yard, sales).
+  customers, goods receipts and issues, workshop billing, payments and
+  refunds, and the plant's events (PDI usage decisions, vehicles to the
+  yard). Vehicle sales are not recorded in EJO, so none are sent (§3a).
 - **Inbound refreshes** from SAP: the master data changed since the last file.
 - **Every sync situation** handled and listed: a record changed on both sides,
   deleted in SAP, a number SAP rejected, a posting failed and fixed.
