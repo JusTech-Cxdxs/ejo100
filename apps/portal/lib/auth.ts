@@ -189,6 +189,13 @@ export const auth = betterAuth({
     // User / Session / Account / Verification models — no field mapping
     // override needed as long as those model names stay as-is.
     useSecureCookies: process.env.NODE_ENV === 'production',
+    // Better Auth 1.7 compares its own default tables with the Prisma schema
+    // before EVERY auth call and refuses them all on a difference. Ours differ
+    // on purpose in ways it never touches here: users have `fullName` (no
+    // `name`) and accounts have no `idToken` — sign-up is closed and there is
+    // no social sign-in, so neither is ever written. Left on, nobody could
+    // sign in. Turn it back on only after the schema carries those columns.
+    database: { validateSchema: false },
   },
 });
 

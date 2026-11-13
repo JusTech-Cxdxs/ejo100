@@ -190,6 +190,13 @@ export const customerAuth = betterAuth({
     },
     useSecureCookies: process.env.NODE_ENV === 'production',
     cookiePrefix: 'customer-auth', // keeps customer cookies namespaced apart from the portal's
+    // Better Auth 1.7 compares its own default tables with the Prisma schema
+    // before EVERY auth call and refuses them all on a difference. Ours differ
+    // on purpose in ways it never touches here: customer_accounts has no
+    // `idToken` (no social sign-in) and customers.organisationId is required
+    // (customers are created by staff, never by this library). Left on, no
+    // customer could sign in. Turn it back on only after the schema matches.
+    database: { validateSchema: false },
   },
 
   // Lets server actions (Profile → change password) set the refreshed
