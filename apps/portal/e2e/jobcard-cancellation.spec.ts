@@ -32,7 +32,7 @@ test('a Job Card is paid (70%) and Store reserves its parts', async ({ page }) =
   S.before = await readStock(page, S.partUrl);
 
   await as(page, 'technician');
-  await page.goto(`${S.url}/request-parts`);
+  await open(page, `${S.url}/request-parts`);
   await page.getByRole('button', { name: 'Raise Parts Request' }).click();
   await waitOutcome(page, /status=parts_requested/);
   await page.getByRole('link', { name: /^PRS-/ }).first().click();

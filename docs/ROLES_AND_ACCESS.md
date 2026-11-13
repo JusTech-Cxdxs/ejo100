@@ -464,6 +464,29 @@ they pause, resume or end them.
   its own at `/api/cron/export-schedules` — both need the scheduler's secret.
   No new infrastructure.
 
+## Portal invitations for imported customers (B)
+
+A loaded **customers import** shows who it can invite to the customer portal:
+the customers it made who have an email on file, have portal access switched
+on, have never signed in and have no portal account yet. Customers with no
+email are counted and left out — they are reached by phone.
+
+- **Who sends:** someone with `crm.manage` (front desk, managers,
+  administrators) who can open the import. Never during an assisted session.
+- **What is sent:** the same welcome as a customer registered at the front
+  desk — a one-time link to set their own password (72 hours; after that,
+  *Forgot password* works). No password is ever made, sent or seen by staff,
+  and no staff name appears in the email.
+- **Once each:** every customer is claimed before their email goes
+  (compare-and-set on `portalInvitedAt`), 25 at a time with the progress
+  shown, so a second press or a second person never writes to them twice. A
+  new link after that is sent from the customer's own page.
+- **The trail:** `customer.portal_invited` on each customer (with the import's
+  number and whether the mail server accepted it), next to the welcome email's
+  own entry and the email delivery log.
+- **Undo:** an import whose customers have portal accounts is not undone
+  under them (as before): the undo names them and stops.
+
 ## Access changes made in this pass (before → after, and why)
 
 | Change | Before | After | Why |

@@ -1087,6 +1087,7 @@ permissions; the columns are SAP's:
 | A4c1 — customers' data requests (NDPA 2023) | `scripts/predeploy/0025-data-requests.sql` (deploy) · `scripts/v-a4c1-data-requests.sql` (manual) |
 | A4c2 — customer documents in bulk (PDF zips) | No change to the database |
 | A4c3 — scheduled exports | `scripts/predeploy/0026-export-schedules.sql` (deploy) · `scripts/v-a4c3-export-schedules.sql` (manual) |
+| B — portal invitations for imported customers (one column on customers) | `scripts/predeploy/0027-customer-portal-invited.sql` (deploy) · `scripts/v-b-customer-portal-invited.sql` (manual) |
 
 All are additive (new tables, columns and indexes), re-runnable, and tested
 twice on Postgres 16 against the previous structure and compared with a

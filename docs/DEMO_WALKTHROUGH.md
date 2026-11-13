@@ -757,6 +757,21 @@ People: the **Store Manager**.
    a role that may not export suppliers, the schedule would pause itself and
    say so.
 
+## 13j. Inviting imported customers to the portal (B)
+
+*The question: "we loaded 4,000 customers from SAP — how do they get online?"*
+
+People: the **Organisation Administrator** (or front desk / a manager).
+
+1. Open the loaded customers import. Under the totals: *Customer portal: 0
+   invited · N can be invited · M with no email (reached by phone)*.
+2. **Invite N to the customer portal**: the count climbs 25 at a time. Each
+   customer gets the welcome email with **Set my password** — a one-time
+   link, never a password.
+3. Open it again: everyone who can use the portal has been invited; the
+   button is gone. A customer who needs a new link gets it from their own
+   page (*Send a set-password link*).
+
 ## 14. Sign in as anyone: the demo people (D1)
 
 *The question: "let me see it as the technician — and as the director."*
@@ -913,4 +928,4 @@ plant dashboards (D4); the job-card, service, warranty, staff and plant
 records imports are in (§13b) with the cut-over checklist (§13c), and round-trip updates from an
 exported file (§13d), a customer's data request (§13g), and customer
 documents in bulk (§13h), and scheduled exports (§13i); the daily SAP files and reconciliation (C1a §13e and
-C1b §13f are in); and inviting imported customers to the portal (B).
+C1b §13f are in); and inviting imported customers to the portal (§13j).

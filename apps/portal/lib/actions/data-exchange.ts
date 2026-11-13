@@ -41,6 +41,7 @@ import { checkOpenJobRows, loadOpenJobRows, openJobTotalsLoaded, openJobTotalsOf
 import { moveImportedJobCardsToBinInTx, moveImportedPlantToBinInTx, moveImportedServicesToBinInTx, moveImportedStaffToBinInTx, moveImportedWarrantyRecordsToBinInTx } from '@/lib/recycle-bin/server';
 import { checkStaffRows, loadStaffRows, staffTotalsLoaded, staffTotalsOfRows, staffUntouchedSinceImport } from '@/lib/data-exchange/staff-server';
 import { sendStaffAccessEmail } from '@/lib/staff-onboarding';
+import { sendCustomerAccessEmail } from '@/lib/customer-access';
 import { scopeFor } from '@/lib/authz/catalogue';
 import { checkRoundTripRows, loadRoundTripRows, roundTripChanges, roundTripTotals, undoRoundTripBatch } from '@/lib/data-exchange/round-trip-server';
 import { isRoundTripEntity } from '@/lib/data-exchange/round-trip';
@@ -215,9 +216,11 @@ export type ImportJobDetail = ImportJobRow & {
   signedOff: { by: string; at: Date } | null;
   /** A staff import (P7): its accounts now, and how many have been invited. */
   staffAccounts: { accounts: number; invited: number } | null;
+  /** A customers import (B): who can be invited to the customer portal, who has been, and who has no email (reached by phone). */
+  customerPortal: { withEmail: number; invited: number; waiting: number; noEmail: number; alreadyIn: number } | null;
   /** The staged copy of the file: its size, whether it was released (by whom), and when it will be. */
   staged: { bytes: number | null; releasedAt: Date | null; releasedBy: string | null; releasable: boolean; why: string | null; dueAt: Date | null; days: number };
-  me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean; canInvite: boolean };
+  me: { id: string; canRun: boolean; canApprove: boolean; isMaster: boolean; canSignOff: boolean; canInvite: boolean; canInvitePortal: boolean };
   /** Whether what is left to load fits in the database's plan (checked before sending, approving, loading and resuming). */
   room: { ok: boolean; message: string | null };
 };
@@ -274,8 +277,9 @@ export async function getImportJob(jobId: string): Promise<ImportJobDetail> {
     totals: (job.totals as ImportJobDetail['totals']) ?? null,
     signedOff: job.signedOffAt ? { by: signer?.fullName ?? 'Finance', at: job.signedOffAt } : null,
     staffAccounts: job.entity === 'staff' && job.status === 'COMPLETED' ? await staffAccountsOf(job.id) : null,
+    customerPortal: job.entity === 'customers' && job.status === 'COMPLETED' ? await customerPortalOf(job.id, job.organisationId) : null,
     staged: { bytes: stagedBytes, releasedAt: job.rowsReleasedAt, releasedBy: job.rowsReleasedAt ? releaser?.fullName ?? 'the daily clean-up' : null, releasable: rel.releasable, why: rel.why, dueAt: rel.dueAt, days },
-    me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff, canInvite: entity === 'staff' && (await getPrincipal().then((pr) => pr.isSuperAdmin || scopeFor(pr, 'admin.users.manage') === 'ALL')) },
+    me: { id: me.userId, canRun: run, canApprove: approve && approveThis, isMaster: Boolean(master), canSignOff: financeSigned(entity) && signOff, canInvite: entity === 'staff' && (await getPrincipal().then((pr) => pr.isSuperAdmin || scopeFor(pr, 'admin.users.manage') === 'ALL')), canInvitePortal: entity === 'customers' && (await allows('crm.manage')) },
     room: ['VALIDATED', 'AWAITING_APPROVAL', 'APPROVED', 'PAUSED'].includes(job.status) ? roomFor(job, await readDatabaseSpace({ fresh: true })) : { ok: true, message: null },
   };
 }
@@ -1281,6 +1285,52 @@ export async function sendStaffInvitations(jobId: string): Promise<{ invited: nu
     await writeAuditLog({ userId, action: 'user.invited', entityType: 'User', entityId: u.id, metadata: { person: u.fullName, email: u.email, import: job.number, sent } });
   }
   const left = await prisma.user.count({ where: { importJobId: job.id, organisationId: job.organisationId, invitedAt: null, isActive: false, lastLoginAt: null } });
+  return { invited, failed, left };
+}
+
+/** Customers of an import still to be invited: theirs to use (access on), an email on file, never invited from the import, never signed in, no portal account yet. */
+const portalWaiting = (jobId: string, organisationId: string): Prisma.CustomerWhereInput => ({ importJobId: jobId, organisationId, isActive: true, email: { not: null }, portalInvitedAt: null, lastLoginAt: null, accounts: { none: {} } });
+
+async function customerPortalOf(jobId: string, organisationId: string): Promise<{ withEmail: number; invited: number; waiting: number; noEmail: number; alreadyIn: number }> {
+  const mine = { importJobId: jobId, organisationId };
+  const [withEmail, invited, waiting, noEmail] = await Promise.all([
+    prisma.customer.count({ where: { ...mine, email: { not: null } } }),
+    prisma.customer.count({ where: { ...mine, portalInvitedAt: { not: null } } }),
+    prisma.customer.count({ where: portalWaiting(jobId, organisationId) }),
+    prisma.customer.count({ where: { ...mine, email: null } }),
+  ]);
+  // With an email but neither invited here nor waiting: already has portal access, or it is switched off.
+  return { withEmail, invited, waiting, noEmail, alreadyIn: Math.max(0, withEmail - invited - waiting) };
+}
+
+/**
+ * B — the portal invitations of a customers import: each customer the import
+ * made who has an email on file, has never signed in and has no portal
+ * account yet is emailed their welcome, with a one-time link to set their
+ * own password (the same email as a customer registered at the front desk;
+ * no password is ever sent or seen). Customers with no email are left out:
+ * they are reached by phone. In steps (25 a call), so the page shows the
+ * progress; each customer is invited once (compare-and-set on
+ * portalInvitedAt) and audited. A new link after that is sent from the
+ * customer's own page. For the people who manage customers' portal access.
+ */
+export async function sendCustomerPortalInvitations(jobId: string): Promise<{ invited: number; failed: number; left: number }> {
+  await refuseDuringAssist('sendCustomerPortalInvitations');
+  await authorize('crm.manage', undefined, 'sendCustomerPortalInvitations', 'Only front desk, managers and administrators can invite customers to the portal.');
+  const job = await myImportJob(jobId);
+  const { userId } = await exchangeOrg();
+  if (job.entity !== 'customers') throw new DataExchangeError('Only a customers import sends portal invitations.');
+  if (job.status !== 'COMPLETED') throw new DataExchangeError('The invitations are sent once the import has loaded.');
+  const batch = await prisma.customer.findMany({ where: portalWaiting(job.id, job.organisationId), orderBy: { createdAt: 'asc' }, take: 25, select: { id: true, fullName: true } });
+  let invited = 0; let failed = 0;
+  for (const c of batch) {
+    const claimed = await prisma.customer.updateMany({ where: { id: c.id, organisationId: job.organisationId, portalInvitedAt: null }, data: { portalInvitedAt: new Date() } });
+    if (claimed.count !== 1) continue;
+    const r = await sendCustomerAccessEmail(c.id, 'welcome', userId);
+    if (r.sent) invited += 1; else failed += 1;
+    await writeAuditLog({ userId, action: 'customer.portal_invited', entityType: 'Customer', entityId: c.id, metadata: { customer: c.fullName, import: job.number, sent: r.sent, ...(r.sent ? {} : { reason: r.reason }) } });
+  }
+  const left = await prisma.customer.count({ where: portalWaiting(job.id, job.organisationId) });
   return { invited, failed, left };
 }
 
