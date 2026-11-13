@@ -116,3 +116,30 @@ test('an organisation with no assembly plant yet: its administrator opens one fr
   // Pressing it again is refused: the plant exists.
   expect(await db().branch.count({ where: { businessUnit: { organisationId: org.id }, type: 'ASSEMBLY_PLANT' } })).toBe(1);
 });
+
+test('a pasted link to an area the plant does not have explains itself; the workshop and leadership open theirs as before', async ({ page }) => {
+  // The plant manager may view warranties at their branch, but the plant has no Warranty desk, store or workshop.
+  await as(page, 'plant-manager');
+  await open(page, '/warranty');
+  const notice = page.getByTestId('area-not-here');
+  await expect(notice).toContainText(`${PLANT_BRANCH} has no Warranty.`);
+  await expect(notice).toContainText('ask an administrator to move your account');
+  await expect(page.getByRole('heading', { name: 'Warranty', level: 1 })).toHaveCount(0);
+  await open(page, '/warranty/claims');
+  await expect(page.getByTestId('area-not-here')).toBeVisible();
+  await page.getByTestId('area-not-here').getByRole('link', { name: 'Go to the assembly plant' }).click();
+  await expect(page.getByRole('heading', { name: 'Assembly plant', level: 1 })).toBeVisible();
+  // Without the permission at all it is the ordinary refusal, as before.
+  await open(page, '/inventory');
+  await expect(page.getByRole('heading', { name: /You don.t have access to this/ })).toBeVisible();
+  // The workshop's own people, and leadership whatever their branch: the pages themselves.
+  await as(page, 'workshop-manager');
+  await open(page, '/warranty');
+  await expect(page.getByTestId('area-not-here')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Warranty', level: 1 })).toBeVisible();
+  await as(page, 'administrator');
+  for (const path of ['/workshop', '/inventory', '/warranty']) {
+    await open(page, path);
+    await expect(page.getByTestId('area-not-here')).toHaveCount(0);
+  }
+});

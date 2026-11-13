@@ -36,7 +36,7 @@ export function moduleInView(p: Principal, key: string, needs: PermissionKey[], 
 }
 
 /** The permission that opens each branch-bound area. */
-const AREA_VIEW: Record<string, PermissionKey> = { workshop: 'workshop.view', inventory: 'store.view', warranty: 'warranty.view', plant: 'plant.view' };
+export const AREA_VIEW: Record<string, PermissionKey> = { workshop: 'workshop.view', inventory: 'store.view', warranty: 'warranty.view', plant: 'plant.view' };
 
 /** Is the page at this address part of the branch in view? (For dashboard tiles and shortcuts: never a link into an area the branch does not have.) */
 export function hrefInView(p: Principal, href: string, view: BranchView): boolean {

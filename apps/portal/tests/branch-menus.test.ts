@@ -103,3 +103,25 @@ test('dashboard tiles and shortcuts never lead into an area the branch in view d
   assert.match(dx, /if \(!\(await allows\('dataexchange\.import\.run', \{ branchId: b\.id \}\)\)\) throw new DataExchangeError\(`You may bring records into your own branch only/, 'an import loads only into a branch the importer may use');
   assert.match(read('lib/actions/leadership.ts'), /const reach = await typedReach\('plant\.view', AREA_BRANCH_TYPES\.plant\);/, 'the plant’s figures on the director’s dashboard are fenced like every plant page');
 });
+
+test('an area the person’s own branch does not have explains itself when opened by a pasted link — the same rule as the menu', () => {
+  const server = read('lib/authz/server.ts');
+  const gate = server.slice(server.indexOf('export async function areaNotAtMyBranch'));
+  assert.match(gate.slice(0, 900), /moduleInView\(p, moduleKey, \[AREA_VIEW\[moduleKey\]!\], view\)/, 'one rule for the menu and the page');
+  assert.match(gate.slice(0, 900), /view\.lensBranchType \|\| !view\.ownBranchType/, 'the branch bar explains a chosen branch; an unknown kind hides nothing');
+  for (const [area, key] of [['workshop', 'workshop.view'], ['inventory', 'store.view'], ['warranty', 'warranty.view']] as const) {
+    const layout = read(`app/(app)/${area}/layout.tsx`);
+    assert.ok(layout.indexOf(`guardAnyPage(['${key}']`) < layout.indexOf(`areaNotAtMyBranch('${area}')`), `${area}: permission first, then the branch`);
+    assert.match(layout, new RegExp(`<AreaNotHere area="${area}"`));
+  }
+  // The plant manager holds warranty.view at their branch; the plant has no Warranty desk.
+  const pm = who(['plant-manager']);
+  assert.equal(decide(pm, 'warranty.view').allowed, true);
+  assert.equal(moduleInView(pm, 'warranty', ['warranty.view'], { ownBranchType: 'ASSEMBLY_PLANT' }), false);
+  assert.equal(moduleInView(pm, 'warranty', ['warranty.view'], { ownBranchType: 'WORKSHOP' }), true);
+  // Leadership is never turned away, whatever branch their account is placed at.
+  for (const role of ['executive', 'administrator']) for (const area of ['workshop', 'inventory', 'warranty']) assert.equal(moduleInView(who([role]), area, [({ workshop: 'workshop.view', inventory: 'store.view', warranty: 'warranty.view' } as const)[area as 'workshop']], { ownBranchType: 'ASSEMBLY_PLANT' }), true, `${role} ${area}`);
+  // The notice shows no records and names no person.
+  const notice = read('components/AreaNotHere.tsx');
+  assert.doesNotMatch(notice, /prisma|lib\/actions/);
+});

@@ -6,6 +6,7 @@ import { requireUser } from '@/lib/actions/workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
 import { decide, hasBranchLens, scopeFor, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
 import { signedInContext, type ActiveAssist } from '@/lib/assist/server';
+import { AREA_VIEW, moduleInView } from './navigation';
 
 /**
  * Server-side enforcement of the Authorization Catalogue. Server-only (NOT a
@@ -112,6 +113,23 @@ export const getBranchView = cache(async (): Promise<{ ownBranchType: string | n
   const typeOf = (id: string | null | undefined) => rows.find((b: { id: string }) => b.id === id)?.type ?? null;
   return { ownBranchType: typeOf(p.branchId), lensBranchType: typeOf(p.lensBranchId) };
 });
+
+/**
+ * An area a person's own branch does not have, opened by a pasted link or a
+ * bookmark (the menu never offers it): null when the area is theirs to open,
+ * otherwise their branch, so the page explains it in plain words. The same
+ * rule as the menu (moduleInView). It applies to someone whose access is to
+ * their own branch; a person who sees the whole organisation and has chosen
+ * one branch in the branch bar is told so by the bar, with the way back.
+ */
+export async function areaNotAtMyBranch(moduleKey: 'workshop' | 'inventory' | 'warranty'): Promise<{ branchName: string; branchType: string; hasPlant: boolean } | null> {
+  const p = await getPrincipal();
+  const view = await getBranchView();
+  if (view.lensBranchType || !view.ownBranchType || !p.branchId) return null;
+  if (moduleInView(p, moduleKey, [AREA_VIEW[moduleKey]!], view)) return null;
+  const b = await prisma.branch.findUnique({ where: { id: p.branchId }, select: { name: true } });
+  return { branchName: b?.name ?? 'Your branch', branchType: view.ownBranchType, hasPlant: view.ownBranchType === 'ASSEMBLY_PLANT' && decide(p, 'plant.view').allowed };
+}
 
 /** The cookie holding the branch lens (a branch id; empty = all branches). */
 export const LENS_COOKIE = 'ejo-branch-lens';
