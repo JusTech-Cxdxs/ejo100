@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { prisma } from '@ejo/database';
 import { requireUser } from '@/lib/actions/workshop';
 import { writeAuditLog } from '@/lib/workshop-core';
-import { decide, hasBranchLens, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
+import { decide, hasBranchLens, scopeFor, type Decision, type PermissionKey, type Principal, type RecordContext, PERMISSIONS } from './catalogue';
 import { signedInContext, type ActiveAssist } from '@/lib/assist/server';
 
 /**
@@ -99,6 +99,20 @@ export async function lensPeopleWhere(): Promise<{ userId?: { in: string[] } }> 
   return { userId: { in: people.map((u: { id: string }) => u.id) } };
 }
 
+/**
+ * The kind of branch this person belongs to, and the kind they are looking at
+ * through the branch bar — for the menu (lib/authz/navigation: a plant has no
+ * Inventory, a workshop has no line). Read once per request.
+ */
+export const getBranchView = cache(async (): Promise<{ ownBranchType: string | null; lensBranchType: string | null }> => {
+  const p = await getPrincipal();
+  const ids = [p.branchId, p.lensBranchId].filter((x): x is string => Boolean(x));
+  if (!ids.length) return { ownBranchType: null, lensBranchType: null };
+  const rows = await prisma.branch.findMany({ where: { id: { in: ids } }, select: { id: true, type: true } });
+  const typeOf = (id: string | null | undefined) => rows.find((b: { id: string }) => b.id === id)?.type ?? null;
+  return { ownBranchType: typeOf(p.branchId), lensBranchType: typeOf(p.lensBranchId) };
+});
+
 /** The cookie holding the branch lens (a branch id; empty = all branches). */
 export const LENS_COOKIE = 'ejo-branch-lens';
 
@@ -168,6 +182,19 @@ export async function guardPage(key: PermissionKey, where: string): Promise<void
     await logDenied(p.userId, key, where, d.reason);
     redirect(`/access-denied?area=${encodeURIComponent(PERMISSIONS[key].label)}`);
   }
+}
+
+/**
+ * Pages that are about the whole organisation (Headquarters: every branch
+ * side by side). Holding the permission for one's own branch is not enough —
+ * the same rule as the menu, so typing the address never opens what the menu
+ * does not offer.
+ */
+export async function guardOrganisationWide(key: PermissionKey, where: string): Promise<void> {
+  const p = await getPrincipal();
+  if (p.isSuperAdmin || scopeFor(p, key) === 'ALL') return;
+  await logDenied(p.userId, key, where, 'This page is for people who see the whole organisation');
+  redirect(`/access-denied?area=${encodeURIComponent('Headquarters (the whole organisation)')}`);
 }
 
 /** Pages open to people with ANY of several permissions (e.g. Deliveries:

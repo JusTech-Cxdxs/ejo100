@@ -56,6 +56,29 @@ export function branchTypeMismatch(area: BranchArea, branchName: string, type: B
 }
 
 /**
+ * The menu areas whose records live only on certain kinds of branch. Every
+ * other area (customers, security, analytics, administration…) belongs to
+ * the organisation or to every branch. Warranties and claims are the
+ * workshop's records (the Warranty desk is a workshop department), so they
+ * go with the workshop. Used by the menu, the dashboard and the branch bar,
+ * so a plant never offers Inventory and a workshop never offers the line.
+ */
+export const MODULE_AREA: Record<string, BranchArea> = { workshop: 'workshop', inventory: 'store', warranty: 'workshop', plant: 'plant' };
+
+/** The area a page belongs to, from its address ("/inventory/parts" → "inventory"); null when the page is not tied to a kind of branch. */
+export function moduleOfPath(pathname: string | null | undefined): string | null {
+  const first = String(pathname ?? '').split('?')[0]!.split('/').filter(Boolean)[0] ?? '';
+  return first in MODULE_AREA ? first : null;
+}
+
+/** Whether a branch of this type has this area at all. Areas not tied to a kind of branch, and a branch whose type is unknown, always do. */
+export function branchHostsModule(moduleKey: string | null | undefined, type: BranchType | string | null | undefined): boolean {
+  const area = moduleKey ? MODULE_AREA[moduleKey] : undefined;
+  if (!area || !type) return true;
+  return branchTypeFits(area, type);
+}
+
+/**
  * The departments an assembly plant starts with (created with the branch,
  * renameable afterwards). Stable slugs: the plant's screens find the
  * department by slug, never by name.

@@ -24,7 +24,7 @@ const read = (p: string) => readFileSync(join(ROOT, p), 'utf8');
 const WANTED: Record<'HQ' | 'ISOLO' | 'AFPRINT', string[]> = {
   HQ: ['administrator', 'executive', 'it-administrator', 'finance-officer', 'customer-care-lead', 'broadcaster', 'scheduling-admin', 'calendar-user'],
   ISOLO: ['branch-administrator', 'workshop-manager', 'workshop-supervisor', 'technician', 'receptionist', 'branch-assistant', 'store-manager', 'store-officer', 'finance-officer', 'warranty-hod', 'warranty-officer', 'chief-security-officer', 'security-officer', 'customer-care', 'department-head'],
-  AFPRINT: ['branch-administrator', 'plant-manager', 'production-supervisor', 'line-operator', 'kit-inspector', 'qc-inspector', 'qa-auditor', 'quality-supervisor', 'pdi-supervisor', 'pdi-inspector', 'store-officer', 'security-officer'],
+  AFPRINT: ['branch-administrator', 'plant-manager', 'production-supervisor', 'line-operator', 'kit-inspector', 'qc-inspector', 'qa-auditor', 'quality-supervisor', 'pdi-supervisor', 'pdi-inspector', 'security-officer'],
 };
 const WORKSHOP_DEPARTMENTS = ['workshop', 'store', 'workshop-passenger', 'workshop-commercial'];
 

@@ -4,7 +4,7 @@ import { AREA_BRANCH_TYPES } from '@/lib/branch-types';
 import { prisma, type Prisma } from '@ejo/database';
 import { requireUser } from './workshop';
 import { navigationFor } from '@/lib/authz/navigation';
-import { firstReach, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere, typedReach } from '@/lib/authz/server';
+import { firstReach, getBranchView, getPrincipal, jobOrServiceReach, myOrganisationId, orgOwned, orgWhere, partsOfMyOrganisation, reachWhere, typedReach } from '@/lib/authz/server';
 import { ticketReachWhere } from '@/lib/support-rules';
 import { decide, STORE_COST_PERMISSIONS, type PermissionKey } from '@/lib/authz/catalogue';
 import { getSchedulingAccess } from './scheduling';
@@ -96,7 +96,7 @@ export async function globalSearch(raw: string): Promise<SearchGroup[]> {
   const any = (keys: PermissionKey[]) => keys.some(allowed);
   const lower = plan.q.toLowerCase();
   const pages: SearchHit[] = [
-    ...navigationFor(principal).filter((x) => x.status === 'LIVE' && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
+    ...navigationFor(principal, await getBranchView().catch(() => ({}))).filter((x) => x.status === 'LIVE' && x.name.toLowerCase().includes(lower)).map((x) => ({ label: x.name, sub: 'Module', href: x.href })),
     // Someone who can open Customers (CRM) goes straight there, not through the old workshop address.
     ...MORE_PAGES.filter((x) => x.label.toLowerCase().includes(lower) && (!x.needs || any(x.needs))).map(({ label, href }) => ({ label, sub: 'Page', href: href === '/workshop/customers' && allowed('crm.view') ? '/crm' : href })),
   ].filter((x, i, all) => all.findIndex((y) => y.href === x.href) === i).slice(0, 6);

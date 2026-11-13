@@ -487,6 +487,54 @@ email are counted and left out — they are reached by phone.
 - **Undo:** an import whose customers have portal accounts is not undone
   under them (as before): the undo names them and stops.
 
+## Which branch has which area
+
+A branch is one kind of place, and some areas exist only on some kinds
+(`apps/portal/lib/branch-types.ts`):
+
+| Area | Exists on |
+|---|---|
+| Workshop (job cards, vehicle services) | a workshop |
+| Warranty (the workshop's warranty desk) | a workshop |
+| Inventory (the store) | a workshop or a warehouse |
+| Assembly plant (kits, the line, QA, PDI, the yard) | an assembly plant |
+| Everything else (customers, security, analytics, administration…) | every branch, or the organisation |
+
+Three rules follow, and they hold together:
+
+1. **Leadership oversees every branch.** An Executive or Organisation
+   Administrator holds each area across the whole organisation, so they are
+   offered Workshop, Inventory, Warranty and the Assembly plant whichever
+   branch their profile is attached to — or none. A director is never
+   "attached to the workshop only".
+2. **Choosing one branch in the branch bar shows that branch's areas.**
+   Looking at the plant alone, the menu and the dashboard offer the line and
+   not Workshop, Inventory or Warranty; looking at the workshop alone, not the
+   Assembly plant. *All branches* brings everything back. On a page of one of
+   these areas the bar offers only the branches that have it: the plant is
+   not a choice under Inventory, and the workshop is not a choice on the line.
+   If the branch in view does not have the area, the page says so.
+3. **People whose access is to their own branch are offered what their branch
+   has.** A Branch Administrator's role covers every area a branch could
+   have; at the plant they are offered the line and not Workshop, Inventory or
+   Warranty, and at the workshop not the Assembly plant. The same goes for
+   dashboard tiles and shortcuts.
+
+These rules decide what is *offered*. What anyone may *do* is still decided
+by their permissions and the organisation and branch fences, unchanged.
+
+Also in this pass:
+- **Headquarters** (every branch side by side) opens only for people who hold
+  business analytics across the organisation — the same rule as its menu
+  entry. A branch manager typing the address is refused.
+- **Imports load only into a branch the importer may use.** A Branch
+  Administrator brings records into their own branch, not another.
+- **The director's dashboard shows the plant**: vehicles on the line, in PDI
+  and in the yard, kits waiting, and the station running furthest over its
+  standard time — each figure opening its page.
+- The demo's kit store keeper at the plant is a plant role (kit inspection),
+  since the plant has no parts store.
+
 ## Access changes made in this pass (before → after, and why)
 
 | Change | Before | After | Why |

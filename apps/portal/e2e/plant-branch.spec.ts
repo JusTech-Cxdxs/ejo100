@@ -43,16 +43,22 @@ test('a branch administrator of the workshop has plant rights but no plant branc
 test('an administrator looking at the workshop through the lens is told the plant is elsewhere, and switches with one tap', async ({ page }) => {
   await as(page, 'administrator');
   await open(page, '/plant');
-  // All branches: the plant shows.
+  // All branches: the plant shows, and on the plant's pages the bar offers only branches with a line — never the workshop.
   await expect(page.getByTestId('plant-reach')).toHaveCount(0);
+  await expect(page.getByTestId('branch-lens').getByRole('button', { name: /^Isolo Branch/ })).toHaveCount(0);
+  // The workshop is chosen on a page every branch has.
+  await open(page, '/dashboard');
   await page.getByTestId('branch-lens').getByRole('button', { name: /^Isolo Branch/ }).click();
   await expect(page.getByTestId('branch-lens').getByRole('status')).toContainText('Isolo Branch only');
+  await open(page, '/plant');
   await expect(page.getByTestId('plant-reach')).toContainText('You are looking at a branch that is not an assembly plant.');
   await page.getByRole('button', { name: `Look at ${PLANT_BRANCH}` }).click();
   await expect(page.getByTestId('plant-reach')).toHaveCount(0);
   await expect(page.getByText(`${PLANT_BRANCH} · SAP plant 1100`)).toBeVisible();
   // Back to the whole organisation for the other tests.
   await page.getByTestId('branch-lens').getByRole('button', { name: /^All branches/ }).click();
+  await expect(page.getByTestId('branch-lens').getByRole('button', { name: /^All branches/ })).toHaveAttribute('aria-pressed', 'true');
+  await open(page, '/dashboard');
   await expect(page.getByTestId('branch-lens').getByRole('status')).toContainText('whole organisation');
 });
 
