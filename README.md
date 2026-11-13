@@ -1,415 +1,222 @@
-# EJO 100 Enterprise Platform
+# EJO 100
 
-EJO 100 (internally "EnterpriseOS") is a multi-organisation ERP. Its first
-organisation is Kewalram Chanrai Group in Nigeria, where it runs the
-automobile workshop end to end: customers and vehicles, Job Cards and Vehicle
-Services, estimates and approvals, parts and stock, payments and refunds,
-warranty and claims, the security gate, scheduling and analytics. Customers
-follow their own jobs on a customer portal.
+EJO 100 is a web system for running the day-to-day operations of an automotive business: the
+workshop, the parts store, warranty, the security gate and the assembly plant, with a portal
+where customers follow their own vehicles. It records who did what, at which branch, and who
+approved it. It is built to sit beside SAP: SAP stays the system of record for finance,
+procurement and the material master, and EJO exchanges files with it.
 
-This file is written for three readers: a reviewer (security, database or
-enterprise), an investor who wants to see what exists, and an engineer joining
-the project. Everything below describes what is built in this repository today;
-planned work is labelled as planned.
+**Who it is for.** The first organisation is Kewalram Chanrai Group's automotive business in
+Nigeria: a workshop branch with its parts store, and an assembly plant. Staff use the portal on desktops
+and tablets. Customers use the customer portal. This file is for the IT team that will review,
+host and maintain it.
 
-- [What runs today](#what-runs-today)
-- [Architecture](#architecture)
-- [Tech stack](#tech-stack)
-- [Security model](#security-model)
-- [Testing](#testing)
-- [Running it locally](#running-it-locally)
-- [Environment variables](#environment-variables)
-- [Deployment](#deployment)
-- [Project structure](#project-structure)
-- [Documentation](#documentation)
-- [Roadmap](#roadmap)
-- [Ownership and licence](#ownership-and-licence)
+Everything described here is in this repository. What is demo data only, and what is not built,
+is said where it applies.
 
----
+## Module map
 
-## What runs today
+Staff portal (`apps/portal`). Pages are in `app/(app)/<folder>`, the rules in `lib/`, the server
+actions in `lib/actions/`.
 
-**Staff portal** (`apps/portal`, signed-in employees only)
+| Module | What it does | Who uses it | Where |
+|---|---|---|---|
+| Workshop | Job cards from check-in to check-out, vehicle services, estimates with two approvals, parts requests, outside purchases, payments and refunds | Front desk, technicians, supervisors, workshop manager, finance | `app/(app)/workshop`, `lib/actions/workshop.ts` |
+| Customers | Customer records, their vehicles, jobs, payments and warranties on one page; portal access | Front desk, customer care | `app/(app)/crm` |
+| Inventory | Parts, stock by batch with FIFO cost, goods receipts, suppliers, pricing, reorder levels | Store manager, store officers | `app/(app)/inventory` |
+| Warranty | Providers, policies, vehicle and part warranties, claims with two approvals | Warranty officers and head | `app/(app)/warranty` |
+| Assembly plant | Kit shipments and kit QC, the line station by station, defects and rework, the quality gate, QA audits, pre-delivery inspection, vehicle labels | Plant manager, supervisors, inspectors, operators | `app/(app)/plant`, `lib/plant`, `lib/actions/plant*.ts` |
+| Security | Visitors, contractors, deliveries, vehicles in and out, exit passes, road-test permits, incidents | Security desk; every employee for their own pass | `app/(app)/security` |
+| Data Exchange | Imports from SAP extracts and Excel, exports of any list, the cut-over checklist, the daily postings files for SAP | IT, administrators, department heads who approve | `app/(app)/data-exchange`, `lib/data-exchange`, `lib/sap` |
+| Headquarters, Business Analytics | Figures per branch and period; each figure links to the records behind it | Executives, managers | `app/(app)/headquarters`, `app/(app)/analytics` |
+| Scheduling | Calendars, appointments, meeting rooms | Everyone | `app/(app)/schedule` |
+| Support centre | Customer and staff requests from email, chat and calls, in teams with targets | Customer care, support teams | `app/(app)/crm/support`, `lib/support` |
+| Enyo | The built-in assistant: answers from the records the person may see and drafts for a person to send. It never approves or submits anything. Needs a language-model server to be configured | Everyone | `app/(app)/enyo`, `packages/enyo`, `ml/` |
+| Integrity watch | Daily checks for risky patterns (same person asking and approving, refunds above payments) and an anonymous reporting channel | Reviewers | `app/(app)/integrity` |
+| Administration | Organisation, branches, departments, users, roles, permissions, settings, audit logs, recycle bin | Administrators | `app/(app)/users`, `roles`, `branches`, `structure`, `audit-logs`, `recycle-bin`, `settings` |
+| Print views | Estimates, receipts, gate passes, vehicle labels, PDI certificates | Whoever may print each | `app/print` |
 
-| Module | What it does |
-|---|---|
-| Dashboard | Per-role landing page: work waiting for the person, live counts, quick links, the roadmap card. |
-| Workshop: Job Cards | Repair jobs from check-in to check-out: supervisor and technician assignment, inspection, estimates with supervisor and manager approval, parts, payments, quality check, close and cancel requests, custody reminders. |
-| Workshop: Vehicle Service | Scheduled servicing with the same controls as Job Cards (estimate stages, deposit rule, cancellation with refund, escalation to a Job Card). |
-| Workshop: service tracker | Which vehicles are due or overdue for service, staged reminders in working days, sent by a person (never automatically). |
-| Workshop: parts requests, outside purchases, refunds | Parts request slips (head of department, then Store), outside purchases (Finance review, Manager approval, cash disbursement), the refund register. |
-| Customers (CRM) | Customer hub with search and filters, the customer 360 page (vehicles, jobs, payments, warranties, contacts, notes, activity), portal access and set-password links. |
-| Inventory | Parts, stock and batches with FIFO cost back to the goods receipt, goods receipts, estimate matching, pricing and pricing alerts, Inventory Analytics. |
-| Warranty | Providers, policies, vehicle and part warranties (certificates), claims with HOD and Manager approval, expiry reminders, Warranty Analytics. |
-| Security | Visitors, contractors, deliveries, vehicles in and out, exit passes, road-test permits, incidents, the gate register, 80 mm slip prints. |
-| Scheduling | Personal calendars, appointments, meeting rooms, aides who book for others, availability. |
-| Business Analytics | Sales, cost, gross profit, collections, receivables and work in progress per period and branch; every figure links to the records behind it. |
-| Support centre | Every support request in one place: emails to support@ / warranty@ / technical@ addresses, Enyo chat hand-overs and logged calls; teams with targets in business hours, fair assignment, acknowledgements, Enyo's triage, drafts and (where allowed) answers, reminders, satisfaction, and the numbers. See [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md). |
-| Support context & Get help | Enyo recognises who writes in (customer, colleague or both), checks their portal access, sign-ins, Job Cards, services and warranties (or a colleague's role, errors and guides), and answers proven senders with a link to the exact page; colleagues ask for help from any page; the support team checks every Enyo reply and the gaps it could not close. See [docs/ENYO_CONTEXT_AND_INTEGRITY.md](docs/ENYO_CONTEXT_AND_INTEGRITY.md). |
-| Integrity watch & Speak up | Daily checks for unusual or risky activity — same person asking and approving, refunds above what was paid, split purchases, repeat warranty claims, vehicles leaving with work open, out-of-hours money, password guessing, activity spikes (robust z-scores), Benford — and an anonymous Speak up channel; reviewers never see alerts about themselves. |
-| How work flows | Every approval step's volume, send-back rate and reasons, waits, and who decides by role, with where Enyo could help; a calibrated LightGBM decision model learns how the organisation decides. |
-| Enyo (AI) | The assistant in every page: answers from the records each person may see, the guide and the web; drafts (never submits) Job Cards, reminders and mail; voice notes (pause, edit as text, send) and read-aloud; the brief on the dashboard; tailored to each person's role and work; learns from approved answers, support resolutions and chats; small model for small talk, large for records. See [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md). |
-| Mail | Each person's own work mailbox (IMAP/SMTP, encrypted password): inbox with layout and pictures on request, compose in the organisation's letterhead with a live preview, Enyo's briefs and summaries read aloud. |
-| Reminders | Personal reminders into the bell and by email, with colleagues allowed to set them for you. |
-| Notifications | Action items, activity feed, email, staff and customer broadcasts with delivery figures. |
-| Administration | Organisation, structure (business units, branches, departments, teams), users, roles, permissions, settings, audit logs. |
-| Profile | Personal details, "what I can do" (generated from the permission catalogue), theme, password. |
-| Print views | Estimates, receipts, parts slips, refunds, warranty certificates, gate passes (`app/print/**`). |
-| Roadmap | One page per planned module (`/roadmap`), described in [Roadmap](#roadmap). |
+Website (`apps/website`): the organisation's public site and, under `/customer-portal`, the
+customer portal (vehicles, services, estimates, payments, warranties, support).
 
-**Public website and customer portal** (`apps/website`)
+API (`apps/api`): a health check and read-only routes for the platform team. No business
+workflow uses it. Most of its module folders are empty placeholders.
 
-| Area | What it does |
-|---|---|
-| Website | The organisation's public site (about, businesses, products, services, careers, contact, privacy, terms). Carries the organisation's brand, not EJO's. |
-| Customer portal (`/customer-portal`) | Sign-in, forgot and reset password, overview of what needs attention, my vehicles, my services (status timeline, estimate, payments, balance), payments, warranties, notifications, profile and addresses, help and support. |
-| Support (`/support`, `/support/request/<token>`) | How to reach each support team, opening hours and branch phones; the customer's own page for a request (“Yes, solved” / “I still need a person” / “How did we do?”). |
-| Enyo chat | On every page: answers about the organisation, and — signed in — the customer's own vehicles, jobs, estimates, payments and warranties; hands over to a person with a SUP number. |
+Modules that are planned and not built (HR, payroll, finance and accounting, procurement,
+vehicle sales and others) are listed in the portal under `/roadmap`, from
+`apps/portal/lib/roadmap.ts`.
 
-**API** (`apps/api`, NestJS): a health check, and read routes for audit logs,
-organisations, structure, users, roles and permissions that only the platform
-team can call (`PlatformTeamGuard`). The other module folders are placeholders
-that return nothing. Business logic lives in the portal's server actions, not in
-the API.
-
----
-
-## Architecture
-
-```mermaid
-flowchart LR
-  subgraph Browsers
-    S[Staff browser]
-    C[Customer browser]
-  end
-
-  subgraph Vercel
-    P["Staff portal<br/>Next.js 15, server actions<br/>Better Auth (staff)"]
-    W["Website + customer portal<br/>Next.js 15<br/>Better Auth (customers)"]
-    VC["Vercel cron<br/>daily digests"]
-  end
-
-  subgraph Render
-    A["API<br/>NestJS 11"]
-  end
-
-  subgraph Supabase
-    DB[("PostgreSQL 16<br/>RLS on, no public grants")]
-    RT["Realtime<br/>data-free change pings"]
-    PC["pg_cron + Vault<br/>every 10 minutes"]
-  end
-
-  SMTP["SMTP provider"]
-
-  S -->|HTTPS, session cookie| P
-  C -->|HTTPS, customer-auth cookie| W
-  P -->|Prisma, owner role| DB
-  W -->|Prisma, owner role| DB
-  A -->|Prisma| DB
-  P -->|Nodemailer| SMTP
-  W -->|Nodemailer| SMTP
-  P -->|"announce 'something changed'"| RT
-  RT -->|ping only| S
-  VC -->|"GET /api/cron/* + CRON_SECRET"| P
-  PC -->|"GET /api/cron/* + CRON_SECRET"| P
-```
-
-How a request flows through the staff portal:
+## Repository layout
 
 ```
-browser ─► middleware (sign-in cookie, submission flood limit, security headers)
-        ─► page or server action
-             requireUser()            session from the database; switched-off accounts refused
-             authorize(permission, record)
-                                      tenant fence → scope (ALL / BRANCH / DEPARTMENT / ASSIGNED / OWN)
-             workflow check           compare-and-set on the expected status; row locks for money and stock
-             Prisma write             data journal records before/after (secrets redacted)
-             writeAuditLog(...)       plain-language business event
-        ─► after the response         emails, realtime ping (failures never undo the action)
+apps/portal      staff portal (Next.js): pages, server actions, tests, browser tests
+apps/website     public website and customer portal (Next.js)
+apps/api         NestJS API (platform team only)
+packages/database  Prisma schema, shared client, audit journal, seed
+packages/enyo    the assistant's shared core
+packages/ui, types, utils, config   shared components, types, helpers, design tokens
+ml/              Python package that trains Enyo's prediction models
+scripts/         deploy scripts and reviewed SQL (predeploy/, postdeploy/)
+ops/load-test/   k6 load-test scripts
+docs/            documentation (index: docs/README.md)
+.github/workflows/  ci.yml, e2e.yml, security.yml, ml-train.yml
 ```
 
-Key points:
+Detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-- **One database, many organisations.** Every table is declared in
-  `apps/portal/lib/governance/data-inventory.ts` with its tenancy (organisation,
-  branch, department, user or via parent), sensitivity, lifecycle, retention and
-  whether AI may read it. A CI test fails if a table is missing or its owner
-  column does not exist.
-- **Server actions call Prisma directly.** The portal does not go through the
-  API for business work; the API is kept thin.
-- **Two separate identity systems.** Staff (`User`, `Session`, `Account`,
-  `Verification`) and customers (`Customer`, `CustomerSession`,
-  `CustomerAccount`, `CustomerVerification`) are different tables with different
-  cookies, so a customer token can never be used on the staff portal.
-- **Realtime carries no data.** The portal sends "something changed" over
-  Supabase Realtime; each browser then re-reads through the same permission
-  checks. Without Supabase settings the browser checks `GET /api/live/pulse`
-  every 10 seconds while the tab is in use.
-- **Scheduled work** (`apps/portal/app/api/cron/*`) is protected by
-  `CRON_SECRET` sent as a header and compared in constant time. Vercel runs the
-  daily jobs (`apps/portal/vercel.json`); Supabase `pg_cron` calls the
-  10-minute job (`scripts/v25-supabase-scheduler.sql`). Every run is recorded and
-  shown on Settings.
+## Technology
 
-Full detail: [docs/ARCHITECTURE_BASELINE.md](docs/ARCHITECTURE_BASELINE.md).
-
----
-
-## Tech stack
-
-Versions are the ones resolved in `package-lock.json` on 12 October 2026. The
-dependency workstream may move them; refresh this table from the lockfile when
-it does.
+Versions as declared in the `package.json` files and `ml/requirements.txt`.
 
 | Layer | Technology | Version |
 |---|---|---|
-| Runtime | Node.js | 24.x (`.node-version`: 24) |
+| Runtime | Node.js | 24.x |
 | Language | TypeScript (strict) | 5.9.3 |
-| Staff portal, website | Next.js (App Router, server actions) | 15.5.27 |
-| UI | React | 19.3.0 |
-| Styling | Tailwind CSS | 4.3.3 |
-| Charts / motion / PDF | Recharts / Framer Motion / @react-pdf/renderer | 3.10.1 / 11.18.2 / 4.9.0 |
-| Authentication | Better Auth (database sessions, HTTP-only cookies) | 1.6.33 |
-| ORM | Prisma Client and CLI | 5.22.0 |
-| Database | PostgreSQL on Supabase (CI: `postgres:16`) | 16 |
-| API | NestJS (Express 5) | 11.2.7 |
-| Email | Nodemailer over SMTP | 10.1.0 |
-| Realtime | Supabase Realtime (broadcast) | hosted |
-| E2E tests | Playwright | 1.64.0 |
-| Security tools in CI | Gitleaks, Semgrep, OWASP ZAP baseline, npm audit | pinned in `.github/workflows/security.yml` |
-| Load tests | k6 | pinned in `security.yml` |
+| Portal, website | Next.js (App Router, server actions) | 15.5.28 |
+| UI | React, Tailwind CSS | 19, 4 |
+| Sign-in | Better Auth (sessions in the database, HTTP-only cookies) | 1.6 |
+| Database access | Prisma | 5.22.0 |
+| Database | PostgreSQL | 16 |
+| API | NestJS | 11 |
+| Email | Nodemailer over SMTP | 10 |
+| Browser tests | Playwright | 1.64 |
+| Model training | Python with scikit-learn 1.7.2 and LightGBM 4.6.0 | 3.11 or later |
 
-Hosting: Vercel (portal and website), Render (API), Supabase (database,
-realtime, `pg_cron`).
-
----
-
-## Security model
-
-| Control | Where | What it does |
-|---|---|---|
-| Permission catalogue | `apps/portal/lib/authz/catalogue.ts` | The only list of things that can be done (49 permissions at the time of writing), default grants for 17 organisation roles, five scopes (`ALL`, `BRANCH`, `DEPARTMENT`, `ASSIGNED`, `OWN`). Pure `decide()` function. The Permissions page is generated from the same file. |
-| Enforcement | `apps/portal/lib/authz/server.ts` | `guardPage` for pages, `authorize` / `authorizeOn…` for actions, `allows` for buttons (same rule), `reachWhere` for lists, `seeOrNull` for records. Refusals are audited as `access.denied`. |
-| Tenant fence | `decide()`, `reachWhere`, `orgWhere`, `orgOwned` | A record outside the person's organisation is refused before any scope is considered, including `ALL`. Out of reach and missing look the same ("not found"). |
-| Segregation of duties | catalogue + workflow actions | Front desk opens jobs, supervisors approve estimates, managers give final approval and close, finance records money. Nobody approves their own close or cancel request; a manager cannot give final approval on a job they approved as supervisor. |
-| Accounts | `lib/auth.ts`, `apps/website/lib/auth-customer.ts` | Public sign-up closed for staff and customers. Staff are added by an administrator and set their own password from an emailed link (no password is ever emailed). Switched-off accounts are refused at sign-in and on every request. |
-| Database exposure | `scripts/postdeploy/0001-rls-default-deny.sql` | Row-level security on for every table with no policies, and no table, sequence or default privileges for Supabase's `anon` and `authenticated` roles. The app connects as the owner through Prisma. Re-applied after every production schema push. |
-| Audit | `packages/database/src/audit-journal.ts`, `writeAuditLog` in `lib/workshop-core.ts` | Every data change journalled with before/after values (secrets redacted, rolled-back transactions dropped); every business step written as a named event with the person and organisation. Audit rows are never edited or deleted. |
-| Integrity | `lib/integrity.ts` | Compare-and-set on workflow status, row locks for payments, refunds and stock, idempotency keys on payments, refunds and goods receipts. |
-| Rate limits | `middleware.ts`, Better Auth config, API middleware | Submissions: 120 a minute per person, 1,500 per shared address. Sign-in: 20 a minute; password-reset requests: 5 per 5 minutes. Limits are per instance (a global limit needs an edge WAF). |
-| Headers | `next.config.ts` (both apps) | HSTS, `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `Permissions-Policy`, COOP, CORP, and a CSP with `default-src 'self'`. Signed-in portal pages and the customer portal use a per-request nonce with `'strict-dynamic'` (no `'unsafe-inline'` scripts); the static public pages keep a fixed policy. |
-| Secrets | `.env` only, never the repository | Gitleaks scans the full history in CI. Only public values (`NEXT_PUBLIC_*`) reach the browser bundle; a CI scan checks the built bundles for secret values. |
-
-Known limitations and the plan for each are listed in
-[docs/V1_CLOSURE_REPORT.md](docs/V1_CLOSURE_REPORT.md) and
-[docs/CUSTOMER_PORTAL_CRM_RELEASE.md](docs/CUSTOMER_PORTAL_CRM_RELEASE.md).
-
----
-
-## Testing
-
-| Suite | Command / location | Covers |
-|---|---|---|
-| Unit and source tests | `cd apps/portal && npm test` (`apps/portal/tests/`) | Catalogue decisions (allowed and denied), guard coverage (every exported server action authorises), tenant coverage (reads by id are fenced), data inventory completeness, integrity coverage, analytics reconciled against hand-worked answers. |
-| Database tests | `apps/portal/tests/concurrency.db.test.ts`, `packages/database/tests/` | Real parallel transactions on a throwaway PostgreSQL (lock SQL, deadlock control); audit journal rules. |
-| End-to-end | `.github/workflows/e2e.yml`, `apps/portal/e2e/` | Playwright against production builds of both apps, Postgres 16 and Mailpit. 135 tests on the last full run, one account per role, real emails opened and links followed, cross-organisation attempts. |
-| Security | `.github/workflows/security.yml` | Gitleaks (all history), Semgrep (registry packs and project rules), npm audit, OWASP ZAP baseline, access-control sweeps (role × page, IDOR, signed-out calls to every server action), RLS probes as `anon` / `authenticated`, concurrency bursts. |
-| Load | `ops/load-test/` (k6) | Smoke, baseline, ramp, spike, soak and recovery stages, plus a two-instance failover. Figures in the release reports. |
-
-CI (`ci.yml`) runs install, database build, lint, typecheck, unit tests and a
-full production build on every push and pull request. The E2E and security
-workflows run on pull requests to `main`. None of them touch production.
-
----
+There is no proprietary runtime and no build step that needs a private service. Exact resolved
+versions are in `package-lock.json`.
 
 ## Running it locally
 
-Requirements: Node.js 24, npm, and a PostgreSQL 16 database (local or a
-Supabase project you own for development).
+Needs Node.js 24, npm and a PostgreSQL 16 database of your own.
 
 ```bash
-npm install                       # also runs prisma generate
+npm install                       # also generates the Prisma client
 cp .env.example .env              # fill in your own values; never commit .env
 
-# Create the tables in YOUR development database (never point this at production)
+# Create the tables in YOUR development database (never production)
 npx prisma db push --schema=packages/database/prisma/schema.prisma
 
-# First organisation, roles and the platform administrator (needs MASTER_ADMIN_* set)
+# First organisation, roles and the platform administrator
 npm run seed --workspace=packages/database
 
 npm run dev:portal                # http://localhost:3001
-npm run dev:website               # http://localhost:3000 (customer portal at /customer-portal)
+npm run dev:website               # http://localhost:3000  (customer portal at /customer-portal)
 npm run dev:api                   # http://localhost:4000/api/v1
 ```
 
-Emails: point `SMTP_*` at a local catcher such as Mailpit (`localhost:1025`) so
-nothing reaches a real inbox. Realtime is optional; without the Supabase
-settings the portal falls back to the 10-second check.
+Point the `SMTP_*` settings at a local mail catcher such as Mailpit so no email reaches a real
+inbox. `npm run demo:reset` loads the invented demo records (people, workshop, plant) into a
+development database.
 
 Checks before a pull request:
 
 ```bash
-cd apps/portal && npx tsc --noEmit -p . && npm test
-cd apps/website && npx tsc --noEmit -p .
+npm run lint && npm run typecheck
+npm run test --workspace=apps/portal
 ```
 
----
+**Environment variables** (names only; values live in `.env` locally and in the hosting
+dashboards):
 
-## Environment variables
+- Required: `DATABASE_URL`, `DIRECT_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`,
+  `NEXT_PUBLIC_PORTAL_URL`, `NEXT_PUBLIC_WEBSITE_URL`, `PLATFORM_OWNER_EMAIL`.
+- Email: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM`.
+- Scheduled jobs: `CRON_SECRET`.
+- Seed only: `MASTER_ADMIN_NAME`, `MASTER_ADMIN_EMAIL`, `MASTER_ADMIN_PASSWORD`.
+- Optional: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (realtime pings),
+  `MAILBOX_ENCRYPTION_KEY` (staff mailboxes and support addresses), `ENYO_LLM_BASE_URL`,
+  `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL` (Enyo), `RECYCLE_BIN_DAYS`, `DATABASE_SPACE_LIMIT_MB`.
 
-Names only. Values live in `.env` locally and in the Vercel / Render dashboards
-in production. `.env.example` has placeholders. The dependency workstream is
-centralising configuration (`apps/portal/lib/site-config.ts`, website
-`lib/branding.ts`); refresh this table if names change.
-
-| Name | Used by | Required | Purpose |
-|---|---|---|---|
-| `DATABASE_URL` | portal, website, API, Prisma | Required | Pooled PostgreSQL connection used at runtime. |
-| `DIRECT_URL` | Prisma, deploy scripts | Required | Direct (unpooled) connection for `prisma db push` and deploy SQL. |
-| `BETTER_AUTH_SECRET` | portal, website | Required | Signs session cookies. Rotating it signs everyone out. |
-| `BETTER_AUTH_URL` | portal | Required | The portal's own public address, for auth callbacks. |
-| `NEXT_PUBLIC_PORTAL_URL` | portal, website, API | Required | Public address of the staff portal (links in emails, API CORS allow-list). |
-| `NEXT_PUBLIC_WEBSITE_URL` | portal, website | Required | Public address of the website; customer set-password and reset links point here. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM` | portal, website | Required for email | Outgoing mail. `SMTP_PASS` is accepted as a fallback for `SMTP_PASSWORD`. Port 465 uses TLS directly. |
-| `CRON_SECRET` | portal | Required for scheduled jobs | Bearer token the scheduled routes require. Also stored in Supabase Vault for `pg_cron`. |
-| `PLATFORM_OWNER_EMAIL` | portal | Required | The platform owner account, which only the owner can change. |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | portal | Optional | Realtime change pings. Public by design; safe only because RLS denies these roles everything. Never use the service-role key here. |
-| `NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG` | website | Optional | Which organisation's branding the website shows. |
-| `AUTH_SIGNIN_PER_MINUTE`, `AUTH_RESET_REQUESTS_PER_5_MIN` | portal | Optional | Override the staff sign-in and reset-request limits (defaults 20 and 5). |
-| `CUSTOMER_SIGNIN_PER_MINUTE`, `CUSTOMER_RESET_REQUESTS_PER_5_MIN` | website | Optional | Same limits for the customer portal. |
-| `MASTER_ADMIN_NAME`, `MASTER_ADMIN_EMAIL`, `MASTER_ADMIN_PASSWORD` | seed only | Required to seed | The platform administrator created by `prisma/seed.ts`. Not read by the running apps. |
-| `MAILBOX_ENCRYPTION_KEY` | portal | Required for Mail and support addresses | 32 bytes, base64. Encrypts mailbox passwords (AES-256-GCM). Losing it means reconnecting every mailbox. |
-| `ENYO_LLM_BASE_URL`, `ENYO_LLM_API_KEY`, `ENYO_LLM_MODEL`, `ENYO_LLM_FAST_MODEL` | portal, website | Required for Enyo | Any OpenAI-compatible server (e.g. Groq: `openai/gpt-oss-120b` and `openai/gpt-oss-20b`). |
-| `ENYO_LLM_PROVIDER_LABEL`, `ENYO_LLM_TIMEOUT_MS`, `ENYO_LLM_ROUTING`, `ENYO_WEB_LOOKUP`, `ENYO_REQUESTS_PER_MINUTE`, `ENYO_IP_HASH_KEY` | portal, website | Optional | Name shown in Settings, time limit, `off` to send everything to the large model, `off` to stop web look-ups, per-person rate, hashing of visitor addresses. |
-| `SERPER_API_KEY` / `BRAVE_SEARCH_API_KEY` / `TAVILY_API_KEY` | portal, website | Optional | A general web search engine for Enyo alongside Wikipedia (first one set is used). |
-| `NEXT_PUBLIC_DEALER_BRANDS` | portal, website | Optional | Dealer brands in the email footer, e.g. `FOTON:#111111,ISUZU:#E4002B,SOUEAST:#F39800`. |
-| `NEXT_PUBLIC_APP_SHORT_NAME` | portal, website | Optional | Name of the installed app (default: the organisation's initials, e.g. KCG). |
-| `WEBSITE_ORGANISATION_SLUG` | website | Optional | Which organisation the website and its chat belong to. |
-| `MAILBOX_ALLOW_INSECURE` | portal | Test only | Allows unencrypted mail servers in tests. Never in production. |
-| `PORT` | API | Optional | API port (default 4000). |
-| `VERCEL_ENV`, `RENDER`, `IS_PULL_REQUEST` | deploy scripts | Set by the host | Decide whether a build may change the database (production only). |
-| `DEMO_STAFF_PASSWORD`, `DEMO_CUSTOMER_PASSWORD`, `RESET_DEMO_PASSWORDS`, `DEMO_ORG_SLUG` | deploy scripts | Optional | The demo organisation's sign-ins (`docs/KEWALRAM_DEMO.md`): one password for every demo person, made by the production build only while it is set; never printed. |
-
-`.env.example` also lists `REDIS_URL`, `SUPABASE_URL`,
-`SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_STORAGE_BUCKET`, the `R2_*` storage
-names and `NEXT_PUBLIC_API_URL`. No code reads them today; they are reserved for
-file storage and caching when those are built. Its `NEXT_PUBLIC_ACTIVE_COMPANY_SLUG`
-is an old name: the website reads `NEXT_PUBLIC_ACTIVE_ORGANISATION_SLUG`.
-
----
+The full list, per application, with what each one does, is in
+[docs/OPERATIONS_CHECKLIST.md](docs/OPERATIONS_CHECKLIST.md) §1.
 
 ## Deployment
 
-```
-pull request ─► CI (build, tests, E2E, security) ─► Vercel preview (never touches the database)
-             ─► owner merges to main
-             ─► production build:
-                  1. scripts/predeploy/*.sql    additive, re-runnable SQL (new indexes, backfills)
-                  2. prisma db push             without --accept-data-loss: anything destructive stops the deploy
-                  3. scripts/postdeploy/*.sql   RLS default-deny on every table, data clean-ups
-```
-
-- The schema push runs from `scripts/db-push-if-render.js` (Render API build)
-  or `scripts/db-push-if-vercel.js` (Vercel production build), whichever the
-  hosting dashboard is configured to call. Both skip previews and pull requests.
-- **No data-loss rule:** `--accept-data-loss` is never used. A change that would
-  drop a column or table is made deliberately with a reviewed SQL script and a
-  backup first. SQL scripts in `scripts/` are additive and safe to run twice.
-- Rollback: Vercel and Render keep previous deployments (instant rollback).
-  Database changes are additive, so the previous code still runs against the
-  newer schema.
-- Supabase daily backups; recovery targets and the restore drill are in
-  [docs/RUNBOOKS.md](docs/RUNBOOKS.md).
-
----
-
-## Project structure
+Today the portal and the website run on Vercel, the API on Render and the database on Supabase
+(PostgreSQL), on free plans while the system is demonstrated and piloted
+([docs/FREE_PLAN.md](docs/FREE_PLAN.md)). The host-specific parts are small (the deploy scripts,
+the scheduled-job configuration, the optional realtime ping), but it has not been run elsewhere.
 
 ```
-ejo100/
-├── apps/
-│   ├── portal/                 staff ERP (Next.js)
-│   │   ├── app/(app)/          signed-in pages, one folder per module
-│   │   ├── app/(auth)/         sign-in, forgot / reset password
-│   │   ├── app/print/          printable documents
-│   │   ├── app/api/            auth, health, live pulse, cron routes
-│   │   ├── lib/actions/        server actions ('use server'), one file per area
-│   │   ├── lib/authz/          permission catalogue and enforcement
-│   │   ├── lib/governance/     data inventory
-│   │   ├── lib/email-templates/
-│   │   ├── components/
-│   │   ├── tests/              unit and source-coverage tests (node --test)
-│   │   └── e2e/                Playwright specs, seed, security sweeps
-│   ├── website/                public website + customer portal (Next.js)
-│   └── api/                    NestJS API (health, audit logs, platform routes)
-├── packages/
-│   ├── database/               Prisma schema, client, audit journal, seed
-│   ├── ui/                     shared React components
-│   ├── types/                  shared TypeScript types
-│   ├── utils/                  framework-free helpers
-│   └── config/                 shared design tokens
-├── scripts/                    deploy scripts and reviewed SQL (predeploy/, postdeploy/, vNN-*.sql)
-├── ops/load-test/              k6 scripts and the failover proxy
-├── docs/                       architecture, readiness, runbooks, test reports
-└── .github/workflows/          ci.yml, e2e.yml, security.yml
+pull request → CI (build, tests, browser tests, security) → preview (never touches the database)
+            → merge to main → production build:
+                 1. scripts/predeploy/*.sql   additive SQL, safe to run twice
+                 2. prisma db push            without --accept-data-loss: a destructive change stops the deploy
+                 3. scripts/postdeploy/*.sql  row-level security on every table, role and data fixes
 ```
 
----
+Rollback of code is the host's previous deployment. Because database changes are additive, the
+previous code runs against the newer schema. Backups, the restore drill and recovery targets:
+[docs/RUNBOOKS.md](docs/RUNBOOKS.md). A restore drill with measured recovery times has not been
+done yet.
 
-## Documentation
+## How data is protected
+
+- **Roles and permissions.** One file, `apps/portal/lib/authz/catalogue.ts`, lists everything
+  that can be done and which role may do it. Every page and every server action checks it on the
+  server. A test fails the build if an action has no check.
+- **Organisation and branch fences.** A record outside the person's organisation is refused
+  before anything else is considered. A person scoped to a branch sees that branch only. The
+  plant and the workshop are separate branches.
+- **Second-person approval.** Nobody approves their own request, import, inspection or rework.
+- **Audit trail.** Every data change is recorded with before and after values, and every
+  business step as a named event with the person and time. Audit rows cannot be edited or
+  deleted in the database. They are not yet copied to storage outside the database.
+- **Recoverable deletes.** Records are cancelled or closed through their workflow, not deleted.
+  A record made by mistake, or added by an import that is undone, goes to a recycle bin and can
+  be restored for 30 days by default. Payments, refunds and goods receipts are never changed.
+- **Additive database changes.** The deploy cannot drop a column or a table. Anything
+  destructive is a reviewed SQL script with a backup.
+- **Database exposure.** Row-level security is on for every table and the host's public database
+  roles have no access.
+
+Not in place: multi-factor authentication, single sign-on and account lockout. The full list of
+gaps is in [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) §9.
+
+## How it is tested
+
+| Suite | Where | What it covers |
+|---|---|---|
+| Unit and source tests | `apps/portal/tests/` (78 files, about 600 tests), run with `npm run test --workspace=apps/portal` | Permission decisions allowed and denied, that every action authorises, that every read is fenced, workflow rules, import checks, analytics against hand-worked answers |
+| Other unit tests | `packages/database/tests`, `packages/enyo/tests`, `apps/website/tests`, `ml/tests` | The audit journal, the assistant's guardrails, the website, the training code |
+| Browser tests | `apps/portal/e2e/` (71 Playwright spec files) | Each workflow in a real browser against production builds, a real PostgreSQL 16 and a mail catcher, signed in as the role that does each step; attempts from another organisation |
+| Security | `.github/workflows/security.yml` | Secret scan of all history, static analysis, dependency audit, OWASP ZAP baseline, access-control sweeps, database-role probes, concurrency bursts |
+| Load | `ops/load-test/` | k6 stages against a CI instance |
+
+CI (`ci.yml`) runs lint, type-check, the unit tests and a production build on every push and
+pull request to `main`. The browser and security workflows run on every pull request to `main`.
+None of them touch production. Pull requests that change only documentation skip them.
+
+## Questions raised by the client's IT team
+
+| Question | Short answer | Detail |
+|---|---|---|
+| Continuity if the developer is unavailable | The code, schema, tests and documents are in this one repository, on a standard open-source stack. Data is in PostgreSQL and every list exports to Excel or CSV. A second maintainer, source-code escrow and a support agreement are commercial matters and are not answered by the code. | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| SAP integration | By file, both ways. EJO reads SAP extracts with SAP's own field names and writes daily postings files that the SAP team loads with their tools; SAP's return file reconciles each line. There is no live connection (RFC, BAPI, IDoc, OData). It has been run with demo files, not against the client's SAP. | [docs/SAP_INTEGRATION.md](docs/SAP_INTEGRATION.md) |
+| Migrating existing data | Built: staff, customers, vehicles, suppliers, parts, opening stock, invoice and job history, open jobs and services, warranties and claims, and the plant's records. Each file is checked, approved by a second person, loaded, and can be undone. Tested with demo files only. | [docs/DATA_MIGRATION.md](docs/DATA_MIGRATION.md) |
+| Bulk Excel import, about 800,000 parts | Measured on 31 October 2026: 800,000 materials from upload to searchable catalogue in about 9 minutes on a 2-processor machine. It needs about 1.3 GB of database space, so not the free database plan. | [docs/DATA_MIGRATION.md](docs/DATA_MIGRATION.md) §9 |
+| Penetration testing and security | Automated security tests run on every pull request (see above). No penetration test by an independent third party has been done; it is planned and needs a staging environment. | [docs/TESTING_PROGRAMME.md](docs/TESTING_PROGRAMME.md), [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) |
+| Liability | Not a matter for the code. It belongs in the contract, with the support terms. The repository's contribution is the audit trail, the approval rules and the list of known gaps. | [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) §9 |
+| Use on the assembly line, production and QA | Built: kit QC, the line with stations and measured checks, defects and rework, the quality gate, QA audits, PDI, labels, and two postings files for SAP. Run with demo data only. Not built: yard and dispatch, production planning, parts consumption, links to torque tools or test equipment. | [docs/ASSEMBLY_LINE_GUIDE.md](docs/ASSEMBLY_LINE_GUIDE.md) |
+
+## Where to read next
 
 | Document | For |
 |---|---|
-| [docs/ARCHITECTURE_BASELINE.md](docs/ARCHITECTURE_BASELINE.md) | The binding rules and the architecture as built: identity, tenancy, roles, permissions, audit, integrity, deployment. |
-| [docs/AI_READINESS.md](docs/AI_READINESS.md) | What the AI phase may read, how it stays inside the tenant fence, and the service boundary. |
-| [docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md) | What is verified, what is deliberately deferred, remaining risks. |
-| [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | GitHub hardening, Supabase checks, staging, restore drill, load test, failure drills. |
-| [docs/V1_CLOSURE_REPORT.md](docs/V1_CLOSURE_REPORT.md) | Version 1 findings register, load baseline, metric definitions. |
-| [docs/CUSTOMER_PORTAL_CRM_RELEASE.md](docs/CUSTOMER_PORTAL_CRM_RELEASE.md) | Customer portal and CRM release, test programme summary. |
-| [docs/TESTING_PROGRAMME.md](docs/TESTING_PROGRAMME.md) | Security, concurrency and load findings in detail. |
-| [docs/E2E_COVERAGE.md](docs/E2E_COVERAGE.md) | Playwright coverage matrix and defects found. |
-| [docs/MASTER_PLAN.md](docs/MASTER_PLAN.md) | Phase history and the list of carried-over requests. |
-| [docs/SUPPORT_CENTRE.md](docs/SUPPORT_CENTRE.md) | The Support centre: flow, teams and addresses, safety rules, numbers, learning, running it. |
-| [docs/ENYO_CONTEXT_AND_INTEGRITY.md](docs/ENYO_CONTEXT_AND_INTEGRITY.md) | v37: who is writing and answering from their records with links, Get help, checking Enyo's replies, the integrity watch and Speak up, how work flows and the decision model, writing in your own voice. |
-| [docs/ENYO_RELEASE.md](docs/ENYO_RELEASE.md), [docs/ML.md](docs/ML.md), [docs/ENYO_BRIEF_AND_LEARNING.md](docs/ENYO_BRIEF_AND_LEARNING.md) | Enyo (AI), its trained models, the brief and how it learns. |
-| [docs/architecture.md](docs/architecture.md), [docs/folder-structure.md](docs/folder-structure.md), [docs/coding-standards.md](docs/coding-standards.md), [docs/module-creation-guide.md](docs/module-creation-guide.md) | Conventions for engineers adding to the codebase. |
-
----
-
-## Roadmap
-
-Planned modules are described in the portal at `/roadmap`, one page each, from
-`apps/portal/lib/roadmap.ts`. Each page lists what the module will do, how it
-will work (data model, permissions, delivery order) and which live records it
-builds on.
-
-**Next: the AI phase**
-- **AI support centre**: live — customers (v36), context-aware answers with
-  deep links, the staff help desk and checking Enyo's replies (v37).
-- **Intelligence**: parts demand, job time, unusual prices, complaint themes,
-  the integrity watch and the decision model are live; next, the decision
-  model's suggestions on requests (Shadow first), Microsoft 365 sign-in for
-  mailboxes, and importing an organisation's historical support mail
-  (de-identified, under a data-processing agreement). The rules for this
-  phase are in [docs/AI_READINESS.md](docs/AI_READINESS.md).
-
-**Then, by area**
-- People & performance: HR & People, Payroll, Targets & performance.
-- Everyday work: Messages (chat with official, recorded messages), Approvals &
-  workflow designer, Documents & e-signature, Quality & checklists, Technician app.
-- Customers & sales: Sales & CRM pipeline, Vehicle sales, Service plans &
-  contracts, Customer feedback, Price lists, promotions & loyalty, Fleet &
-  business accounts, Customer app.
-- Buying, stock & assets: Procurement, Suppliers, Warehouse, Manufacturing,
-  Fixed assets & tools.
-- Finance & tax: Finance & accounting (with budgets), Tax & e-invoicing (NRS MBS).
-- Data & platform: Reports, Data warehouse & BI, Integrations, Branding.
-
----
+| [docs/README.md](docs/README.md) | The index of every document, with which are current and which are historical records |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How it is built and how to add to it |
+| [docs/ASSEMBLY_LINE_GUIDE.md](docs/ASSEMBLY_LINE_GUIDE.md) | Using it at the plant, step by step |
+| [docs/SAP_INTEGRATION.md](docs/SAP_INTEGRATION.md) | Field-by-field mapping to SAP and the daily files |
+| [docs/DATA_MIGRATION.md](docs/DATA_MIGRATION.md) | Bringing existing records in, and taking lists out |
+| [docs/ROLES_AND_ACCESS.md](docs/ROLES_AND_ACCESS.md) | What each role sees and approves |
+| [docs/DEMO_WALKTHROUGH.md](docs/DEMO_WALKTHROUGH.md) | A script for seeing it work, with the demo files |
+| [docs/OPERATIONS_CHECKLIST.md](docs/OPERATIONS_CHECKLIST.md), [docs/RUNBOOKS.md](docs/RUNBOOKS.md) | Hosting set-up, backups, drills |
+| [docs/ARCHITECTURE_BASELINE.md](docs/ARCHITECTURE_BASELINE.md) | The binding security and architecture rules in full |
+| [docs/ENTERPRISE_READINESS.md](docs/ENTERPRISE_READINESS.md) | What is not there yet, and the staged plan |
 
 ## Ownership and licence
 
-Proprietary software. The repository is private and no licence is granted by
-its contents; use, copying or deployment needs the written permission of the
-platform owner. Organisation data stored by a deployment belongs to that
-organisation and is handled under the Nigeria Data Protection Act 2023.
+Proprietary software. The repository is private and its contents grant no licence; use, copying
+or deployment needs the written permission of the platform owner. Data stored by a deployment
+belongs to the organisation it is about and is handled under the Nigeria Data Protection Act
+2023.

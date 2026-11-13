@@ -1,8 +1,9 @@
 # EJO 100 — AI Readiness Assessment
 
 **Date:** 12 October 2026 · **Scope:** the data, controls and boundaries the AI
-phase (AI support centre, Intelligence) will build on · **Status:** assessment
-and plan; no AI feature is built.
+phase (AI support centre, Intelligence) will build on · **Status:** the
+assessment and plan as written on that date. Since then the assistant (Enyo)
+has been built for staff; §9 records what exists.
 
 This document records what the platform already provides for a safe AI layer,
 what is missing, and the rules the AI phase must follow. Every statement points
